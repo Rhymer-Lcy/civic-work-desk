@@ -95,9 +95,25 @@ object-src 'none';
 base-uri 'none';
 form-action 'self';
 frame-src 'none';
-media-src 'none';
-upgrade-insecure-requests
+media-src 'none'
 ```
+
+### Why `upgrade-insecure-requests` is **not** in the policy
+
+It was, and it made the application fail to start in WebKit.
+
+Measured on 2026-09-21 against the production build served over plain HTTP from `127.0.0.1`:
+Playwright's WebKit upgraded **every** subresource to `https://127.0.0.1:4173/...` and every one
+failed with `SSL connect error` — the JavaScript, the CSS, the manifest, all of them. `#root` stayed
+empty. Chromium and Firefox both exempt loopback from the upgrade, as a potentially-trustworthy
+origin; WebKit does not. Removing the directive fixed it on WebKit and changed nothing on the other
+two engines.
+
+The directive was also buying nothing here. Every URL the application emits is relative, so each
+subresource already inherits the document's scheme, and `scripts/static-security-scan.mjs` fails the
+build on any absolute `http(s)://` script or link. Over HTTPS the directive is a no-op for relative
+URLs; over HTTP on a LAN — a plausible deployment for this application — it is the difference
+between working and not working in Safari.
 
 ### Limits of a meta-tag CSP — and what a deployment must add
 
