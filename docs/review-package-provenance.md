@@ -7,6 +7,7 @@
 | `...phase-1-3-20260921-144946-1a9fb1fb05f0.zip` | **1 FAILED** (static scan) | superseded; the failure and its fix are described below                                     |
 | `...phase-1-3-20260921-150025-4f69c8b286b2.zip` | all passed, 21/21          | superseded; its `REVIEW_SUMMARY.md` stated gate results but not the counts                  |
 | `...phase-1-3-20260921-151003-7d59b82221b0.zip` | all passed, 21/21          | superseded by this section being added to the packaged docs                                 |
+| `...phase-1-3-20260921-151747-1167c0131e9b.zip` | all passed, 21/21          | superseded by the taxonomy-disclosure fix found while defending the invariants              |
 | the newest `phase-1-3-…` archive                | all passed                 | **the Phase-1.3 deliverable**; it names itself in its own `REVIEW_SUMMARY.md` and `.sha256` |
 
 Nothing was deleted or renamed during Phase 1.3 either. Every archive and `.sha256` listed in this
@@ -31,6 +32,14 @@ the totals are now parsed from the same captured run rather than typed.
 The **151003** build is superseded only by this section: it was produced before the provenance
 document described the Phase-1.3 archives, and a packaged document that is stale about its own
 directory is the defect this file exists to prevent.
+
+The **151747** build was superseded by a defect found while defending the four final invariants
+rather than by any gate. Enumerating every mutation path showed the settings list counts **live**
+records while `deleteCategoryIfUnused` and `deleteGroup` count every row a trashed record included —
+so a category used only by trashed records offered a delete the database then refused without saying
+why, and deleting a group detached trashed members with no confirmation at all. No data was ever at
+risk and no invariant was broken; what was broken was the disclosure the hard-delete policy requires.
+Fixed in `src/features/settings/taxonomy-copy.ts` and pinned by a test.
 
 ## What was in `_review_packages/` after Phase 1.2
 
