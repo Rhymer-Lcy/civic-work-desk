@@ -3,13 +3,17 @@ import type { AnyRecord, ProgressEntry } from '@/domain/types';
 import { formatDateValue } from '@/domain/dates';
 import { anyRecordSchema, describeIssues } from '@/domain/validation';
 import {
-  backupEnvelopeSchema,
   canonicalJson,
   countsAreConsistent,
+  envelopeIsVerifiedComplete,
   verifyChecksum,
 } from '../backup/envelope';
-import { checkCompatibility, migrateEnvelope } from '../backup/compatibility';
+import type { BackupCompleteness, ChecksumScope } from '../backup/compatibility';
+import { detectSource } from './detect';
+import type { SourceFormat } from './detect';
 import type { BackupEnvelope, ChecksumVerdict } from '../backup/envelope';
+import { describeIntegrityIssues, validateCanonicalIntegrity } from './integrity';
+import type { IntegrityIssue } from './integrity';
 import { isNormalisationFailure, normaliseLegacyRecord } from './legacy';
 import type { MigrationWarning } from './legacy';
 
@@ -29,15 +33,14 @@ import type { MigrationWarning } from './legacy';
  * ./apply.ts) performs the single transactional write after explicit confirmation.
  */
 
-export type SourceFormat =
-  /** A CivicWorkDesk envelope. */
-  | 'civic-envelope'
-  /** Legacy `{version, exportTime, works}`. */
-  | 'legacy-versioned'
-  /** Legacy `{works, honors}` with a separate honours array. */
-  | 'legacy-split'
-  /** A bare array of legacy records. */
-  | 'legacy-array';
+/*
+ * Source detection lives in ./detect.ts since Phase 1.2, when this module outgrew its line
+ * budget. Re-exported here so `detectSource`, `ImportParseError` and `SourceFormat` keep their
+ * existing import path: the split is internal organisation, not an API change.
+ */
+export { ImportParseError } from './detect';
+export type { DetectedSource, SourceFormat } from './detect';
+export { detectSource };
 
 export type ImportMode = 'merge' | 'replace';
 
@@ -107,8 +110,35 @@ export interface ImportPlan {
   readonly conflicts: readonly ImportConflict[];
   /** Ids appearing more than once inside the source file itself. */
   readonly duplicateIdsInSource: readonly string[];
+  /** Progress ids appearing more than once inside the source file itself. */
+  readonly duplicateProgressIdsInSource: readonly string[];
   /** Progress entries that cannot be written. Empty for replace strategies, which clear first. */
   readonly progressCollisions: readonly ProgressCollision[];
+  /**
+   * How much of the original database the source file can be trusted to contain.
+   *
+   * Null for a legacy file, which is not a canonical archive and never claimed to be one. Exposed
+   * on the plan so the UI never has to re-inspect raw untyped input to decide what to say — and so
+   * the decision is made once, where it can be tested.
+   */
+  readonly completeness: BackupCompleteness | null;
+  /** What the file's checksum actually covers. v1/v2 digests did not cover completeness metadata. */
+  readonly checksumScope: ChecksumScope | null;
+  /** Relational defects that make an exact restore impossible. Empty for a healthy envelope. */
+  readonly integrityIssues: readonly IntegrityIssue[];
+  /**
+   * True when this plan may perform an exact canonical restore.
+   *
+   * False for an incomplete archive, a relationally broken one, or any non-canonical source.
+   */
+  readonly exactRestorePossible: boolean;
+  /**
+   * True when the user must be told, before confirming, that completeness could not be verified.
+   *
+   * Set for a v1 archive: the format had no completeness field **and** the build that wrote it
+   * could drop invalid rows without recording anything, so the absence of the field proves nothing.
+   */
+  readonly requiresCompletenessAcknowledgement: boolean;
   /** Existing records a replace strategy will destroy. Informational; zero in merge. */
   readonly replacesExisting: number;
   readonly warnings: readonly MigrationWarning[];
@@ -134,84 +164,6 @@ export interface ImportSummary {
   readonly identicalConflicts: number;
   /** Progress entries dropped because of an id collision. */
   readonly progressCollisions: number;
-}
-
-export class ImportParseError extends Error {
-  override readonly name = 'ImportParseError';
-  readonly details: readonly string[];
-  constructor(message: string, details: readonly string[] = []) {
-    super(message);
-    this.details = details;
-  }
-}
-
-interface DetectedSource {
-  readonly format: SourceFormat;
-  readonly rows: readonly unknown[];
-  readonly envelope: BackupEnvelope | null;
-}
-
-/** Identify the shape of a parsed JSON document. Throws when nothing recognisable is found. */
-export function detectSource(parsed: unknown): DetectedSource {
-  if (Array.isArray(parsed)) {
-    return { format: 'legacy-array', rows: parsed, envelope: null };
-  }
-  if (parsed === null || typeof parsed !== 'object') {
-    throw new ImportParseError('文件内容不是备份数据（既不是数组，也不是对象）。');
-  }
-  const obj = parsed as Record<string, unknown>;
-
-  if (obj['application'] === 'civic-work-desk') {
-    /*
-     * Compatibility is judged BEFORE the payload is validated. An envelope from a newer build will
-     * usually also fail the current schema, and reporting that as "内容未通过校验" would send the
-     * user looking for corruption that does not exist.
-     */
-    const verdict = checkCompatibility({
-      backupFormatVersion: obj['backupFormatVersion'],
-      schemaVersion: obj['schemaVersion'],
-    });
-    if (!verdict.compatible) {
-      throw new ImportParseError(
-        verdict.message ?? '该备份版本与当前应用不兼容。',
-        verdict.detail === undefined ? [] : [verdict.detail],
-      );
-    }
-
-    const migrated = migrateEnvelope(obj);
-    const result = backupEnvelopeSchema.safeParse(migrated);
-    if (!result.success) {
-      throw new ImportParseError(
-        '这是 CivicWorkDesk 备份文件，但内容未通过校验，已拒绝导入。',
-        describeIssues(result.error, 6),
-      );
-    }
-    return { format: 'civic-envelope', rows: result.data.payload.records, envelope: result.data };
-  }
-
-  const works = obj['works'];
-  const honors = obj['honors'];
-  if (Array.isArray(works)) {
-    const rows: unknown[] = Array.isArray(honors)
-      ? [...(works as unknown[]), ...(honors as unknown[]).map(attachHonorCategory)]
-      : (works as unknown[]);
-    return {
-      format: Array.isArray(honors) ? 'legacy-split' : 'legacy-versioned',
-      rows,
-      envelope: null,
-    };
-  }
-  throw new ImportParseError('无法识别的备份格式：未找到 works 数组或 CivicWorkDesk 信封。');
-}
-
-/**
- * Mark a row from a legacy standalone `honors` array as an honour.
- * The legacy code did `Object.assign({category:'荣誉'}, h)`, which let the row's own `category`
- * win; the explicit spread order here makes the honour classification authoritative.
- */
-function attachHonorCategory(row: unknown): unknown {
-  if (row === null || typeof row !== 'object') return row;
-  return { ...(row as Record<string, unknown>), category: '荣誉' };
 }
 
 /**
@@ -257,6 +209,7 @@ interface PlanAccumulator {
   readonly warnings: MigrationWarning[];
   readonly seenInSource: Set<string>;
   readonly duplicateIdsInSource: string[];
+  readonly duplicateProgressIdsInSource: string[];
   readonly progressCollisions: ProgressCollision[];
   readonly seenProgressIds: Set<string>;
 }
@@ -270,6 +223,7 @@ function emptyAccumulator(): PlanAccumulator {
     warnings: [],
     seenInSource: new Set<string>(),
     duplicateIdsInSource: [],
+    duplicateProgressIdsInSource: [],
     progressCollisions: [],
     seenProgressIds: new Set<string>(),
   };
@@ -321,6 +275,13 @@ function placeRecord(record: AnyRecord, context: CollectContext, acc: PlanAccumu
  */
 function placeProgress(entry: ProgressEntry, context: CollectContext, acc: PlanAccumulator): void {
   if (acc.seenProgressIds.has(entry.id)) {
+    /*
+     * A repeated progress id inside one file. Merge and legacy replace report it and move on; a
+     * canonical restore cannot, because dropping one of the two rows means the restored database
+     * does not equal the archive. `planBlockers` refuses the restore for exactly this list — Phase
+     * 1.1 recorded the collision, dropped the entry, and still labelled the operation 完整还原.
+     */
+    acc.duplicateProgressIdsInSource.push(entry.id);
     acc.progressCollisions.push({
       id: entry.id,
       reason: 'duplicate-in-source',
@@ -389,6 +350,43 @@ function collectFromLegacyRows(
   }
 }
 
+interface ExactnessVerdict {
+  readonly completeness: BackupCompleteness | null;
+  readonly integrityIssues: readonly IntegrityIssue[];
+  readonly exactRestorePossible: boolean;
+}
+
+/**
+ * Can this plan promise `restore(D, B(S)) = S`?
+ *
+ * Every clause is a way exactness can fail while each row still validates individually. Kept as one
+ * function so the answer is defined in a single place and can be read as a list of conditions.
+ */
+function assessExactness(
+  strategy: ImportStrategy,
+  envelope: BackupEnvelope | null,
+  acc: PlanAccumulator,
+): ExactnessVerdict {
+  if (strategy !== 'canonical-restore' || envelope === null) {
+    // Only a canonical restore claims exactness, so nothing else needs the verdict.
+    return {
+      completeness: envelope?.completeness ?? null,
+      integrityIssues: [],
+      exactRestorePossible: false,
+    };
+  }
+  const integrityIssues = validateCanonicalIntegrity(envelope);
+  return {
+    completeness: envelope.completeness,
+    integrityIssues,
+    exactRestorePossible:
+      envelope.completeness !== 'incomplete' &&
+      integrityIssues.length === 0 &&
+      acc.duplicateIdsInSource.length === 0 &&
+      acc.duplicateProgressIdsInSource.length === 0,
+  };
+}
+
 /** Build a full preview. Performs no writes and mutates nothing the caller owns. */
 export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan> {
   const { format, rows, envelope } = detectSource(input.parsed);
@@ -413,6 +411,15 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
   // Only a canonical envelope carries taxonomy and settings, so only it can restore them.
   const restoresTaxonomy = strategy === 'canonical-restore' && envelope !== null;
 
+  /*
+   * Completeness and relational integrity are decided here, once, and carried on the plan. The UI
+   * must never re-derive them from raw input: Phase 1.1 exposed `omittedInvalidRowIds` in the file
+   * and nothing consulted it, so an archive that declared itself incomplete was still offered as
+   * 完整还原.
+   */
+  const exactness = assessExactness(strategy, envelope, acc);
+  const { completeness, integrityIssues, exactRestorePossible } = exactness;
+
   return {
     format,
     mode: input.mode,
@@ -423,12 +430,19 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
     rejected,
     conflicts,
     duplicateIdsInSource,
+    duplicateProgressIdsInSource: acc.duplicateProgressIdsInSource,
     progressCollisions: acc.progressCollisions,
     replacesExisting: isReplaceStrategy(strategy) ? input.existing.length : 0,
     warnings,
     categories: envelope?.payload.categories ?? null,
     groups: envelope?.payload.groups ?? null,
     settings: envelope?.payload.settings ?? null,
+    completeness,
+    checksumScope: envelope?.checksum.scope ?? null,
+    integrityIssues,
+    exactRestorePossible,
+    requiresCompletenessAcknowledgement:
+      strategy === 'canonical-restore' && completeness === 'unknown-legacy',
     checksum,
     countsConsistent: envelope ? countsAreConsistent(envelope) : null,
     summary: {
@@ -508,8 +522,61 @@ export function planBlockers(plan: ImportPlan): string[] {
         `无法按“完整还原”精确还原，已拒绝。`,
     );
   }
+
+  /*
+   * The same argument for progress entries. Phase 1.1 detected the duplicate, dropped the second
+   * row and continued — the restore then silently contained fewer notes than the archive while
+   * still being presented as exact.
+   */
+  if (plan.strategy === 'canonical-restore' && plan.duplicateProgressIdsInSource.length > 0) {
+    blockers.push(
+      `备份文件内部有 ${String(plan.duplicateProgressIdsInSource.length)} 个重复的进展 ID，` +
+        '“完整还原”必须逐条写回，无法丢弃其中一条，已拒绝。',
+    );
+  }
+
+  /*
+   * An archive that declares itself incomplete cannot reproduce the original database, so it must
+   * never be used as an exact restore source — whatever the user confirmed. Merge remains
+   * available: adding rows the destination lacks is meaningful even from a partial file.
+   *
+   * `unknown-legacy` (a v1 archive) is deliberately NOT blocked. Its completeness is unknown, not
+   * known-bad, and refusing it would strand anyone whose only backup predates the field. It is
+   * gated on an explicitly worded confirmation instead — see `requiresCompletenessAcknowledgement`.
+   */
+  if (plan.strategy === 'canonical-restore' && plan.completeness === 'incomplete') {
+    blockers.push(
+      '该备份自述省略了未通过校验的数据行（omittedInvalidRowIds 非空），' +
+        '无法用于“完整还原”：还原后的数据库不会等同于原数据库。' +
+        '请改用“合并”导入，或选择一份完整备份；损坏行请用诊断恢复文件处理。',
+    );
+  }
+
+  if (plan.strategy === 'canonical-restore' && plan.integrityIssues.length > 0) {
+    blockers.push(
+      `备份文件的关联关系不自洽，无法精确还原（${String(plan.integrityIssues.length)} 处）：` +
+        describeIntegrityIssues(plan.integrityIssues).join('；'),
+    );
+  }
+
   if (plan.strategy === 'merge' && plan.accepted.length === 0 && plan.conflicts.length === 0) {
     blockers.push('没有任何可导入的记录。');
   }
   return blockers;
+}
+
+/**
+ * The completeness classification, for callers that want the envelope's own verdict.
+ *
+ * Kept next to the plan so "is this file a valid exact-restore source?" has exactly one answer in
+ * the codebase.
+ */
+export function envelopeCompleteness(envelope: BackupEnvelope): {
+  readonly completeness: BackupCompleteness;
+  readonly verifiedComplete: boolean;
+} {
+  return {
+    completeness: envelope.completeness,
+    verifiedComplete: envelopeIsVerifiedComplete(envelope),
+  };
 }
