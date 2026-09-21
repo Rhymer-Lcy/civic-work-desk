@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod';
 import { isIsoDate } from './dates';
 import { WORK_STATUSES } from './status';
 

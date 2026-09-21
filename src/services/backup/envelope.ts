@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '@/domain/zod';
 import { SCHEMA_VERSION } from '@/db/schema';
 import { BACKUP_FORMAT_VERSION } from './compatibility';
 import {
