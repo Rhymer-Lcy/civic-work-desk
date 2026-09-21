@@ -1,0 +1,131 @@
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+@media (min-width: 40rem) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.itemName {
+  flex: 1 1 10rem;
+  min-width: 0;
+  min-height: var(--control-md);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.itemMeta {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemActions {
+  display: flex;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.addInput {
+  flex: 1 1 12rem;
+  min-width: 0;
+  min-height: var(--control-md);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.statRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.statLabel {
+  color: var(--ink-500);
+}
+
+.statValue {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.note {
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+/* The destructive block is separated by a rule and a warning surface, not just by order. */
+.danger {
+  border-color: var(--danger-600);
+  border-left-width: 3px;
+}

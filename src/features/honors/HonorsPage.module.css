@@ -1,0 +1,80 @@
+.levelRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.levelLabel {
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+@media (min-width: 52rem) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Gold is the honour signal and is used nowhere else in the product. */
+.honorCard {
+  border-left: 3px solid var(--honor-600);
+  height: 100%;
+}
+
+.honorBadges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  font-size: var(--text-sm);
+  color: var(--honor-800);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+@media (min-width: 30rem) {
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.field {
+  min-width: 0;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  font-size: var(--text-xs);
+  color: var(--ink-400);
+}
+
+.fieldValue {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

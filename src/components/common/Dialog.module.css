@@ -1,0 +1,123 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: var(--surface-overlay);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 92dvh;
+  background: var(--surface-card);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-lg);
+  animation: rise var(--duration-base) var(--easing);
+}
+
+.panel:focus {
+  outline: none;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(1.5rem);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sm {
+  max-width: 26rem;
+}
+.md {
+  max-width: 40rem;
+}
+.lg {
+  max-width: 58rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-touch);
+  height: var(--control-touch);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--ink-500);
+  cursor: pointer;
+}
+
+.close:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--ink-900);
+}
+
+.close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.description {
+  padding: var(--space-3) var(--space-4) 0;
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-4);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+}
+
+/* From tablet up the sheet becomes a centred dialog. */
+@media (min-width: 40rem) {
+  .backdrop {
+    align-items: center;
+    padding: var(--space-6);
+  }
+
+  .panel {
+    border-radius: var(--radius-lg);
+    max-height: 86dvh;
+  }
+}

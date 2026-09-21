@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Test / tooling output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+*.tsbuildinfo
+
+# Environment - never commit a real .env
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+
+# Confidential legacy source material.
+# Only the explanatory README is tracked; the original HTML and any
+# extracted real user data must never enter Git history.
+_private_reference/*
+!_private_reference/README.md
+
+# Generated review packages (large binaries; regenerate with npm run review:package)
+_review_packages/*
+!_review_packages/.gitkeep

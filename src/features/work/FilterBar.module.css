@@ -1,0 +1,114 @@
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+/*
+ * Auto-fit grid rather than a flex row: at 360px every control gets a full line and stays
+ * legible, and the layout fills out progressively without a separate breakpoint per control.
+ */
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+  align-items: end;
+}
+
+.searchWrap {
+  position: relative;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-400);
+  pointer-events: none;
+}
+
+.search {
+  width: 100%;
+  min-height: var(--control-md);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-8);
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+}
+
+.selectWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.selectLabel {
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+.select {
+  width: 100%;
+  min-height: var(--control-md);
+  padding: var(--space-2);
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.count {
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+  font-variant-numeric: tabular-nums;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
+  background: var(--brand-050);
+  border: 1px solid var(--brand-100);
+  border-radius: var(--radius-pill);
+  color: var(--brand-800);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  max-width: 16rem;
+}
+
+.chip span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  background: var(--brand-100);
+}

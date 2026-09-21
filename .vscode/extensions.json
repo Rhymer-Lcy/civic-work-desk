@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-playwright.playwright",
+    "vitest.explorer",
+    "editorconfig.editorconfig"
+  ],
+  "unwantedRecommendations": ["hookyqr.beautify", "dbaeumer.jshint"]
+}

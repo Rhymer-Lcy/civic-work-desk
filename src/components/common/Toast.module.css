@@ -1,0 +1,71 @@
+.region {
+  position: fixed;
+  left: 50%;
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(30rem, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  pointer-events: auto;
+}
+
+.message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Tone is carried by a border AND by the wording of the message, never by colour alone. */
+.info {
+  border-left-color: var(--ink-400);
+}
+
+.success {
+  border-left-color: var(--status-done);
+}
+
+.error {
+  border-left-color: var(--danger-600);
+  background: var(--danger-100);
+  color: var(--danger-800);
+}
+
+.close {
+  flex: none;
+  width: var(--control-md);
+  height: var(--control-md);
+  margin: calc(-1 * var(--space-1)) 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.close:hover {
+  opacity: 1;
+  background: rgb(0 0 0 / 6%);
+}

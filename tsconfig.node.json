@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    /*
+     * DOM is included even though this project also covers Node-side config files: Playwright
+     * specs legitimately contain browser-context code inside `page.evaluate()`, and that code
+     * must be type-checked against the DOM, not left as `any`.
+     */
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "tests/e2e"]
+}

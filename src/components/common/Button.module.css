@@ -1,0 +1,120 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--easing),
+    border-color var(--duration-fast) var(--easing);
+  white-space: nowrap;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+}
+
+/* ---- sizes. `lg` is the 44px touch target used for primary mobile actions. ---- */
+.sm {
+  height: var(--control-sm);
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+.md {
+  height: var(--control-md);
+}
+.lg {
+  height: var(--control-lg);
+  font-size: var(--text-md);
+}
+
+.iconOnly {
+  padding: 0;
+  width: var(--control-touch);
+  min-width: var(--control-touch);
+}
+
+.iconOnly.sm {
+  width: var(--control-md);
+  min-width: var(--control-md);
+  height: var(--control-md);
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+/* ---- variants ---- */
+.primary {
+  background: var(--brand-700);
+  color: var(--ink-inverse);
+  border-color: var(--brand-800);
+}
+.primary:hover:not(:disabled) {
+  background: var(--brand-800);
+}
+
+.secondary {
+  background: var(--surface-card);
+  color: var(--ink-700);
+  border-color: var(--border-strong);
+}
+.secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--ink-900);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--ink-700);
+  border-color: transparent;
+}
+.ghost:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--ink-900);
+}
+
+/*
+ * Destructive. Outlined rather than filled, so it reads as "careful" instead of "go", and is
+ * never mistaken for the primary action.
+ */
+.danger {
+  background: var(--surface-card);
+  color: var(--danger-700);
+  border-color: var(--danger-600);
+}
+.danger:hover:not(:disabled) {
+  background: var(--danger-100);
+}
+
+/*
+ * --honor-600 (#a8853e) with white text measures 3.45:1 and fails WCAG 1.4.3 AA. --honor-700
+ * (#8a6a27) measures 5.03:1. The lighter gold is still used for borders, chips and surfaces,
+ * where it is not carrying text.
+ */
+.honor {
+  background: var(--honor-700);
+  color: var(--ink-inverse);
+  border-color: var(--honor-800);
+}
+.honor:hover:not(:disabled) {
+  background: var(--honor-800);
+}

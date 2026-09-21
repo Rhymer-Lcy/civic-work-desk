@@ -1,0 +1,184 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: var(--brand-800);
+  color: var(--ink-inverse);
+  border-bottom: 1px solid var(--brand-900);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+  min-height: var(--header-height);
+}
+
+.brand {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headerAction {
+  flex: none;
+}
+
+/* ---- navigation ---- */
+.nav {
+  position: sticky;
+  top: var(--header-height);
+  z-index: var(--z-sticky);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.navList {
+  display: flex;
+  gap: var(--space-1);
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.navList::-webkit-scrollbar {
+  display: none;
+}
+
+.navItem {
+  flex: 1 0 auto;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-touch);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 2px solid transparent;
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navLink:hover {
+  color: var(--ink-900);
+  background: var(--surface-sunken);
+}
+
+/*
+ * The current destination is marked by a border, a weight change AND `aria-current`, so it is
+ * identifiable without relying on the accent colour.
+ */
+.navLinkCurrent {
+  color: var(--brand-800);
+  border-bottom-color: var(--brand-700);
+  font-weight: var(--weight-semibold);
+}
+
+.banner {
+  max-width: var(--content-max);
+  margin: var(--space-4) auto 0;
+  padding: 0 var(--space-4);
+}
+
+.main {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.main:focus {
+  outline: none;
+}
+
+/* ---- page header ---- */
+.pageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.pageHeaderText {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.pageTitle {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+}
+
+.pageDescription {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
+.pageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---- split layout ---- */
+.split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+
+.splitMain,
+.splitAside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+@media (min-width: 64rem) {
+  .split {
+    grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
+  }
+
+  .splitAside {
+    position: sticky;
+    top: calc(var(--header-height) + 3.5rem);
+  }
+
+  .navLink {
+    justify-content: flex-start;
+  }
+
+  .navItem {
+    flex: 0 0 auto;
+  }
+}
+
+/* Label-only navigation below 30rem keeps six destinations reachable without overflow. */
+@media (max-width: 30rem) {
+  .navLink {
+    padding: var(--space-2);
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+  }
+}

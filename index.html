@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      Content Security Policy.
+
+      This meta tag is a fallback, not the primary control. A CSP delivered by HTTP response header
+      is strictly stronger: `frame-ancestors`, `report-uri`/`report-to` and sandbox directives are
+      ignored in a meta tag, and a meta policy only takes effect once the parser reaches it.
+      docs/security.md lists the headers a deployment must add.
+
+      'unsafe-inline' is present for style-src ONLY. Vite emits no inline <script>, but CSS modules
+      and the theme-color meta produce inline style attributes; a nonce cannot be applied to those
+      in a static build. It is absent from script-src, and 'unsafe-eval' is absent entirely.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'; media-src 'none'; upgrade-insecure-requests"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#8c1d1d" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="CivicWorkDesk - a local-first work record and honour archive. All data stays in this browser; no telemetry, no network calls."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="工作记录台" />
+
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+
+    <title>政务工作记录台</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      本应用需要 JavaScript 才能运行。所有数据仍只保存在你自己的浏览器中，不会上传到任何服务器。
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

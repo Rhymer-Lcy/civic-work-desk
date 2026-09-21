@@ -1,0 +1,49 @@
+.body {
+  font-size: var(--text-base);
+  color: var(--ink-700);
+  line-height: var(--leading-normal);
+}
+
+.body strong {
+  color: var(--ink-900);
+}
+
+.phrase {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  background: var(--danger-100);
+  border: 1px solid var(--danger-600);
+  border-radius: var(--radius-md);
+}
+
+.phraseLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--danger-800);
+}
+
+.code {
+  padding: 0 var(--space-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.phraseInput {
+  min-height: var(--control-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+}
+
+.phraseHelp {
+  font-size: var(--text-xs);
+  color: var(--danger-800);
+}

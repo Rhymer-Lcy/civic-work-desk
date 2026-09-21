@@ -1,0 +1,117 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.heading {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-700);
+}
+
+.empty {
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--border-default);
+}
+
+.item {
+  position: relative;
+  min-width: 0;
+}
+
+.item::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--space-4) - 5px);
+  top: 0.45rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-700);
+}
+
+.itemHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-md);
+}
+
+.itemTime {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Always present, not revealed on hover. The legacy timeline used `opacity: 0` until
+ * `:hover`, which hid the edit and delete controls from keyboard and touch entirely.
+ */
+.itemActions {
+  display: flex;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.itemNote {
+  font-size: var(--text-sm);
+  color: var(--ink-900);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.editorActions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
+
+.add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  align-items: flex-start;
+}
+
+.addLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-700);
+}

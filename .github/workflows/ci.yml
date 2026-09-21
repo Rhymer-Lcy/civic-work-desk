@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (Node 24)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      # `npm ci` installs strictly from the lockfile and fails if package.json disagrees with it.
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Generate CSS module types (must already be committed and current)
+        run: node scripts/generate-css-module-types.mjs --check
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm run test:unit
+
+      - name: Production build
+        run: npm run build
+
+      # Runs after the build so the scan also covers `dist/`.
+      - name: Static security scan
+        run: npm run scan:static
+
+      - name: Audit runtime dependencies
+        # Advisories in dev-only tooling do not ship; the gate is on production dependencies.
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end, responsive and privacy tests
+        run: npm run test:e2e
+
+      - name: Accessibility tests
+        run: npm run test:a11y
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

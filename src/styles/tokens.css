@@ -1,0 +1,179 @@
+/*
+ * Design tokens.
+ *
+ * The legacy prototype's palette is the starting point, but the *usage* rules are new. Its red
+ * was applied to the header gradient, every primary button, the statistics bar, the report table
+ * header, the export icons and the destructive actions all at once, so nothing stood out and a
+ * delete button looked like a save button.
+ *
+ * Here:
+ *   - `--brand-*` is reserved for identity and the single primary action;
+ *   - `--danger-*` is the only red used for destructive intent, and is visually distinct;
+ *   - `--honor-*` (gold) marks honours and nothing else;
+ *   - `--status-*` is a fixed semantic set, always paired with text or an icon so colour is never
+ *     the sole carrier of meaning (WCAG 1.4.1).
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- brand ---- */
+  --brand-900: #6d1414;
+  --brand-800: #8c1d1d;
+  --brand-700: #a32323;
+  --brand-600: #b91c1c;
+  --brand-100: #fbe9e9;
+  --brand-050: #fdf5f5;
+
+  /* ---- honours (gold) ---- */
+  --honor-800: #6f5520;
+  --honor-700: #8a6a27;
+  --honor-600: #a8853e;
+  --honor-100: #f6efdc;
+  --honor-050: #fcf9f1;
+
+  /* ---- destructive ---- */
+  --danger-800: #8f1d1d;
+  --danger-700: #b42318;
+  --danger-600: #d92d20;
+  --danger-100: #fde7e5;
+
+  /* ---- semantic status ---- */
+  --status-todo: #4b5563;
+  --status-todo-bg: #f1f2f4;
+  --status-progress: #9a5b06;
+  --status-progress-bg: #fdf1dc;
+  --status-done: #15803d;
+  --status-done-bg: #e3f7e8;
+  --status-cancelled: #6b7280;
+  --status-cancelled-bg: #f3f4f6;
+  --status-deferred: #6d28d9;
+  --status-deferred-bg: #f0e9fd;
+  --status-overdue: #b42318;
+  --status-overdue-bg: #fdeceb;
+
+  /* ---- surfaces & ink ---- */
+  --surface-page: #f7f5f2;
+  --surface-card: #ffffff;
+  --surface-sunken: #f2f0ec;
+  --surface-raised: #ffffff;
+  --surface-overlay: rgba(28, 25, 23, 0.55);
+
+  --ink-900: #1c1917;
+  --ink-700: #3f3a36;
+  --ink-500: #6b6560;
+  /*
+   * The lightest ink that still carries text. Every value here is checked against BOTH
+   * --surface-card (#ffffff) and --surface-sunken (#f2f0ec), because secondary text appears on
+   * both: 5.35:1 and 4.82:1 respectively, so it clears WCAG 1.4.3 AA (4.5:1) on either surface.
+   * The earlier #8b8580 measured 3.64:1 on white and failed.
+   */
+  --ink-400: #6f6a64;
+  --ink-inverse: #ffffff;
+
+  --border-strong: #d6d1cb;
+  --border-default: #e5e1db;
+  --border-subtle: #efece7;
+
+  --focus-ring: #1d4ed8;
+
+  /* ---- radii ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ---- shadows: restrained; borders carry most of the separation ---- */
+  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.06);
+  --shadow-md: 0 2px 8px rgba(28, 25, 23, 0.08);
+  --shadow-lg: 0 12px 32px rgba(28, 25, 23, 0.16);
+
+  /* ---- spacing (4px base) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* ---- typography: system Chinese stacks only, no remote font ---- */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC',
+    'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
+  --font-serif: 'Songti SC', 'SimSun', 'Noto Serif CJK SC', serif;
+  --font-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  --leading-tight: 1.3;
+  --leading-normal: 1.6;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- control sizing: >= 44px for primary touch targets (WCAG 2.5.8 / 2.5.5) ---- */
+  --control-sm: 32px;
+  --control-md: 40px;
+  --control-lg: 44px;
+  --control-touch: 44px;
+
+  /* ---- layout ---- */
+  --content-max: 1360px;
+  --sidebar-width: 17.5rem;
+  --header-height: 3.5rem;
+
+  /* ---- z-index layers, declared once ---- */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-header: 40;
+  --z-drawer: 60;
+  --z-dialog: 80;
+  --z-toast: 100;
+
+  /* ---- motion ---- */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --easing: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/*
+ * Reduced motion: honoured globally rather than per-component, so a new animation cannot
+ * accidentally opt out of it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * High-contrast / forced-colours: let the OS win rather than fighting it with our own palette.
+ */
+@media (forced-colors: active) {
+  :root {
+    --border-default: CanvasText;
+    --border-strong: CanvasText;
+    --focus-ring: Highlight;
+  }
+}

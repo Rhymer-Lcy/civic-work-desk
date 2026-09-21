@@ -1,0 +1,18 @@
+# Normalise everything to LF in the repository.
+* text=auto eol=lf
+
+# Shell scripts must keep LF even on Windows checkouts.
+*.sh text eol=lf
+
+# Windows batch files need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets
+*.png binary
+*.ico binary
+*.zip binary
+*.xlsx binary
+*.docx binary
+*.woff binary
+*.woff2 binary

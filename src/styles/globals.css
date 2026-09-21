@@ -1,0 +1,144 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--surface-page);
+  color: var(--ink-900);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+}
+h2 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+h3 {
+  font-size: var(--text-md);
+  line-height: var(--leading-tight);
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: var(--brand-700);
+  text-underline-offset: 0.15em;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/*
+ * Focus visibility.
+ *
+ * The legacy prototype set `outline: none` on every input and communicated focus only by
+ * changing the border colour, which fails WCAG 2.4.7 for keyboard users on a light border. A
+ * two-tone ring is used so it is visible on both light surfaces and coloured buttons.
+ */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Skip link: first tab stop, visible only when focused. */
+.skip-link {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  transform: translateY(-200%);
+  transition: transform var(--duration-fast) var(--easing);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Screen-reader-only text that still participates in the accessibility tree. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Any wide content (tables, code) scrolls inside its own container. The page body must never
+ * scroll horizontally, at any of the tested widths (360/390/768/1024/1440).
+ */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* Respect device safe areas on notched phones. */
+.safe-bottom {
+  padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+}
+
+.safe-top {
+  padding-top: max(var(--space-2), env(safe-area-inset-top));
+}

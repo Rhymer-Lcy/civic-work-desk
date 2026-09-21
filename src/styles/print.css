@@ -1,0 +1,121 @@
+/*
+ * Print styles.
+ *
+ * The ledger and the report preview are the two things that get printed, so printing targets
+ * them explicitly rather than trying to force the whole application onto paper. Chrome and Edge
+ * do not support CSS paged-media margin boxes, so no page numbering is attempted here — the
+ * DOCX report is the artefact for anything that needs formal pagination.
+ */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 18mm 14mm;
+  }
+
+  :root {
+    --surface-page: #ffffff;
+    --surface-card: #ffffff;
+    --surface-sunken: #ffffff;
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 10pt;
+    line-height: 1.45;
+  }
+
+  /* Chrome/Edge: keep table borders and header fills legible on paper. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Interactive and navigational chrome has no meaning on paper. */
+  .print-hide,
+  .app-header,
+  .app-nav,
+  .app-sidebar,
+  .toolbar,
+  .filter-bar,
+  .toast-region,
+  .fab,
+  button,
+  [role='tablist'],
+  .pagination {
+    display: none !important;
+  }
+
+  /* A printable region expands to the full page and drops its own scroll container. */
+  .print-area,
+  .print-area * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  .print-area {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  .app-layout {
+    display: block !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+
+  th,
+  td {
+    border: 1px solid #999;
+    padding: 4pt 5pt;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: #f0efec !important;
+    font-weight: 700;
+  }
+
+  /*
+   * Repeat the header on every page, but only for a table that has body rows. A repeated header
+   * over an empty page reads as a table whose contents vanished.
+   */
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  img {
+    break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+}
+
+.print-only {
+  display: none;
+}

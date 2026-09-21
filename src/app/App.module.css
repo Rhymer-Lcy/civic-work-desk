@@ -1,0 +1,28 @@
+.loading {
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+  color: var(--ink-500);
+}
+
+.errorTitle {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-lg);
+}
+
+.errorHint {
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.updateBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.updateText {
+  flex: 1 1 18rem;
+  min-width: 0;
+  font-size: var(--text-sm);
+}

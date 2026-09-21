@@ -1,0 +1,152 @@
+.card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.headerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.description {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Flat region inside a card. Border only, no shadow, no second radius step. */
+.panel {
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+}
+
+.tone-default {
+  border-left-color: var(--border-strong);
+}
+
+.tone-info {
+  border-left-color: var(--ink-400);
+  background: var(--surface-sunken);
+}
+
+.tone-warning {
+  border-left-color: var(--honor-600);
+  background: var(--honor-050);
+  color: var(--honor-800);
+}
+
+.tone-danger {
+  border-left-color: var(--danger-600);
+  background: var(--danger-100);
+  color: var(--danger-800);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+  color: var(--ink-500);
+}
+
+.emptyIcon {
+  color: var(--border-strong);
+}
+
+.emptyTitle {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--ink-700);
+}
+
+.emptyDescription {
+  font-size: var(--text-sm);
+  max-width: 32rem;
+}
+
+.emptyAction {
+  margin-top: var(--space-2);
+}
+
+/* ---- metrics ---- */
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: var(--space-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  text-align: left;
+  min-width: 0;
+}
+
+.metricButton {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  min-height: var(--control-touch);
+}
+
+.metricButton:hover {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}
+
+.metricValue {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-normal {
+  color: var(--ink-900);
+}
+
+.metric-alert {
+  color: var(--danger-700);
+}
+
+.metric-positive {
+  color: var(--status-done);
+}
+
+.metricLabel {
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
+.metricDetail {
+  font-size: var(--text-xs);
+  color: var(--ink-400);
+}
