@@ -31,7 +31,7 @@ import {
   listCategories,
   listGroups,
   moveCategory,
-  recordBackupSuccess,
+  recordCanonicalBackup,
   renameCategory,
   renameGroup,
   saveSettings,
@@ -312,10 +312,17 @@ describe('settings and backup metadata', () => {
     await expect(saveSettings({ ...settings, backupReminderDays: 0 })).rejects.toThrow();
   });
 
-  it('records a successful backup with its record count', async () => {
-    await recordBackupSuccess(42);
+  it('records a successful backup with its captured revision and record count', async () => {
+    const before = await getMeta();
+    // The revision the snapshot captured is passed in; it is never read from the meta row here,
+    // which is what makes the completion race impossible.
+    await recordCanonicalBackup({ capturedRevision: 7, recordCount: 42 });
     const meta = await getMeta();
     expect(meta?.lastBackupAt).toBe('2026-09-21T09:00:00.000Z');
     expect(meta?.lastBackupRecordCount).toBe(42);
+    expect(meta?.lastBackupRevision).toBe(7);
+    expect(meta?.dataRevision, 'recording a backup is not a data mutation').toBe(
+      before?.dataRevision,
+    );
   });
 });

@@ -130,7 +130,8 @@ describe('invalid stored rows are never silently omitted from a backup', () => {
     const envelope = await buildEnvelope(snapshot.input, '2026-09-21T09:00:00.000Z');
     // The file itself states that it is not complete.
     expect(envelope.omittedInvalidRowIds).toEqual(['corrupt-2', 'corrupt-progress-2']);
-    expect(envelope.backupFormatVersion).toBe(2);
+    expect(envelope.backupFormatVersion).toBe(3);
+    expect(envelope.completeness).toBe('incomplete');
   });
 
   it('a clean store produces a backup that declares itself complete', async () => {
@@ -244,10 +245,18 @@ describe('backup format and schema compatibility', () => {
 
     const detected = detectSource(v1);
     expect(detected.format).toBe('civic-envelope');
-    expect(detected.envelope?.backupFormatVersion).toBe(2);
-    // v1 claimed nothing was omitted, because it had no way to say otherwise.
+    expect(detected.envelope?.backupFormatVersion).toBe(3);
+    /*
+     * Phase 1.1 asserted here that a migrated v1 file "claimed nothing was omitted". It could not
+     * claim that: the format had no such field, and the build that wrote it dropped invalid rows
+     * silently. Phase 1.2 classifies it as `unknown-legacy` — restorable, with the uncertainty
+     * stated — rather than inferring completeness from a missing field.
+     */
+    expect(detected.envelope?.completeness).toBe('unknown-legacy');
     expect(detected.envelope?.omittedInvalidRowIds).toEqual([]);
     expect(detected.envelope?.dataRevision).toBeNull();
+    // Its digest still covers only the payload, as v1 wrote it.
+    expect(detected.envelope?.checksum.scope).toBe('payload');
   });
 
   it('a migrated v1 envelope still restores exactly', async () => {
@@ -262,6 +271,8 @@ describe('backup format and schema compatibility', () => {
       existing: (await listRecords()).records,
     });
     expect(plan.strategy).toBe('canonical-restore');
+    expect(plan.completeness).toBe('unknown-legacy');
+    expect(plan.requiresCompletenessAcknowledgement).toBe(true);
     await applyImportPlan(plan);
     expect((await listRecords()).records).toHaveLength(1);
     expect(await getSettings()).toBeTruthy();

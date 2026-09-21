@@ -81,9 +81,11 @@ describe('envelope', () => {
     );
   });
 
-  it('verifies its own checksum', async () => {
+  it('verifies its own checksum, which covers the whole envelope', async () => {
     const envelope = await buildEnvelope(sample(), '2026-09-21T09:00:00.000Z');
-    expect(envelope.payloadChecksum).toMatch(/^[0-9a-f]{64}$/);
+    expect(envelope.checksum.value).toMatch(/^[0-9a-f]{64}$/);
+    expect(envelope.checksum.scope).toBe('envelope');
+    expect(envelope.checksum.algorithm).toBe('sha-256');
     expect(await verifyChecksum(envelope)).toBe('match');
   });
 
@@ -98,7 +100,9 @@ describe('envelope', () => {
 
   it('reports an absent checksum without treating it as corruption', async () => {
     const envelope = await buildEnvelope(sample(), '2026-09-21T09:00:00.000Z');
-    expect(await verifyChecksum({ ...envelope, payloadChecksum: null })).toBe('absent');
+    expect(
+      await verifyChecksum({ ...envelope, checksum: { ...envelope.checksum, value: null } }),
+    ).toBe('absent');
   });
 
   it('detects declared counts that disagree with the payload', async () => {

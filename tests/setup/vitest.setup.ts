@@ -35,6 +35,25 @@ afterEach(() => {
   restoreClock = null;
 });
 
+/*
+ * jsdom implements neither `URL.createObjectURL` nor a real download, so the final step of an
+ * export — hand the blob to the browser — cannot run. Stubbing it lets an integration test exercise
+ * the **whole** `createBackup()` path including the bookkeeping that follows the download, which is
+ * where the freshness invariants live. Without this a test can only reach the code that throws
+ * before the download, and the interesting half never executes.
+ *
+ * The stubs record nothing: tests assert on the database, not on the stub.
+ */
+if (typeof URL !== 'undefined') {
+  URL.createObjectURL = (): string => 'blob:civic-work-desk-test';
+  URL.revokeObjectURL = (): void => undefined;
+}
+if (typeof HTMLAnchorElement !== 'undefined') {
+  HTMLAnchorElement.prototype.click = function click(): void {
+    // A real navigation is neither possible nor desirable in jsdom.
+  };
+}
+
 // jsdom does not implement these; several components probe them.
 if (typeof window !== 'undefined') {
   if (typeof window.matchMedia !== 'function') {

@@ -12,7 +12,7 @@ import {
 import {
   getMeta,
   getSettings,
-  recordBackupSuccess,
+  recordCanonicalBackup,
   saveSettings,
 } from '@/db/repositories/taxonomy';
 import { ABSENT_DATE } from '@/domain/dates';
@@ -187,7 +187,10 @@ describe('progress-entry collision integrity', () => {
 describe('data revision drives backup health', () => {
   it('REGRESSION: an edit that leaves the record count unchanged makes the backup stale', async () => {
     const record = await createWorkRecord(workInput({ title: '原标题' }));
-    await recordBackupSuccess(1);
+    await recordCanonicalBackup({
+      capturedRevision: (await getMeta())?.dataRevision ?? null,
+      recordCount: 1,
+    });
 
     const fresh = await getMeta();
     expect(fresh?.lastBackupRevision).toBe(fresh?.dataRevision);
@@ -208,7 +211,10 @@ describe('data revision drives backup health', () => {
 
   it('a settings change also marks the backup stale', async () => {
     await createWorkRecord(workInput());
-    await recordBackupSuccess(1);
+    await recordCanonicalBackup({
+      capturedRevision: (await getMeta())?.dataRevision ?? null,
+      recordCount: 1,
+    });
     await saveSettings({ ...(await getSettings()), appTitle: '改过的标题' });
     const meta = await getMeta();
     expect(assessBackupHealth(meta, 1, 7, '2026-09-21').state).toBe('stale');
@@ -216,7 +222,10 @@ describe('data revision drives backup health', () => {
 
   it('a rolled-back mutation does not advance the revision', async () => {
     await createWorkRecord(workInput());
-    await recordBackupSuccess(1);
+    await recordCanonicalBackup({
+      capturedRevision: (await getMeta())?.dataRevision ?? null,
+      recordCount: 1,
+    });
     const before = (await getMeta())?.dataRevision ?? 0;
 
     // An update to a non-existent record throws inside the transaction.
