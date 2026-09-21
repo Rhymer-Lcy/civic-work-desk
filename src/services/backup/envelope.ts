@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SCHEMA_VERSION } from '@/db/schema';
+import { BACKUP_FORMAT_VERSION } from './compatibility';
 import {
   anyRecordSchema,
   businessCategorySchema,
@@ -30,8 +31,7 @@ import type {
 
 export const BACKUP_APP_ID = 'civic-work-desk';
 
-/** Envelope format version. Bump when the envelope *shape* changes, not when the schema does. */
-export const BACKUP_FORMAT_VERSION = 1;
+export { BACKUP_FORMAT_VERSION } from './compatibility';
 
 export const backupCountsSchema = z.object({
   records: z.number().int().min(0),
@@ -50,10 +50,20 @@ export const backupPayloadSchema = z.object({
   settings: appSettingsSchema,
 });
 
+/**
+ * Envelope shape.
+ *
+ * Version *ranges* are deliberately NOT enforced here — `checkCompatibility` owns that policy and
+ * runs first, so an unsupported version produces a precise message instead of a shape error. Zod
+ * only asserts the fields are present and well-typed.
+ *
+ * Phase 1 wrote `min(1)` on both version fields, which accepted any integer: a file from a future
+ * build was read merely because its current shape happened to validate.
+ */
 export const backupEnvelopeSchema = z.object({
   application: z.literal(BACKUP_APP_ID),
-  backupFormatVersion: z.number().int().min(1),
-  schemaVersion: z.number().int().min(1),
+  backupFormatVersion: z.number().int(),
+  schemaVersion: z.number().int(),
   exportedAt: z.string().min(1),
   counts: backupCountsSchema,
   /** SHA-256 of the canonical payload, hex. Null when Web Crypto was unavailable. */
@@ -61,6 +71,15 @@ export const backupEnvelopeSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/)
     .nullable(),
+  /**
+   * Ids of stored rows this backup knowingly excluded because they failed validation.
+   *
+   * Empty is the normal case and means "complete". A non-empty list is the file stating plainly
+   * that it is NOT a complete archive — Phase 1 dropped such rows and recorded nothing.
+   */
+  omittedInvalidRowIds: z.array(z.string()).default([]),
+  /** The `dataRevision` this backup captured. Null for a v1 file, which had no counter. */
+  dataRevision: z.number().int().nullable().default(null),
   payload: backupPayloadSchema,
 });
 
@@ -70,6 +89,9 @@ export type BackupEnvelope = z.infer<typeof backupEnvelopeSchema>;
 
 export interface BackupInput {
   readonly records: readonly AnyRecord[];
+  /** Ids of rows excluded because they failed validation. Recorded in the envelope. */
+  readonly omittedInvalidRowIds?: readonly string[];
+  readonly dataRevision?: number | null;
   readonly progressEntries: readonly ProgressEntry[];
   readonly categories: readonly BusinessCategory[];
   readonly groups: readonly WorkGroup[];
@@ -158,6 +180,8 @@ export async function buildEnvelope(
     exportedAt,
     counts: countEntities(input),
     payloadChecksum: await sha256Hex(canonicalJson(payload)),
+    omittedInvalidRowIds: [...(input.omittedInvalidRowIds ?? [])],
+    dataRevision: input.dataRevision ?? null,
     payload,
   };
 }
