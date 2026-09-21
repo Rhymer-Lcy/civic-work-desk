@@ -50,8 +50,12 @@ test.describe('backup and restore', () => {
     await dialog.locator('input[type="file"]').setInputFiles(path);
 
     await expect(dialog.getByText('导入预览（尚未写入）')).toBeVisible();
-    await expect(dialog.getByText('CivicWorkDesk 备份')).toBeVisible();
-    await expect(dialog.getByText('一致', { exact: true })).toBeVisible();
+    // Target the value cells of the preview's definition list, not bare strings: the strategy
+    // description names the format too, so an unscoped text match resolves to two elements.
+    const values = dialog.getByRole('definition');
+    await expect(values.filter({ hasText: 'CivicWorkDesk 备份' })).toHaveCount(1);
+    // Anchored, because '不一致' contains '一致'.
+    await expect(values.filter({ hasText: /^一致$/ })).toHaveCount(1);
 
     await dialog.getByRole('button', { name: '合并导入' }).click();
     await expect(dialog).toBeHidden();
@@ -143,9 +147,13 @@ test.describe('backup and restore', () => {
     await gotoApp(page, 'settings');
     await page.getByRole('button', { name: '导入 / 还原备份' }).click();
     const dialog = page.getByRole('dialog', { name: '导入 / 还原备份' });
-    await dialog.getByText('替换', { exact: true }).click();
+    await dialog.getByRole('radio', { name: '替换 / 还原' }).check();
     await dialog.locator('input[type="file"]').setInputFiles(file);
-    await dialog.getByRole('button', { name: '替换全部数据' }).click();
+    // The button names the strategy the file actually resolves to. A legacy `works` file carries
+    // no categories, groups or settings, so it is a record-and-progress replacement and must not
+    // be offered as 完整还原.
+    await expect(dialog.getByRole('button', { name: '完整还原' })).toHaveCount(0);
+    await dialog.getByRole('button', { name: '替换记录与进展' }).click();
 
     const confirm = page.getByRole('dialog', { name: '替换全部数据？' });
     await expect(confirm).toBeVisible();

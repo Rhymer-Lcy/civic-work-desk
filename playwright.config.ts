@@ -54,6 +54,30 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
       testMatch: ['**/accessibility.spec.ts'],
     },
+    /*
+     * Cross-engine verification, deliberately narrow.
+     *
+     * Only `cross-browser.spec.ts` runs here — the critical flows whose implementations differ
+     * most between engines (IndexedDB durability, blob download, file input, date-only rendering,
+     * dynamic import). Running the whole suite three times would triple the wall clock to
+     * re-assert behaviour that is engine-independent.
+     *
+     * `webkit-desktop` is Playwright's WebKit on Windows. It is **not** Safari and not iOS: the
+     * same WebCore, but different OS integration, storage eviction, install path and input
+     * behaviour. It is evidence about the engine, not about the product on Apple platforms — the
+     * manual matrix in docs/qa-plan.md carries that, and a real-device PASS is never inferred
+     * from this project.
+     */
+    {
+      name: 'firefox-desktop',
+      use: { ...devices['Desktop Firefox'], viewport: { width: 1440, height: 900 } },
+      testMatch: ['**/cross-browser.spec.ts'],
+    },
+    {
+      name: 'webkit-desktop',
+      use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } },
+      testMatch: ['**/cross-browser.spec.ts'],
+    },
   ],
 
   webServer: {
