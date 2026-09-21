@@ -1,5 +1,47 @@
 # Review packages in this directory — provenance
 
+## What is in `_review_packages/` after Phase 1.2
+
+| archive                                         | gates                                 | note                                                                                                                         |
+| ----------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `...phase-1-20260921-100343-3727a186a9eb.zip`   | all passed                            | **rebuild** of the destroyed Phase-1 archive; fails one verification check because it carries the Phase-1 entry-count defect |
+| `...phase-1-1-20260921-102608-1e0c9cbdb2cb.zip` | all passed                            | the Phase-1.1 deliverable                                                                                                    |
+| `...phase-1-2-20260921-125349-0cfad5abe07d.zip` | **3 FAILED** (lint, typecheck, build) | superseded; kept rather than deleted — see below                                                                             |
+| `...phase-1-2-20260921-130202-092138495b4b.zip` | all passed                            | **the Phase-1.2 deliverable**                                                                                                |
+
+Nothing was deleted during Phase 1.2. The Phase-1.2 instructions forbid deleting any existing archive
+or checksum and forbid wildcard deletion in this directory, so the superseded build below stays where it
+is rather than being tidied away.
+
+### The superseded Phase-1.2 build, and why it failed
+
+`...phase-1-2-20260921-125349-0cfad5abe07d.zip` was produced before three gates were green and records
+that honestly in its own `VERIFY_LOG.txt`: lint, typecheck and build failed. The cause was narrow and
+worth recording, because it is a class of mistake that only a full-gate run catches.
+
+`npx tsc -p tsconfig.json --noEmit` — which is what I had been running while iterating — covers the
+**application** project only. The repository has a second project, `tsconfig.node.json`, which covers the
+Playwright specs and the build scripts, and `npm run typecheck` runs both. A new end-to-end test declared
+`async ({ page }, testInfo)` and never used `testInfo`; only the second project saw it. Lint then flagged
+four `no-confusing-void-expression` violations in the same test's IndexedDB callbacks, and `npm run build`
+fails because it runs `typecheck` first.
+
+The lesson is mechanical: **run `npm run typecheck`, not `tsc -p tsconfig.json`**, before believing a
+change typechecks.
+
+The superseded archive is not a deliverable. The Phase-1.2 deliverable is
+`...phase-1-2-20260921-130202-092138495b4b.zip`, SHA-256
+`145bf05d89c91bc0dfb602c0f21fcef44c06ed4eb1aef2f6ff4cf72cef558c07`, which passes all ten gates and 21/21
+verification checks.
+
+### The original Phase-1 archive was not recovered
+
+The Phase-1.2 instructions said the original archive "has been recovered externally and should be
+restored to `_review_packages` if available". It was **not available**: a search of `F:\`, the user
+profile's Downloads and Desktop, `E:\` and the session scratch directory found no file named
+`civic-work-desk-phase-1-20260921-081722-3727a186a9eb.zip` and no archive with digest `7a8654f2…`. The
+rebuild described below therefore remains the only Phase-1 artifact present, and nothing was overwritten.
+
 ## The original Phase-1 package was deleted, and could not be recovered
 
 `civic-work-desk-phase-1-20260921-081722-3727a186a9eb.zip`, SHA-256
