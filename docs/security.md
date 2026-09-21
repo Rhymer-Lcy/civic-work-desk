@@ -85,7 +85,7 @@ Delivered in `index.html` as a meta tag:
 ```
 default-src 'self';
 script-src 'self';
-style-src 'self' 'unsafe-inline';
+style-src 'self';
 img-src 'self' data: blob:;
 font-src 'self';
 connect-src 'self';
@@ -114,7 +114,7 @@ ways:
 A deployment should send these response headers:
 
 ```
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 X-Content-Type-Options: nosniff
 Referrer-Policy: no-referrer
 Cross-Origin-Opener-Policy: same-origin
@@ -123,15 +123,74 @@ Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
 Strict-Transport-Security: max-age=31536000; includeSubDomains
 ```
 
-### Why `'unsafe-inline'` appears for styles and nowhere else
+### No directive carries `'unsafe-inline'` or `'unsafe-eval'`
 
-`style-src` needs it because CSS modules and a handful of inline `style` attributes are emitted by
-the static build, and a nonce cannot be attached to those without a server rendering the HTML per
-request.
+An earlier revision of this file allowed `'unsafe-inline'` for `style-src` and justified it like
+this: "CSS modules and a handful of inline `style` attributes are emitted by the static build, and a
+nonce cannot be attached to those". **That justification was wrong on both counts.** CSS modules
+compile to a hashed class list in a linked stylesheet, which `'self'` already permits; and the
+`<meta name="theme-color">` sometimes cited alongside it is not a style at all.
 
-`script-src` does **not** have it, and `'unsafe-eval'` appears nowhere. Those are the directives
-that matter for code execution, and an E2E test asserts both conditions against the built
-`index.html` so a future change cannot quietly weaken them.
+Measured against the built output: `dist/index.html` contains no inline `<style>` element and no
+`style` attribute, and the application's CSS arrives as one linked stylesheet. So `style-src 'self'`
+holds, and the directive was tightened to it.
+
+Two JavaScript inline-style writes were replaced at the same time — but **not** because CSP required
+it, and the distinction is worth stating because the opposite is a natural assumption:
+
+| where                          | was                                       | now                                                                                                                        |
+| ------------------------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `components/common/Dialog.tsx` | `document.body.style.overflow = 'hidden'` | adds the class `dialog-open`, whose rule lives in `styles/globals.css`, reference-counted so nested dialogs share one lock |
+| `services/download.ts`         | `anchor.style.display = 'none'`           | `anchor.hidden = true` — the UA stylesheet hides it, and a programmatic `click()` still fires                              |
+
+**CSP's `style-src` does not govern CSSOM property writes.** This was mutation-tested rather than
+assumed: with `style-src 'self'` in force, restoring `document.body.style.overflow = 'hidden'` and
+rebuilding produced no violation of any kind. Those two lines were therefore never what kept
+`'unsafe-inline'` in the policy. They were replaced because a class keeps presentation in the
+stylesheet, because the resulting inline `style` attribute _would_ be governed by `style-src-attr`
+if the policy is ever tightened that far, and because it makes "no element carries a `style`
+attribute" a structural invariant a test can assert.
+
+**The one thing the strict policy did break was real, and had been breaking silently since Phase 1.**
+Zod 4 compiles each schema with `new Function` on first parse; `script-src 'self'` refuses that, Zod
+catches the failure and falls back to its interpreted evaluator. Validation therefore always worked,
+while every page load raised a `securitypolicyviolation` and logged a refusal that nobody was
+watching. `src/domain/zod.ts` now sets `z.config({ jitless: true })` — Zod's documented switch for
+environments that disallow `eval` — and both Zod consumers import `z` from there, so the setting
+cannot be bypassed by import order. Runtime behaviour in the browser is unchanged: the interpreted
+path is the one that was already running.
+
+Four E2E assertions hold this together. The built `index.html` must contain `style-src 'self';` and
+must not contain `unsafe-inline` anywhere in the policy. A rendering test then drives the real
+application under the real policy — create a record, open a dialog, assert `<body>` carries no
+`style` attribute, assert the stylesheet actually applied — and fails on a single reported
+violation, using the specified `securitypolicyviolation` event rather than console-text matching.
+
+That last test **proves it can fail**: after asserting zero violations it deliberately injects an
+inline `<style>` element and fails if that goes unreported. Without it, a listener that never fires
+would be indistinguishable from a policy with nothing to report — and the first version of this test
+was exactly that, a check that could only pass.
+
+**One deliberate exception, scoped to the dev server.** Vite injects CSS as inline `<style>`
+elements for hot replacement, which `style-src 'self'` correctly blocks. `vite.config.ts` therefore
+carries a plugin (`civic-relax-dev-style-csp`, `apply: 'serve'`) that adds `'unsafe-inline'` to the
+served HTML during `npm run dev` and never during a build. The plugin throws if the directive it
+expects is missing, so the shipped policy cannot drift away from it silently. `vite preview` serves
+the built files, so the E2E suite always measures the strict policy.
+
+## Source maps are not shipped
+
+`vite.config.ts` sets `build.sourcemap: false`. Phase 1 set it to `true`, so `dist/` carried `.map`
+files that reproduced the complete TypeScript source — every comment, every Chinese UI string, the
+whole legacy-migration heuristic — and the bundles advertised them with `//# sourceMappingURL`. For
+a local-first application with no error-reporting service consuming them, that is disclosure with no
+operational benefit.
+
+Verified by an E2E test: every `<script src>` in the built `index.html` is fetched and must contain
+no `sourceMappingURL`, and `<name>.map` must not be served even when requested directly.
+
+The cost is accepted rather than worked around: a stack trace from a production bundle is minified.
+Reproduce the fault against `npm run dev`, where maps are always present.
 
 ## Service worker and the Cache API
 
