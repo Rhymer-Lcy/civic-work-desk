@@ -73,6 +73,21 @@ export function detectSource(parsed: unknown): DetectedSource {
         describeIssues(result.error, 6),
       );
     }
+    /*
+     * Shape is not semantics.
+     *
+     * A v3 envelope can satisfy the schema, carry a matching whole-envelope digest and consistent
+     * counts while still making contradictory claims about itself — `completeness: 'complete'`
+     * alongside a non-empty `omittedInvalidRowIds`, or `'incomplete'` with no omission evidence at
+     * all. The digest guarantees the bytes were not altered; it says nothing about whether the
+     * statements inside them agree. A restore must not resolve that contradiction by picking whichever
+     * field it happens to read.
+     */
+    const contradiction = completenessContradiction(result.data);
+    if (contradiction !== null) {
+      throw new ImportParseError('该备份的完整性声明自相矛盾，已拒绝导入。', [contradiction]);
+    }
+
     return { format: 'civic-envelope', rows: result.data.payload.records, envelope: result.data };
   }
 
@@ -99,4 +114,31 @@ export function detectSource(parsed: unknown): DetectedSource {
 function attachHonorCategory(row: unknown): unknown {
   if (row === null || typeof row !== 'object') return row;
   return { ...(row as Record<string, unknown>), category: '荣誉' };
+}
+
+/**
+ * The way a v3 envelope's completeness metadata contradicts itself, or null when it is coherent.
+ *
+ * The rule is an equivalence, checked in both directions:
+ *
+ *   `completeness === 'complete'` **iff** `omittedInvalidRowIds` is empty.
+ *
+ * `unknown-legacy` is exempt: it describes a v1 archive, whose format had no omission list at all, so
+ * an empty list there is the absence of evidence rather than a claim of completeness.
+ */
+function completenessContradiction(envelope: BackupEnvelope): string | null {
+  const omitted = envelope.omittedInvalidRowIds.length;
+  if (envelope.completeness === 'complete' && omitted > 0) {
+    return (
+      `文件声明 completeness="complete"，但同时列出了 ${String(omitted)} 行被省略的数据` +
+      '（omittedInvalidRowIds 非空）。两者不可能同时为真。'
+    );
+  }
+  if (envelope.completeness === 'incomplete' && omitted === 0) {
+    return (
+      '文件声明 completeness="incomplete"，但没有给出任何被省略的数据行' +
+      '（omittedInvalidRowIds 为空）。“不完整”必须有可核对的省略清单。'
+    );
+  }
+  return null;
 }

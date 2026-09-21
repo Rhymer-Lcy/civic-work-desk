@@ -1,4 +1,6 @@
 import { readStoreSnapshot, allInvalidRows, invalidRowCount } from '@/db/snapshot';
+import { validateRelationalIntegrity } from '@/domain/integrity';
+import type { IntegrityIssue } from '@/domain/integrity';
 import type { InvalidEntityGroups } from '@/db/snapshot';
 import type { InvalidRow } from '@/db/invalid-row';
 import { SCHEMA_VERSION } from '@/db/schema';
@@ -47,6 +49,8 @@ export interface RecoveryCounts {
   readonly validSettings: number;
   readonly invalidSettings: number;
   readonly invalidTotal: number;
+  /** Relational defects between otherwise valid rows: orphans, dangling references, duplicate ids. */
+  readonly relationalIssues: number;
 }
 
 export interface RecoveryExport {
@@ -67,6 +71,15 @@ export interface RecoveryExport {
   readonly invalidGroups: readonly InvalidRow[];
   /** Zero or one entry: the stored settings row, raw, when it did not validate. */
   readonly invalidSettings: readonly InvalidRow[];
+  /**
+   * Relational defects, structured rather than prose.
+   *
+   * A row can be perfectly valid on its own and still belong to a broken state — an honour pointing at
+   * a purged work record, a progress note whose record is gone. Those never appear in the invalid-row
+   * lists above, because nothing about the row itself is wrong, so the recovery file records them
+   * separately with their kind, the offending id and the reference that failed to resolve.
+   */
+  readonly relationalIssues: readonly IntegrityIssue[];
   /**
    * Context needed to make sense of the broken rows: which categories and groups they may
    * reference, and the ids of the rows that were fine.
@@ -90,6 +103,7 @@ export interface RecoverySnapshot {
   readonly validRecordCount: number;
   readonly validProgressCount: number;
   readonly invalidTotal: number;
+  readonly relationalIssues: readonly IntegrityIssue[];
 }
 
 /** Read everything the recovery export needs, including the rows a backup cannot carry. */
@@ -105,12 +119,29 @@ export async function readRecoverySnapshot(): Promise<RecoverySnapshot> {
     validRecordCount: snapshot.records.length,
     validProgressCount: snapshot.progressEntries.length,
     invalidTotal: invalidRowCount(snapshot.invalid),
+    relationalIssues: relationalIssuesOf(snapshot),
   };
+}
+
+/** Relational defects of a store snapshot, by the shared domain rules. */
+function relationalIssuesOf(snapshot: {
+  readonly records: Parameters<typeof validateRelationalIntegrity>[0]['records'];
+  readonly progressEntries: Parameters<typeof validateRelationalIntegrity>[0]['progressEntries'];
+  readonly categories: Parameters<typeof validateRelationalIntegrity>[0]['categories'];
+  readonly groups: Parameters<typeof validateRelationalIntegrity>[0]['groups'];
+}): IntegrityIssue[] {
+  return validateRelationalIntegrity({
+    records: snapshot.records,
+    progressEntries: snapshot.progressEntries,
+    categories: snapshot.categories,
+    groups: snapshot.groups,
+  });
 }
 
 export async function buildRecoveryExport(exportedAt: string): Promise<RecoveryExport> {
   const snapshot = await readStoreSnapshot();
   const invalid = snapshot.invalid;
+  const relationalIssues = relationalIssuesOf(snapshot);
 
   // The digest covers every raw invalid row, so a recovery file that was truncated or edited after
   // the fact is detectable. It is corruption detection, not authentication.
@@ -120,6 +151,7 @@ export async function buildRecoveryExport(exportedAt: string): Promise<RecoveryE
     invalidCategories: invalid.categories,
     invalidGroups: invalid.groups,
     invalidSettings: invalid.settings,
+    relationalIssues,
   };
 
   return {
@@ -146,12 +178,14 @@ export async function buildRecoveryExport(exportedAt: string): Promise<RecoveryE
       validSettings: snapshot.settings === null ? 0 : 1,
       invalidSettings: invalid.settings.length,
       invalidTotal: invalidRowCount(invalid),
+      relationalIssues: relationalIssues.length,
     },
     invalidRecords: invalid.records,
     invalidProgressEntries: invalid.progressEntries,
     invalidCategories: invalid.categories,
     invalidGroups: invalid.groups,
     invalidSettings: invalid.settings,
+    relationalIssues,
     context: {
       validRecordIds: snapshot.records.map((record) => record.id),
       categories: snapshot.categories.map((category) => ({ id: category.id, name: category.name })),

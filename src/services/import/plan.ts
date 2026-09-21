@@ -2,17 +2,12 @@ import { primaryDate } from '@/domain/types';
 import type { AnyRecord, ProgressEntry } from '@/domain/types';
 import { formatDateValue } from '@/domain/dates';
 import { anyRecordSchema, describeIssues } from '@/domain/validation';
-import {
-  canonicalJson,
-  countsAreConsistent,
-  envelopeIsVerifiedComplete,
-  verifyChecksum,
-} from '../backup/envelope';
+import { canonicalJson, countsAreConsistent, verifyChecksum } from '../backup/envelope';
 import type { BackupCompleteness, ChecksumScope } from '../backup/compatibility';
 import { detectSource } from './detect';
 import type { SourceFormat } from './detect';
 import type { BackupEnvelope, ChecksumVerdict } from '../backup/envelope';
-import { describeIntegrityIssues, validateCanonicalIntegrity } from './integrity';
+import { validateCanonicalIntegrity } from './integrity';
 import type { IntegrityIssue } from './integrity';
 import { isNormalisationFailure, normaliseLegacyRecord } from './legacy';
 import type { MigrationWarning } from './legacy';
@@ -127,6 +122,15 @@ export interface ImportPlan {
   /** Relational defects that make an exact restore impossible. Empty for a healthy envelope. */
   readonly integrityIssues: readonly IntegrityIssue[];
   /**
+   * Rows declined because a reference would not resolve in the projected final state.
+   *
+   * Reported rather than repaired: rewriting the reference to null would alter the user's data, and
+   * inventing the missing category would invent taxonomy that never existed.
+   */
+  readonly referenceRejections: readonly { readonly id: string; readonly reason: string }[];
+  /** Progress entries declined because their record would not exist after the write. */
+  readonly orphanProgress: readonly { readonly id: string; readonly recordId: string }[];
+  /**
    * True when this plan may perform an exact canonical restore.
    *
    * False for an incomplete archive, a relationally broken one, or any non-canonical source.
@@ -164,6 +168,10 @@ export interface ImportSummary {
   readonly identicalConflicts: number;
   /** Progress entries dropped because of an id collision. */
   readonly progressCollisions: number;
+  /** Rows declined because a reference would not resolve after the write. */
+  readonly referenceRejections: number;
+  /** Progress entries declined for having no record in the projected final state. */
+  readonly orphanProgress: number;
 }
 
 /**
@@ -193,11 +201,26 @@ export interface BuildPlanInput {
   /**
    * Ids of the destination's progress entries.
    *
-   * Required for merge to guarantee it never overwrites an existing note. Ignored by the replace
-   * strategies, which clear the table first. Optional so a caller that only previews a restore
-   * need not read them, but the import dialog always supplies them.
+   * **Required**, like the taxonomy ids below. It is what guarantees merge never overwrites an
+   * existing note, and since a merge now accepts a valid note for a record the destination already
+   * holds (the Phase-1.2 defect), an omitted list would let the planner propose writing an id that is
+   * already taken — a preview that disagrees with what the write can do. Phase 1.2 allowed it to be
+   * optional; the write then failed with a raw `ConstraintError` instead of reporting a collision.
+   * A replace strategy passes the list truthfully and the planner ignores it, because it clears first.
    */
-  readonly existingProgressIds?: readonly string[] | undefined;
+  readonly existingProgressIds: readonly string[];
+  /**
+   * Ids of the destination's business categories and groups.
+   *
+   * **Required**, and deliberately not optional. The planner judges an incoming record's category and
+   * group against the projected final taxonomy; a caller that omitted them would be telling it the
+   * destination has none, and every record carrying a category reference would be rejected as
+   * unresolvable. Defaulting to an empty list would turn a missing argument into silently dropped
+   * data, so the type insists. A canonical restore passes `[]` truthfully — it replaces the taxonomy
+   * wholesale, so the destination's ids are irrelevant.
+   */
+  readonly existingCategoryIds: readonly string[];
+  readonly existingGroupIds: readonly string[];
 }
 
 /** Mutable working set shared by the source-shape collectors. */
@@ -212,6 +235,10 @@ interface PlanAccumulator {
   readonly duplicateProgressIdsInSource: string[];
   readonly progressCollisions: ProgressCollision[];
   readonly seenProgressIds: Set<string>;
+  /** Rows declined because a reference would not resolve after the write. */
+  readonly referenceRejections: { id: string; reason: string }[];
+  /** Progress entries declined because their record would not exist after the write. */
+  readonly orphanProgress: { id: string; recordId: string }[];
 }
 
 function emptyAccumulator(): PlanAccumulator {
@@ -226,14 +253,35 @@ function emptyAccumulator(): PlanAccumulator {
     duplicateProgressIdsInSource: [],
     progressCollisions: [],
     seenProgressIds: new Set<string>(),
+    referenceRejections: [],
+    orphanProgress: [],
   };
 }
 
-/** Everything a collector needs to know about the destination and the chosen semantics. */
+/**
+ * Everything a collector needs: the destination, the chosen semantics, and the **projected** state.
+ *
+ * The projected sets are the heart of the Phase-1.3 merge fix. A reference is valid when it resolves
+ * in the state that will exist *after* the write — `destination + acceptedChanges` — not when it
+ * resolves inside the incoming file alone. Phase 1.2 judged an incoming progress entry against the
+ * records accepted from the same file, so a perfectly good note for a record the destination already
+ * held was silently skipped: the commonest real merge there is.
+ *
+ * The same view closes the opposite hole. Phase 1.2 checked nothing at all for an incoming record's
+ * category, group or related-work reference in merge mode, so a merge could introduce exactly the
+ * dangling reference a canonical restore refuses.
+ */
 interface CollectContext {
   readonly strategy: ImportStrategy;
   readonly recordsById: ReadonlyMap<string, AnyRecord>;
   readonly progressIds: ReadonlySet<string>;
+  /** Category ids that will exist after the write. */
+  readonly projectedCategoryIds: ReadonlySet<string>;
+  /** Group ids that will exist after the write. */
+  readonly projectedGroupIds: ReadonlySet<string>;
+  /** Record ids that will exist after the write, and which of them are work records. */
+  readonly projectedRecordIds: Set<string>;
+  readonly projectedWorkIds: Set<string>;
 }
 
 /**
@@ -262,8 +310,44 @@ function placeRecord(record: AnyRecord, context: CollectContext, acc: PlanAccumu
     }
   }
 
+  /*
+   * Would writing this row leave a reference unresolved in the projected final state?
+   *
+   * Rejecting it is the only safe answer. Rewriting the reference to null would silently alter the
+   * user's data, and inventing the missing category or group would invent taxonomy that never
+   * existed — both are worse than declining the row and saying why. This is also what makes an
+   * *incomplete* archive safe to merge: a record whose category was omitted from the file, and which
+   * the destination does not have either, is refused rather than written with a broken link.
+   */
+  const unresolved = unresolvedReference(record, context);
+  if (unresolved !== null) {
+    acc.rejected.push({ hint: record.title, reason: unresolved });
+    acc.referenceRejections.push({ id: record.id, reason: unresolved });
+    return false;
+  }
+
   acc.accepted.push(record);
+  context.projectedRecordIds.add(record.id);
+  if (record.kind === 'work') context.projectedWorkIds.add(record.id);
   return true;
+}
+
+/** The reason this record's references cannot be satisfied, or null when they all resolve. */
+function unresolvedReference(record: AnyRecord, context: CollectContext): string | null {
+  if (record.kind === 'work') {
+    if (record.categoryId !== null && !context.projectedCategoryIds.has(record.categoryId)) {
+      return `引用的业务分类在导入后仍不存在（${record.categoryId}）`;
+    }
+    if (record.groupId !== null && !context.projectedGroupIds.has(record.groupId)) {
+      return `引用的归属分组在导入后仍不存在（${record.groupId}）`;
+    }
+    return null;
+  }
+  if (record.relatedWorkId === null) return null;
+  if (!context.projectedWorkIds.has(record.relatedWorkId)) {
+    return `引用的关联工作记录在导入后仍不存在（${record.relatedWorkId}）`;
+  }
+  return null;
 }
 
 /**
@@ -299,6 +383,17 @@ function placeProgress(entry: ProgressEntry, context: CollectContext, acc: PlanA
     });
     return;
   }
+
+  /*
+   * The note's record must exist after the write — whether it is being imported now or was already
+   * in the destination. That second case is the Phase-1.2 defect: a valid note for an existing record
+   * was skipped because the record was not part of *this* import.
+   */
+  if (!context.projectedRecordIds.has(entry.recordId)) {
+    acc.orphanProgress.push({ id: entry.id, recordId: entry.recordId });
+    return;
+  }
+
   acc.acceptedProgress.push(entry);
 }
 
@@ -308,15 +403,21 @@ function collectFromEnvelope(
   context: CollectContext,
   acc: PlanAccumulator,
 ): void {
+  /*
+   * Work records first, then honours, then progress — dependency order.
+   *
+   * An honour's `relatedWorkId` may point at a work record from the same file, and a progress entry's
+   * `recordId` may point at either. Placing them in reference order means every decision is made with
+   * the projected state already containing everything it could legitimately depend on, so one pass
+   * suffices and the outcome does not depend on the order rows happen to appear in the file.
+   */
   for (const record of envelope.payload.records) {
-    placeRecord(record, context, acc);
+    if (record.kind === 'work') placeRecord(record, context, acc);
   }
-
-  const acceptedIds = new Set(acc.accepted.map((record) => record.id));
+  for (const record of envelope.payload.records) {
+    if (record.kind === 'honor') placeRecord(record, context, acc);
+  }
   for (const entry of envelope.payload.progressEntries) {
-    // A canonical restore reproduces the backup exactly, so every entry it carries is written.
-    // Merge only adds notes whose record is actually being added, to avoid orphans.
-    if (context.strategy === 'merge' && !acceptedIds.has(entry.recordId)) continue;
     placeProgress(entry, context, acc);
   }
 }
@@ -345,6 +446,7 @@ function collectFromLegacyRows(
     }
 
     if (placeRecord(validated.data, context, acc)) {
+      // The record is now in the projected state, so its notes resolve.
       for (const entry of outcome.progress) placeProgress(entry, context, acc);
     }
   }
@@ -387,15 +489,53 @@ function assessExactness(
   };
 }
 
+/**
+ * Seed the projected final state for the chosen strategy.
+ *
+ * What the destination contributes depends on what the strategy clears:
+ *
+ * | strategy | destination records | destination taxonomy |
+ * | --- | --- | --- |
+ * | `merge` | kept | kept |
+ * | `canonical-restore` | cleared | cleared, then replaced by the file |
+ * | `legacy-replace` | cleared | **kept** — a legacy file carries none |
+ *
+ * The taxonomy a merge will end up with is the destination's plus whatever the file adds, because
+ * `applyImportPlan` adds categories and groups the destination lacks. A canonical restore's taxonomy
+ * is the file's alone. A legacy replace keeps the local taxonomy, which is why its records' category
+ * references are judged against the *destination* — the case that would otherwise dangle.
+ */
+function buildCollectContext(
+  input: BuildPlanInput,
+  strategy: ImportStrategy,
+  envelope: BackupEnvelope | null,
+): CollectContext {
+  const destinationRecords = isReplaceStrategy(strategy) ? [] : input.existing;
+  const keepsLocalTaxonomy = strategy !== 'canonical-restore';
+
+  const categoryIds = new Set<string>(keepsLocalTaxonomy ? input.existingCategoryIds : []);
+  const groupIds = new Set<string>(keepsLocalTaxonomy ? input.existingGroupIds : []);
+  for (const category of envelope?.payload.categories ?? []) categoryIds.add(category.id);
+  for (const group of envelope?.payload.groups ?? []) groupIds.add(group.id);
+
+  return {
+    strategy,
+    recordsById: new Map(input.existing.map((record) => [record.id, record])),
+    progressIds: new Set(isReplaceStrategy(strategy) ? [] : input.existingProgressIds),
+    projectedCategoryIds: categoryIds,
+    projectedGroupIds: groupIds,
+    projectedRecordIds: new Set(destinationRecords.map((record) => record.id)),
+    projectedWorkIds: new Set(
+      destinationRecords.filter((record) => record.kind === 'work').map((record) => record.id),
+    ),
+  };
+}
+
 /** Build a full preview. Performs no writes and mutates nothing the caller owns. */
 export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan> {
   const { format, rows, envelope } = detectSource(input.parsed);
   const strategy = resolveStrategy(input.mode, format);
-  const context: CollectContext = {
-    strategy,
-    recordsById: new Map(input.existing.map((record) => [record.id, record])),
-    progressIds: new Set(input.existingProgressIds ?? []),
-  };
+  const context = buildCollectContext(input, strategy, envelope);
   const acc = emptyAccumulator();
 
   if (format === 'civic-envelope' && envelope) {
@@ -432,6 +572,8 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
     duplicateIdsInSource,
     duplicateProgressIdsInSource: acc.duplicateProgressIdsInSource,
     progressCollisions: acc.progressCollisions,
+    referenceRejections: acc.referenceRejections,
+    orphanProgress: acc.orphanProgress,
     replacesExisting: isReplaceStrategy(strategy) ? input.existing.length : 0,
     warnings,
     categories: envelope?.payload.categories ?? null,
@@ -455,6 +597,8 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
       warnings: warnings.length,
       identicalConflicts,
       progressCollisions: acc.progressCollisions.length,
+      referenceRejections: acc.referenceRejections.length,
+      orphanProgress: acc.orphanProgress.length,
     },
   };
 }
@@ -470,113 +614,14 @@ function describeConflict(incoming: AnyRecord, existing: AnyRecord): ImportConfl
   };
 }
 
-/**
- * Resolution policy, stated once so it is not re-decided per call site.
- *
- * **Merge never overwrites.** An incoming record whose id already exists is skipped and listed in
- * `conflicts`; an incoming progress entry whose id already exists is skipped and listed in
- * `progressCollisions`. Deterministic and non-destructive: the stored row is the one the user has
- * been working with, and an import is not evidence that the file is newer.
- *
- * **Canonical restore is exact.** A CivicWorkDesk envelope is the source of truth: records,
- * progress, categories, groups and settings are replaced wholesale inside one transaction.
- * Destination ids are irrelevant — that is the entire point of a restore, and treating them as
- * conflicts is what made Phase 1 clear the database and restore nothing.
- *
- * **Legacy replace is narrower, and says so.** A legacy file carries no taxonomy and no settings,
- * so it replaces records and progress only and leaves the rest of the application alone. The
- * preview must not describe it as 完整还原.
+/*
+ * Policy lives in ./policy.ts since Phase 1.3, when this module outgrew its line budget.
+ * Re-exported here so `planBlockers`, `planWritesAnything` and `RESOLUTION_POLICY` keep their
+ * existing import path: the split is internal organisation, not an API change.
  */
-export const RESOLUTION_POLICY = Object.freeze({
-  merge: 'skips-existing',
-  'canonical-restore': 'replaces-all-restoreable-state',
-  'legacy-replace': 'replaces-records-and-progress-only',
-});
-
-/** Does this plan write anything at all? Used to disable the confirm button honestly. */
-export function planWritesAnything(plan: ImportPlan): boolean {
-  if (isReplaceStrategy(plan.strategy)) return true;
-  return plan.accepted.length > 0 || plan.acceptedProgress.length > 0;
-}
-
-/** Blocking problems. A plan with any of these must not be applied. */
-export function planBlockers(plan: ImportPlan): string[] {
-  const blockers: string[] = [];
-  if (plan.checksum === 'mismatch') {
-    blockers.push('校验和不匹配：文件内容与其自带的校验值不一致，可能已损坏或被改动。');
-  }
-  if (plan.countsConsistent === false) {
-    blockers.push('信封声明的记录条数与实际内容不一致。');
-  }
-  /*
-   * A canonical restore promises the database will equal the backup. A file that repeats a record
-   * id cannot deliver that — one of the two rows must be dropped — so the restore is refused
-   * rather than silently producing a database that does not match the archive.
-   *
-   * Merge and legacy-replace keep the Phase-1 behaviour: reject the duplicate row, report it,
-   * proceed. Legacy exports are messy by nature and neither mode claims exactness.
-   */
-  if (plan.strategy === 'canonical-restore' && plan.duplicateIdsInSource.length > 0) {
-    blockers.push(
-      `备份文件内部有 ${String(plan.duplicateIdsInSource.length)} 个重复的记录 ID，` +
-        `无法按“完整还原”精确还原，已拒绝。`,
-    );
-  }
-
-  /*
-   * The same argument for progress entries. Phase 1.1 detected the duplicate, dropped the second
-   * row and continued — the restore then silently contained fewer notes than the archive while
-   * still being presented as exact.
-   */
-  if (plan.strategy === 'canonical-restore' && plan.duplicateProgressIdsInSource.length > 0) {
-    blockers.push(
-      `备份文件内部有 ${String(plan.duplicateProgressIdsInSource.length)} 个重复的进展 ID，` +
-        '“完整还原”必须逐条写回，无法丢弃其中一条，已拒绝。',
-    );
-  }
-
-  /*
-   * An archive that declares itself incomplete cannot reproduce the original database, so it must
-   * never be used as an exact restore source — whatever the user confirmed. Merge remains
-   * available: adding rows the destination lacks is meaningful even from a partial file.
-   *
-   * `unknown-legacy` (a v1 archive) is deliberately NOT blocked. Its completeness is unknown, not
-   * known-bad, and refusing it would strand anyone whose only backup predates the field. It is
-   * gated on an explicitly worded confirmation instead — see `requiresCompletenessAcknowledgement`.
-   */
-  if (plan.strategy === 'canonical-restore' && plan.completeness === 'incomplete') {
-    blockers.push(
-      '该备份自述省略了未通过校验的数据行（omittedInvalidRowIds 非空），' +
-        '无法用于“完整还原”：还原后的数据库不会等同于原数据库。' +
-        '请改用“合并”导入，或选择一份完整备份；损坏行请用诊断恢复文件处理。',
-    );
-  }
-
-  if (plan.strategy === 'canonical-restore' && plan.integrityIssues.length > 0) {
-    blockers.push(
-      `备份文件的关联关系不自洽，无法精确还原（${String(plan.integrityIssues.length)} 处）：` +
-        describeIntegrityIssues(plan.integrityIssues).join('；'),
-    );
-  }
-
-  if (plan.strategy === 'merge' && plan.accepted.length === 0 && plan.conflicts.length === 0) {
-    blockers.push('没有任何可导入的记录。');
-  }
-  return blockers;
-}
-
-/**
- * The completeness classification, for callers that want the envelope's own verdict.
- *
- * Kept next to the plan so "is this file a valid exact-restore source?" has exactly one answer in
- * the codebase.
- */
-export function envelopeCompleteness(envelope: BackupEnvelope): {
-  readonly completeness: BackupCompleteness;
-  readonly verifiedComplete: boolean;
-} {
-  return {
-    completeness: envelope.completeness,
-    verifiedComplete: envelopeIsVerifiedComplete(envelope),
-  };
-}
+export {
+  RESOLUTION_POLICY,
+  envelopeCompleteness,
+  planBlockers,
+  planWritesAnything,
+} from './policy';

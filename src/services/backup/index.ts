@@ -3,6 +3,8 @@ import type { InvalidEntityGroups, StoreSnapshot } from '@/db/snapshot';
 import type { InvalidRow } from '@/db/invalid-row';
 import { recordCanonicalBackup } from '@/db/repositories/taxonomy';
 import { businessDateOf, daysBetween, todayIso } from '@/domain/dates';
+import { describeIntegrityIssues, validateRelationalIntegrity } from '@/domain/integrity';
+import type { IntegrityIssue } from '@/domain/integrity';
 import { defaultSettings } from '@/domain/defaults';
 import type { AppMeta } from '@/domain/types';
 import { filenameStamp, nowInstant } from '@/utils/clock';
@@ -44,8 +46,19 @@ export interface BackupResult {
 export interface BackupSnapshot {
   readonly input: BackupInput;
   readonly invalid: InvalidEntityGroups;
+  /**
+   * Relational defects in the live store: orphan progress, dangling references, duplicate ids.
+   *
+   * Schema validity is per row; this is the property *between* rows, and it is what decides whether
+   * the archive could be restored. Phase 1.2 checked it only at restore time, so the application
+   * could produce a "complete" backup it would then refuse to accept.
+   */
+  readonly relationalIssues: readonly IntegrityIssue[];
   readonly capturedRevision: number | null;
-  /** True when every store validated. Only then may the file claim to be complete. */
+  /**
+   * True when a **complete, restorable** canonical backup is possible: every row validates *and* the
+   * relationships between them resolve.
+   */
   readonly complete: boolean;
   /** Kept for callers that only care about these two stores. */
   readonly invalidRecords: readonly InvalidRow[];
@@ -68,6 +81,22 @@ export async function snapshotForBackup(): Promise<BackupInput> {
 export async function readBackupSnapshot(): Promise<BackupSnapshot> {
   const snapshot: StoreSnapshot = await readStoreSnapshot();
   const omitted = allInvalidRows(snapshot.invalid).map((row) => row.id);
+
+  /*
+   * Relational validity of the live store, judged by the same domain rules a canonical restore
+   * applies. This is the closure of the Phase-1.2 gap: the file is only allowed to call itself
+   * complete when restoring it would actually work.
+   *
+   * Validated over the *valid* rows, which is the set the archive would carry. A store that also has
+   * invalid rows is already incomplete for a different reason, and both are reported.
+   */
+  const relationalIssues = validateRelationalIntegrity({
+    records: snapshot.records,
+    progressEntries: snapshot.progressEntries,
+    categories: snapshot.categories,
+    groups: snapshot.groups,
+  });
+
   return {
     input: {
       records: snapshot.records,
@@ -79,11 +108,35 @@ export async function readBackupSnapshot(): Promise<BackupSnapshot> {
       dataRevision: snapshot.capturedRevision,
     },
     invalid: snapshot.invalid,
+    relationalIssues,
     capturedRevision: snapshot.capturedRevision,
-    complete: storeIsIntact(snapshot),
+    complete: storeIsIntact(snapshot) && relationalIssues.length === 0,
     invalidRecords: snapshot.invalid.records,
     invalidProgressEntries: snapshot.invalid.progressEntries,
   };
+}
+
+/**
+ * Raised when the live store is relationally broken, so no canonical backup can be produced.
+ *
+ * Deliberately **not acknowledgeable**, unlike `IncompleteBackupError`. An "incomplete" envelope must
+ * carry omission evidence (`omittedInvalidRowIds`), and relational damage produces none — every row
+ * validates. Writing such a file would mean either labelling it complete (a lie the digest would then
+ * protect) or inventing an omission list. Blocking is the only honest outcome, and the diagnostic
+ * recovery export remains available as evidence.
+ */
+export class RelationalIntegrityError extends Error {
+  override readonly name = 'RelationalIntegrityError';
+  readonly issues: readonly IntegrityIssue[];
+
+  constructor(issues: readonly IntegrityIssue[]) {
+    super(
+      `本机数据的关联关系不自洽（${String(issues.length)} 处），无法生成可还原的完整备份：` +
+        `${describeIntegrityIssues(issues, 'store').join('；')}。` +
+        '请先导出诊断恢复文件留证，再从一份已知良好的备份还原。',
+    );
+    this.issues = issues;
+  }
 }
 
 /**
@@ -135,7 +188,15 @@ export async function createBackup(
   const snapshot = await readBackupSnapshot();
   const omitted = allInvalidRows(snapshot.invalid).map((row) => row.id);
 
-  if (!snapshot.complete && options.acknowledgeOmissions !== true) {
+  /*
+   * Relational damage is checked first and is never acknowledgeable. It cannot be expressed as an
+   * omission, so there is no honest label for a file written from such a state.
+   */
+  if (snapshot.relationalIssues.length > 0) {
+    throw new RelationalIntegrityError(snapshot.relationalIssues);
+  }
+
+  if (invalidRowCount(snapshot.invalid) > 0 && options.acknowledgeOmissions !== true) {
     throw new IncompleteBackupError(snapshot.invalid);
   }
 
@@ -170,6 +231,8 @@ export type StaleReason = 'data-changed' | 'age';
 
 export type BackupHealth =
   | { readonly state: 'never' }
+  /** Nothing has ever been persisted, so there is nothing to back up yet. */
+  | { readonly state: 'pristine' }
   | { readonly state: 'fresh'; readonly daysAgo: number; readonly at: string }
   | {
       readonly state: 'stale';
@@ -194,12 +257,29 @@ export type BackupHealth =
  */
 export function assessBackupHealth(
   meta: AppMeta | null,
-  currentRecordCount: number,
   reminderDays: number,
   today: string = todayIso(),
 ): BackupHealth {
-  if (currentRecordCount === 0) return { state: 'fresh', daysAgo: 0, at: today };
   if (!meta) return { state: 'unknown' };
+
+  /*
+   * A genuinely pristine database — nothing has ever been persisted — is the only state that needs no
+   * backup, and `dataRevision === 0` is exactly that: `ensureSeedData` writes the default taxonomy and
+   * settings without touching the counter, and every user-data mutation bumps it.
+   *
+   * Phase 1.2 short-circuited on `currentRecordCount === 0`, the count of **live** records, which is
+   * not a statement about whether anything is worth keeping. All of these have zero live records and
+   * real user data: everything moved to the Trash (still carried in backups), custom categories or
+   * groups, edited settings, or a database that held records and has since been emptied. In each case
+   * the application reported 今天已备份 while holding data no backup contained.
+   *
+   * The record count is no longer an input at all, so no second "is anything valuable?" heuristic
+   * exists to drift away from the revision model.
+   */
+  if (meta.dataRevision === 0 && meta.lastBackupAt === null) {
+    return { state: 'pristine' };
+  }
+
   if (meta.lastBackupAt === null) return { state: 'never' };
 
   const at = meta.lastBackupAt;
@@ -226,6 +306,8 @@ export function assessBackupHealth(
 
 export function describeBackupHealth(health: BackupHealth): string {
   switch (health.state) {
+    case 'pristine':
+      return '本机还没有任何数据，暂时无需备份。';
     case 'never':
       return '尚未导出过 JSON 备份。';
     case 'stale':
