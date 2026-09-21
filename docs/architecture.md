@@ -50,8 +50,11 @@ D16), which is the specific failure this layering prevents.
 | `validation.ts` | Zod schemas guarding both untrusted boundaries                |
 | `defaults.ts`   | seed categories, groups, options; legacy keyword classifier   |
 
-Nothing here imports React, Dexie or any browser API. Every function is directly testable, and
-131 of the 167 automated tests exercise this layer alone.
+Nothing here imports React, Dexie or any browser API. Every function is directly testable: the five
+unit files covering this layer alone — `dates`, `deadlines`, `query`, `status-and-reports`,
+`legacy-normalisation` — hold 112 of the 216 tests in the Vitest run. The other unit files cover
+services (`backup-envelope`, `record-signature`) and routing; the 63 integration tests cover
+persistence.
 
 ### `src/db` — persistence
 
@@ -64,8 +67,22 @@ would be invalid.
 
 ### `src/services` — side effects
 
-`backup/` (envelope, checksum, health), `import/` (legacy normalisation, plan, apply),
-`export/` (XLSX, DOCX), `storage/` (Storage API, UI preferences), `download.ts`.
+`backup/` (envelope, checksum, version compatibility, health, diagnostic recovery), `import/` (legacy
+normalisation, plan, apply), `export/` (XLSX, DOCX), `storage/` (Storage API, UI preferences),
+`download.ts`.
+
+Two boundaries inside this layer carry the data-safety guarantees, and both are structural rather than
+conventional:
+
+- **`import/plan.ts` decides, `import/apply.ts` writes.** The plan is a pure value — what would be
+  written, what is skipped and why — rendered in the preview before anything is persisted. `apply`
+  performs exactly that plan in one transaction and returns what it did. The strategy (`merge`,
+  `canonical-restore`, `legacy-replace`) is resolved in the plan from the mode **and** the detected file
+  format, so the preview text, the confirm button and the write can never describe different operations.
+  Writes use `bulkAdd`, so "merge never overwrites" fails loudly instead of degrading into an upsert.
+- **`db/client.ts#withMutation()` owns the revision counter.** Any persisted user-data mutation runs
+  inside a transaction that also bumps `dataRevision`, so "the backup is stale" is derived from the data
+  rather than from a heuristic, and a rolled-back mutation cannot advance it.
 
 ### `src/app` — composition
 

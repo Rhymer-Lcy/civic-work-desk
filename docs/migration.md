@@ -162,20 +162,66 @@ are accepted.
 The legacy implementation addressed entries by array index, so deleting entry 0 renumbered every
 later entry and a pending edit then wrote to the wrong note.
 
-## Conflicts
+## Three strategies, resolved from the mode and the file
+
+The user picks a mode — 合并 or 替换 / 还原 — but the mode alone cannot determine what happens,
+because a CivicWorkDesk backup and a legacy file support very different promises. The strategy is
+resolved from both, and the preview text and the confirm button are named after the result:
+
+| mode      | file                 | strategy            | what it does                                                                                   |
+| --------- | -------------------- | ------------------- | ---------------------------------------------------------------------------------------------- |
+| 合并      | any                  | `merge`             | adds only ids absent locally; never overwrites; skipped ids are listed                         |
+| 替换/还原 | CivicWorkDesk backup | `canonical-restore` | records, progress, categories, groups **and settings** replaced wholesale — a complete restore |
+| 替换/还原 | legacy file          | `legacy-replace`    | records and progress replaced; taxonomy and settings stay local, because the file carries none |
+
+`legacy-replace` is deliberately never presented as 完整还原. A legacy `works` file has no
+categories, no groups and no settings; calling it a full restore would tell the user their
+configuration had been restored when it had merely been left alone.
 
 **Merge never overwrites.** An incoming record whose id already exists is skipped and listed in the
 preview, with both titles and both dates shown, and marked when the two are byte-identical (in which
-case the skip has no effect).
+case the skip has no effect). "Byte-identical" is decided by a deep canonical serialisation of the
+record minus its audit timestamps; the Phase-1 implementation used a JSON replacer array, which drops
+nested keys at every depth, so two records differing only in their dates compared equal.
 
 This is deterministic and non-destructive: the stored row is the one the user has been working with,
-and an import is not evidence that the file is newer. To adopt the file's version, use replace mode
-— which requires typing a confirmation phrase and destroys the current store inside the same
+and an import is not evidence that the file is newer. To adopt the file's version, use replace mode —
+which requires typing a confirmation phrase and destroys the current store inside the same
 transaction that writes the new one.
 
-**Duplicate ids inside one file** are detected: the first wins, the rest are rejected and listed.
-The legacy importer built its id set once before the loop and never added to it, so both rows were
-inserted, producing duplicate primary keys.
+**Progress entries obey the same rule.** Merge writes a progress entry only when its id is absent
+locally, and reports every collision with its reason (`duplicate-in-source` or
+`exists-in-destination`). Phase 1 wrote progress with an upsert, so an incoming entry silently
+replaced a local note carrying the same id, and the preview never mentioned it.
+
+**Every write is one transaction, and it uses `bulkAdd`, never `bulkPut`.** That makes "never
+overwrite" a property of the storage call rather than of the plan that precedes it: if a plan ever
+disagreed with the destination, the write fails loudly instead of quietly overwriting.
+
+**Duplicate ids inside one file** are rejected outright for a canonical restore — a backup claiming
+to be an exact copy of a store cannot contain the same id twice, and proceeding would silently drop a
+row. For legacy files the first occurrence wins and the rest are listed: those files are genuinely
+messy, and refusing them would block the migration they exist for. The legacy importer built its id
+set once before the loop and never added to it, so both rows were inserted, producing duplicate
+primary keys.
+
+### What a restore restores, exactly
+
+A canonical restore is measured rather than asserted.
+`tests/integration/restore-semantics.test.ts` takes a canonical snapshot of every user-data store,
+restores a backup over a diverged database, and requires the snapshot to equal the backup's payload —
+same records, same progress, same taxonomy, same settings. It covers the same-backup case, the
+diverged case, partial id overlap, transaction rollback on an injected mid-write failure, and the
+legacy-replace case where local taxonomy must survive.
+
+All eight of those tests fail against the Phase-1 implementation, in which replace mode deleted the
+store and then wrote nothing back — the plan had classified every incoming row as conflicting with
+the rows it was itself about to delete.
+
+One store is deliberately **not** restored: `meta`. It holds application bookkeeping — schema
+version, revision counter, backup history — which describes this installation, not the user's data.
+After a canonical restore the revision counter is stamped as "equal to the backup you hold", so the
+application does not immediately ask for a backup of data that just came out of one.
 
 ## Integrity
 

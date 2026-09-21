@@ -173,6 +173,45 @@ distributions are computed on read from `src/domain`. The legacy prototype recom
 guesser on every page load and persisted it only if a later action happened to call `saveData()`,
 so whether a record had a category depended on what the user did next.
 
+## `meta`: application bookkeeping, and why a backup never restores it
+
+`meta` holds one row describing **this installation**, not the user's data:
+
+| Field                   | Meaning                                                         |
+| ----------------------- | --------------------------------------------------------------- |
+| `schemaVersion`         | the schema this store was last opened with                      |
+| `dataRevision`          | a counter incremented by **every** persisted user-data mutation |
+| `lastBackupAt`          | when a JSON backup was last successfully produced               |
+| `lastBackupRevision`    | the `dataRevision` that backup captured, or `null` if never     |
+| `lastBackupRecordCount` | the record count at that moment, kept for display               |
+| `createdAt`             | first-run timestamp                                             |
+
+A restore must not overwrite this. A backup taken on another machine, or three weeks ago, carries
+that machine's bookkeeping; adopting it would turn the application's own history into fiction. The
+importer therefore never writes `meta` from a backup — it only stamps the post-restore revision (see
+below), so a freshly restored database does not immediately report itself as never backed up.
+
+### `dataRevision`, and what "your backup is stale" means
+
+Phase 1 judged backup freshness by comparing the current **record count** with the count recorded at
+the last backup. Editing a record, renaming a category, adding a progress note and changing a setting
+all leave the count unchanged, so the application kept reporting 今天已备份 while the file on disk no
+longer matched the data.
+
+The counter closes that. `withMutation()` in `src/db/client.ts` opens one read-write transaction over
+the affected stores **plus `meta`**, runs the mutation, and bumps `dataRevision` inside it. Two
+consequences worth stating:
+
+- A backup is stale exactly when `dataRevision > lastBackupRevision`, whatever it was that changed.
+- A mutation that throws bumps nothing, because the increment is in the transaction that rolled back.
+  `tests/integration/import-integrity.test.ts` asserts that against a failing update.
+
+Every repository mutation goes through that helper, which makes the invariant structural rather than a
+rule contributors have to remember.
+
+After a canonical restore the importer sets `lastBackupRevision` to the restored `dataRevision`: the
+database now equals a backup the user is holding, so asking for another one would be wrong.
+
 ## Migrations
 
 Schema versions are declared in `applyVersions()` in `src/db/schema.ts`. A shipped version block is
@@ -180,6 +219,45 @@ never edited; a new one is added. Seeding and version bookkeeping happen once, i
 `ensureSeedData()`, inside one transaction. Migration state is a single versioned value in `meta` —
 not a scatter of localStorage flags, which in the legacy version could survive a data clear and
 leave flags and records out of step.
+
+`meta` is a single value rather than an indexed shape, so adding a field to it needs no Dexie version
+bump — but it does need an explicit backfill, which `ensureSeedData()` performs for a row written by
+an earlier build. The alternative is `undefined` leaking into arithmetic, which is how a revision
+counter silently becomes `NaN`.
+
+### Backup format versions are bounded at both ends
+
+`backupFormatVersion` is checked against a declared supported range rather than `>= 1`:
+
+| Situation                               | Behaviour                                                                |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| version 2 (current)                     | accepted                                                                 |
+| version 1                               | accepted through an explicit `migrateV1ToV2`, which fills the new fields |
+| a version above the current one         | **refused**, naming the version and telling the user to upgrade the app  |
+| a `schemaVersion` above the current one | **refused**, naming the version                                          |
+| not a number                            | refused                                                                  |
+
+Phase 1 validated `min(1)`, so a file written by a future build was read purely because its shape
+happened to validate — the most likely route to destroying data with a "successful" restore.
+`src/services/backup/compatibility.ts` is the single place those bounds live, and each failure message
+names the cause instead of reporting a generic validation error.
+
+Envelope version 2 adds two fields: `omittedInvalidRowIds`, so a backup can state that it is **not**
+complete, and `dataRevision`, so a restored database knows which revision it corresponds to.
+
+### A record's content signature
+
+Import conflict reporting needs "is this incoming row the same as the stored one?", ignoring the audit
+timestamps. That comparison is a deep canonical serialisation — the same `canonicalJson` the backup
+checksum uses, with `createdAt` and `updatedAt` removed.
+
+It must be a real recursive serialiser. Phase 1 used `JSON.stringify(rest, Object.keys(rest).sort())`,
+and a JSON replacer **array filters property names at every depth**, not just the top level. Every
+nested key whose name did not coincide with a top-level record key was dropped: `occurredOn.date`,
+both ends of a date range, the text of a free-text date, and all of `legacyResidue`. Two records
+differing only in their dates produced identical signatures, and merge reported them as harmless
+duplicates. `tests/unit/record-signature.test.ts` keeps the defective implementation alongside the
+correct one so each assertion states what actually regressed.
 
 ## `localStorage`
 

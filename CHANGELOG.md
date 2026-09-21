@@ -3,6 +3,83 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project is internal and unversioned; entries are grouped by phase.
 
+## [Unreleased] — Phase 1.1 remediation
+
+A narrowly scoped correction pass following an independent audit of the Phase-1 review package. No new
+product features, no architectural change, no new runtime dependency. Branch
+`audit/phase-1.1-remediation`, on top of `3727a186`.
+
+### Fixed — data safety
+
+- **A replace-mode restore destroyed all data and wrote nothing back.** `buildImportPlan` ignored the
+  import mode, so every incoming row was classified as conflicting with the rows the same transaction
+  was about to delete: the store was emptied and nothing replaced it. Import now resolves one of three
+  explicit strategies from the mode **and** the file format — `merge`, `canonical-restore`,
+  `legacy-replace` — and a canonical restore rewrites records, progress, categories, groups and settings
+  wholesale inside one transaction. `tests/integration/restore-semantics.test.ts` asserts that the
+  restored database equals the backup's payload; all eight of its tests fail against `3727a186`.
+- **A legacy file is no longer offered as 完整还原.** It carries no categories, groups or settings, so
+  replacing with it keeps the local taxonomy — the dialog and the confirm button now say so.
+- **Merge no longer overwrites a progress entry.** Progress was written with `bulkPut`, an upsert, so an
+  incoming id colliding with a local one silently replaced the note, and the preview never mentioned it.
+  Collisions are now detected, reported with a reason and skipped; every import write uses `bulkAdd`,
+  making "never overwrite" a property of the storage call rather than of the plan that precedes it.
+- **A backup can no longer silently omit rows it cannot carry.** `createBackup()` refuses with
+  `IncompleteBackupError` when a stored row fails validation; Settings offers a diagnostic recovery
+  export, proceeding anyway (which records `omittedInvalidRowIds` in the envelope), or cancelling.
+- **Backup format and schema versions are bounded at both ends.** A file from a future build is refused
+  by name instead of being read because its shape happened to validate; a genuine v1 envelope is
+  accepted through an explicit `migrateV1ToV2`.
+- **Backup freshness is no longer blind to edits.** Every persisted mutation bumps a `dataRevision`
+  counter inside its own transaction, and a backup is stale exactly when that revision has moved.
+  Comparing record counts had reported 今天已备份 after an edit, a rename or a new progress note.
+- **Record content comparison is a real deep canonical serialisation.** The previous JSON replacer array
+  dropped every nested key, so two records differing only in their dates compared identical.
+- **An unknown hash now normalises to the route actually rendered.** The guard tested a condition that
+  could never be true, so `#/nonsense` showed the dashboard while the address bar named no view.
+
+### Added
+
+- **Diagnostic recovery export** (`src/services/backup/recovery.ts`) — preserves rows that fail
+  validation exactly as stored, each with the error that rejected it. Deliberately **not** importable;
+  the Diagnostics panel now gives an ordered three-step procedure instead of contradictory advice.
+- **Cross-engine test suite** — `tests/e2e/cross-browser.spec.ts`, five critical flows on Firefox and
+  WebKit as well as Chromium (`npm run test:e2e:cross`). It found two real defects on its first run.
+- **CSP verification that can fail** — an E2E test drives the application under its own policy and fails
+  on any `securitypolicyviolation`, then proves the detector works by injecting a real violation.
+- Regression suites for restore semantics, import integrity and backup integrity (27 tests), and unit
+  suites for the content signature and the router (20 tests).
+
+### Changed — security and build
+
+- **`style-src` is now `'self'`**, with no `unsafe-inline` in any directive. The Phase-1 justification
+  for that source was incorrect. The dev server relaxes the directive for itself alone, through a Vite
+  plugin that fails loudly if the policy changes shape.
+- **`upgrade-insecure-requests` removed.** It made the application fail to load entirely in WebKit over
+  plain HTTP from loopback, and bought nothing: every URL the application emits is relative.
+- **No source maps in the production build.** `dist/` had carried the complete TypeScript sources.
+- **Zod runs jitless**, so it no longer attempts `new Function` on every load and the strict policy
+  raises no violation at all.
+- **`@types/node` aligned to the 24.x line**, matching the Node 24 runtime the project declares.
+- **Playwright never reuses an existing dev server**, so a run cannot silently measure another build.
+
+### Changed — review packaging
+
+- The entry count in `REVIEW_SUMMARY.md` is derived and asserted rather than predicted, and
+  `verify-review-package.mjs` reads it back out of the shipped document and compares it with the
+  archive's own central directory. Every Phase-1 package understated itself by one entry.
+- `TEST_RESULTS.md` reports per-file and per-category counts summed from the captured run, so no
+  subtotal is maintained by hand in a document.
+- The verifier additionally checks that `TREE.txt` accounts for every packaged payload path, and no
+  longer accepts a gateless log as "every gate passed".
+- The cross-engine suite is a gate, so the cross-browser claim rests on captured output.
+
+### Note
+
+The original Phase-1 archive was deleted by mistake during this pass and could not be recovered. The
+commit it described is intact; `_review_packages/PROVENANCE.md` records what was lost, what replaced it,
+and why the replacement is a reconstruction rather than the original.
+
 ## [Unreleased] — Phase 1 modernisation
 
 Complete rewrite of the single-file 工作记录台 prototype into a maintainable, testable,

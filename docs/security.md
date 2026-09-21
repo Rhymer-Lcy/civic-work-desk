@@ -78,6 +78,32 @@ handed to the browser without error. The wording is 「已生成」, not 「已�
 user to confirm the file in their downloads folder. The legacy build wrote its "last backup" marker
 unconditionally on click, and did so for spreadsheet exports too.
 
+### A backup will not silently omit a row it cannot carry
+
+A canonical backup is strictly restorable: every row in it has passed the domain schema, so the
+importer can write it back without inventing anything. That guarantee has a consequence — **a stored
+row that fails validation cannot go into a canonical backup.**
+
+Phase 1 resolved that silently. `snapshotForBackup()` read only the valid records, so a corrupt row
+vanished from a file the UI called a complete backup — while the Diagnostics panel was simultaneously
+telling the user to "export a JSON backup as evidence" before attempting recovery. The two
+behaviours contradicted each other and the user was never told.
+
+Now:
+
+- `createBackup()` **refuses** and throws `IncompleteBackupError`, naming the offending row ids, when
+  any stored row fails validation.
+- Settings shows a blocking panel with three explicit choices: export a **diagnostic recovery file**,
+  proceed anyway, or cancel. Proceeding writes `omittedInvalidRowIds` into the envelope, so the file
+  states its own incompleteness, and the toast reports it in an error tone rather than as success.
+- The diagnostic recovery export (`src/services/backup/recovery.ts`) preserves the raw rows exactly as
+  they sit in IndexedDB, with the validation error that rejected each one, plus enough context
+  (category and group names, the ids of the healthy rows) to make sense of them.
+- That recovery file is **deliberately not importable**: its `application` field is a different
+  identifier, so `detectSource()` refuses it rather than half-restoring broken data. Recovering from
+  it is a manual, technical act, and the Diagnostics panel now says so in an ordered three-step
+  procedure instead of the earlier contradictory advice.
+
 ## Content Security Policy
 
 Delivered in `index.html` as a meta tag:
@@ -249,6 +275,21 @@ call exists anywhere in the tree.
 npm's suggested "fix" is `exceljs@3.4.0` — an older major — which is not a fix. The finding is
 accepted and recorded here; it is below the `high` gate threshold, so CI does not fail on it. It
 should be re-checked whenever ExcelJS releases a version that updates its `uuid` dependency.
+
+**Re-checked 2026-09-21**, during Phase 1.1, from the installed tree rather than from this note:
+
+| Question                                          | Answer, measured                                    |
+| ------------------------------------------------- | --------------------------------------------------- |
+| installed `uuid` version                          | `8.3.2` (unchanged)                                 |
+| `uuid` imports anywhere in `node_modules/exceljs` | exactly one, `const {v4: uuidv4} = require('uuid')` |
+| call sites                                        | exactly two, both `uuidv4()` with no arguments      |
+| any `v3`/`v5`/`v6` call                           | none                                                |
+| any `uuid` use in our own source                  | none                                                |
+| `npm audit --omit=dev`                            | 2 moderate, the same chain, nothing new             |
+
+The advisory is therefore still unreachable, and it is still recorded rather than suppressed: no
+`overrides` entry, no `audit` exception, no downgrade. Marking it "fixed" by silencing the tool would
+be worse than carrying it openly.
 
 ## PII handling
 
