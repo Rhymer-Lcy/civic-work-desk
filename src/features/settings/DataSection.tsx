@@ -53,7 +53,8 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
         `已生成 ${result.download.filename}（${result.envelope.counts.records} 条记录，` +
           `${Math.round(result.download.byteLength / 1024)} KB）。` +
           (result.omitted.length > 0
-            ? `注意：该备份缺少 ${String(result.omitted.length)} 行未通过校验的数据。`
+            ? `注意：该备份缺少 ${String(result.omitted.length)} 行未通过校验的数据，` +
+              '不能用于“完整还原”，也不会被记为一次有效备份。'
             : '请确认浏览器已保存该文件。'),
         result.omitted.length > 0 ? 'error' : 'success',
       );
@@ -75,9 +76,10 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
     try {
       const result = await createRecoveryExport();
       toast.show(
-        `已生成诊断恢复文件 ${result.download.filename}` +
-          `（${String(result.invalidRecords)} 条无效记录、` +
-          `${String(result.invalidProgressEntries)} 条无效进展）。该文件不能用于还原。`,
+        `已生成诊断恢复文件 ${result.download.filename}（共 ${String(result.invalidTotal)} 行：` +
+          `记录 ${String(result.invalidRecords)}、进展 ${String(result.invalidProgressEntries)}、` +
+          `分类 ${String(result.invalidCategories)}、分组 ${String(result.invalidGroups)}、` +
+          `设置 ${String(result.invalidSettings)}）。该文件不能用于还原。`,
         'success',
       );
     } catch (cause) {
@@ -128,9 +130,12 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
         {incomplete ? (
           <Panel tone="danger">
             <p>
-              <strong>无法生成完整备份。</strong>本机有{' '}
-              {incomplete.invalidRecordIds.length + incomplete.invalidProgressIds.length}{' '}
-              行数据未通过结构校验，它们不能写入可还原的备份文件。
+              <strong>无法生成完整备份。</strong>
+              {incomplete.message}
+            </p>
+            <p className={styles.note}>
+              即使选择“仍要导出”，该文件也会自述为<strong>不完整</strong>：
+              它不能用于“完整还原”，也不会被记为一次有效备份。
             </p>
             <p className={styles.note}>
               建议先导出<strong>诊断恢复文件</strong>

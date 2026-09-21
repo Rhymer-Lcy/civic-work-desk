@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { HardDrive, ShieldCheck } from 'lucide-react';
 import { SCHEMA_VERSION } from '@/db/schema';
+import { invalidRowCount } from '@/db/snapshot';
+import type { InvalidEntityGroups } from '@/db/snapshot';
 import type { AppSettings } from '@/domain/types';
 import {
   formatBytes,
@@ -23,11 +25,22 @@ import styles from './SettingsPage.module.css';
  */
 
 export interface DiagnosticsSectionProps {
-  readonly invalidRows: readonly { readonly id: string; readonly reason: string }[];
+  /** Invalid rows per user-data store. */
+  readonly integrity: InvalidEntityGroups;
   readonly settings: AppSettings;
 }
 
-export function DiagnosticsSection({ invalidRows, settings }: DiagnosticsSectionProps): ReactNode {
+/** Rendered in this order, so the panel reads the same way every time. */
+const ENTITY_GROUPS: readonly { key: keyof InvalidEntityGroups; label: string }[] = Object.freeze([
+  { key: 'records', label: '记录' },
+  { key: 'progressEntries', label: '进展' },
+  { key: 'categories', label: '业务分类' },
+  { key: 'groups', label: '归属分组' },
+  { key: 'settings', label: '应用设置' },
+]);
+
+export function DiagnosticsSection({ integrity, settings }: DiagnosticsSectionProps): ReactNode {
+  const total = invalidRowCount(integrity);
   const toast = useToast();
   const [diagnostics, setDiagnostics] = useState<StorageDiagnostics | null>(null);
   const [requesting, setRequesting] = useState(false);
@@ -124,19 +137,42 @@ export function DiagnosticsSection({ invalidRows, settings }: DiagnosticsSection
         并保存到本机以外的位置。
       </Panel>
 
-      {invalidRows.length > 0 ? (
+      {total > 0 ? (
         <Panel tone="danger">
           <p>
-            <strong>{invalidRows.length} 条记录未通过结构校验</strong>
-            ，已从所有列表与统计中排除。系统<strong>没有</strong>自动修改它们。
+            <strong>{total} 行数据未通过结构校验</strong>
+            ，已从所有列表与统计中排除。系统<strong>没有</strong>自动修改它们。 在修复之前，本机
+            <strong>无法导出完整备份</strong>。
           </p>
-          <ul className={styles.list}>
-            {invalidRows.slice(0, 20).map((row) => (
-              <li key={row.id} className={styles.note}>
-                <code>{row.id}</code>：{row.reason}
-              </li>
-            ))}
-          </ul>
+          {/*
+            Per store, not one undifferentiated list. Phase 1.1 only ever reported records here —
+            and `listCategories()`/`listGroups()`/`getSettings()` dropped or defaulted their own
+            failures, so this panel could say 全部记录通过结构校验 while a category was corrupt and
+            a "complete" backup was silently omitting it.
+          */}
+          {ENTITY_GROUPS.map(({ key, label }) => {
+            const rows = integrity[key];
+            if (rows.length === 0) return null;
+            return (
+              <div key={key}>
+                <p className={styles.note}>
+                  <strong>
+                    {label}：{rows.length} 行
+                  </strong>
+                </p>
+                <ul className={styles.list}>
+                  {rows.slice(0, 10).map((row) => (
+                    <li key={`${key}-${row.id}`} className={styles.note}>
+                      <code>{row.id}</code>：{row.reason}
+                    </li>
+                  ))}
+                </ul>
+                {rows.length > 10 ? (
+                  <p className={styles.note}>仅显示前 10 行，共 {rows.length} 行。</p>
+                ) : null}
+              </div>
+            );
+          })}
           {/*
             The Phase-1 wording told the user to "export a JSON backup as evidence", which was
             wrong twice over: a canonical backup cannot contain an invalid row, and Phase 1 dropped
@@ -158,7 +194,9 @@ export function DiagnosticsSection({ invalidRows, settings }: DiagnosticsSection
           </p>
         </Panel>
       ) : (
-        <Panel tone="info">全部记录通过结构校验。</Panel>
+        <Panel tone="info">
+          记录、进展、业务分类、归属分组与应用设置均通过结构校验，可以导出完整备份。
+        </Panel>
       )}
     </Card>
   );

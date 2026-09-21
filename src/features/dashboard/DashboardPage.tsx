@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowRight, Plus } from 'lucide-react';
 import { useData } from '@/app/store/data-store';
+import { invalidRowCount } from '@/db/snapshot';
 import type { RouteId } from '@/app/router';
 import { formatDateValue } from '@/domain/dates';
 import { describeVerdictWithSource, evaluateDeadline, isStaleBacklog } from '@/domain/deadlines';
@@ -111,11 +112,12 @@ export function DashboardPage({
         </Panel>
       ) : null}
 
-      {data.invalidRows.length > 0 ? (
+      {invalidRowCount(data.integrity) > 0 ? (
         <Panel tone="danger">
           <p>
-            数据库中有 {data.invalidRows.length} 条记录未通过校验，已从列表中排除，未被自动修改。
-            详情见「设置 → 数据诊断」。
+            数据库中有 {invalidRowCount(data.integrity)}{' '}
+            行数据未通过校验，已从列表中排除，未被自动修改；
+            在修复之前无法导出完整备份。详情见「设置 → 数据诊断」。
           </p>
         </Panel>
       ) : null}

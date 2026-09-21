@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo } from 'react';
-import { listProgressEntries, listRecords, progressCounts } from '@/db/repositories/records';
-import { getMeta, getSettings, listCategories, listGroups } from '@/db/repositories/taxonomy';
+import { getMeta } from '@/db/repositories/taxonomy';
+import { EMPTY_INVALID, invalidRowCount, readStoreSnapshot } from '@/db/snapshot';
+import type { InvalidEntityGroups } from '@/db/snapshot';
 import { todayIso } from '@/domain/dates';
 import { defaultSettings } from '@/domain/defaults';
 import type {
@@ -33,8 +34,17 @@ export interface DataSnapshot {
   readonly settings: AppSettings;
   readonly meta: AppMeta | null;
   readonly backupHealth: BackupHealth;
-  /** Rows in the store that failed schema validation. Surfaced in Settings, never hidden. */
-  readonly invalidRows: readonly { readonly id: string; readonly reason: string }[];
+  /**
+   * Rows that failed schema validation, per store. Surfaced in Settings, never hidden.
+   *
+   * Phase 1.1 carried only record-level failures here, because `listCategories()`,
+   * `listGroups()` and `getSettings()` filtered or defaulted their failures away before anything
+   * could see them. Diagnostics could therefore say 全部记录通过结构校验 while a category row was
+   * corrupt and a canonical backup was quietly dropping it.
+   */
+  readonly integrity: InvalidEntityGroups;
+  /** True when a complete canonical backup is currently possible. */
+  readonly storeIntact: boolean;
   /** Today's business date, resolved once per load so all views agree. */
   readonly today: string;
 }
@@ -51,28 +61,37 @@ export interface DataContextValue {
 
 export const DataContext = createContext<DataContextValue | null>(null);
 
+/**
+ * Load the whole application state.
+ *
+ * One `readStoreSnapshot()` rather than six parallel repository reads: every view then shows a
+ * state the database actually had at one instant, and the integrity report beside the data
+ * describes the same read. `meta` is fetched separately because it is installation bookkeeping, not
+ * user data, and is the one value a later write (a backup stamp) may legitimately change without
+ * the views being stale.
+ */
 export async function loadSnapshot(): Promise<DataSnapshot> {
-  const [recordsResult, progress, counts, categories, groups, settings, meta] = await Promise.all([
-    listRecords(),
-    listProgressEntries(),
-    progressCounts(),
-    listCategories(),
-    listGroups(),
-    getSettings(),
-    getMeta(),
-  ]);
-  const live = recordsResult.records.filter((record) => record.deletedAt === null);
+  const [snapshot, meta] = await Promise.all([readStoreSnapshot(), getMeta()]);
+  const settings = snapshot.settings ?? defaultSettings();
+  const counts = new Map<string, number>();
+  for (const entry of snapshot.progressEntries) {
+    counts.set(entry.recordId, (counts.get(entry.recordId) ?? 0) + 1);
+  }
+  const live = snapshot.records.filter((record) => record.deletedAt === null);
   const today = todayIso();
   return {
-    records: recordsResult.records,
-    progress,
+    records: snapshot.records,
+    progress: snapshot.progressEntries,
     progressCountByRecord: counts,
-    categories,
-    groups,
+    categories: snapshot.categories,
+    groups: snapshot.groups,
+    // The UI must stay operable, so corrupt settings fall back to the defaults *here* — and the
+    // corruption travels alongside in `integrity` rather than disappearing.
     settings,
     meta,
     backupHealth: assessBackupHealth(meta, live.length, settings.backupReminderDays, today),
-    invalidRows: recordsResult.invalid,
+    integrity: snapshot.invalid,
+    storeIntact: invalidRowCount(snapshot.invalid) === 0 && snapshot.settings !== null,
     today,
   };
 }
@@ -102,7 +121,8 @@ export function useData(): DataSnapshot {
       settings: defaultSettings(),
       meta: null,
       backupHealth: { state: 'unknown' },
-      invalidRows: [],
+      integrity: EMPTY_INVALID,
+      storeIntact: true,
       today: todayIso(),
     };
   }, [state]);

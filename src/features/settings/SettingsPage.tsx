@@ -32,7 +32,7 @@ export function SettingsPage(): ReactNode {
         <OptionsSection settings={data.settings} />
         <DataSection records={data.records} meta={data.meta} health={data.backupHealth} />
         <InstallSection />
-        <DiagnosticsSection invalidRows={data.invalidRows} settings={data.settings} />
+        <DiagnosticsSection integrity={data.integrity} settings={data.settings} />
         <TrashSection records={data.records} />
         <DangerSection recordCount={data.records.length} />
       </div>
