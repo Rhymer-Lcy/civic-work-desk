@@ -7,7 +7,7 @@
 | `...phase-1-20260921-100343-3727a186a9eb.zip`   | all passed                            | **rebuild** of the destroyed Phase-1 archive; fails one verification check because it carries the Phase-1 entry-count defect |
 | `...phase-1-1-20260921-102608-1e0c9cbdb2cb.zip` | all passed                            | the Phase-1.1 deliverable                                                                                                    |
 | `...phase-1-2-20260921-125349-0cfad5abe07d.zip` | **3 FAILED** (lint, typecheck, build) | superseded; kept rather than deleted — see below                                                                             |
-| `...phase-1-2-20260921-130202-092138495b4b.zip` | all passed                            | **the Phase-1.2 deliverable**                                                                                                |
+| the newest `phase-1-2-…` archive                | all passed                            | **the Phase-1.2 deliverable**; it names itself in its own `review/REVIEW_SUMMARY.md` and `.sha256`                           |
 
 Nothing was deleted during Phase 1.2. The Phase-1.2 instructions forbid deleting any existing archive
 or checksum and forbid wildcard deletion in this directory, so the superseded build below stays where it
@@ -29,10 +29,13 @@ fails because it runs `typecheck` first.
 The lesson is mechanical: **run `npm run typecheck`, not `tsc -p tsconfig.json`**, before believing a
 change typechecks.
 
-The superseded archive is not a deliverable. The Phase-1.2 deliverable is
-`...phase-1-2-20260921-130202-092138495b4b.zip`, SHA-256
-`145bf05d89c91bc0dfb602c0f21fcef44c06ed4eb1aef2f6ff4cf72cef558c07`, which passes all ten gates and 21/21
-verification checks.
+The superseded archive is not a deliverable. The Phase-1.2 deliverable is the **newest** `phase-1-2-…`
+archive in this directory: it passes all ten gates and 21/21 verification checks, and it identifies
+itself in its own `review/REVIEW_SUMMARY.md` and adjacent `.sha256`.
+
+This document deliberately does not quote that archive's digest. It is packaged _inside_ it, and a file
+cannot state the checksum of the container it is part of — writing one would guarantee a stale number.
+`node scripts/verify-review-package.mjs` computes it from the bytes instead.
 
 ### The original Phase-1 archive was not recovered
 
