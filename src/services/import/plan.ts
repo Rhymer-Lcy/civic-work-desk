@@ -2,7 +2,12 @@ import { primaryDate } from '@/domain/types';
 import type { AnyRecord, ProgressEntry } from '@/domain/types';
 import { formatDateValue } from '@/domain/dates';
 import { anyRecordSchema, describeIssues } from '@/domain/validation';
-import { backupEnvelopeSchema, countsAreConsistent, verifyChecksum } from '../backup/envelope';
+import {
+  backupEnvelopeSchema,
+  canonicalJson,
+  countsAreConsistent,
+  verifyChecksum,
+} from '../backup/envelope';
 import { checkCompatibility, migrateEnvelope } from '../backup/compatibility';
 import type { BackupEnvelope, ChecksumVerdict } from '../backup/envelope';
 import { isNormalisationFailure, normaliseLegacyRecord } from './legacy';
@@ -212,12 +217,21 @@ function attachHonorCategory(row: unknown): unknown {
 /**
  * A stable signature of a record's *content*, ignoring audit timestamps.
  * Two records with the same signature are the same record however they were written.
+ *
+ * This must be a genuine deep canonical serialisation. Phase 1 used a JSON replacer array
+ * (`JSON.stringify(rest, Object.keys(rest).sort())`), which is not one: a replacer array filters
+ * property names at **every** depth, not only the top level. So every nested key whose name did
+ * not also happen to be a top-level record key was dropped from the signature — including
+ * `occurredOn.date`, both ends of a date range, and the whole of `legacyResidue`. Two records
+ * differing only in their dates compared equal, and merge skipped the incoming one as an
+ * "identical duplicate". `canonicalJson` (the serialiser the backup checksum already relies on)
+ * sorts keys recursively and keeps every value.
  */
-function recordSignature(record: AnyRecord): string {
+export function recordSignature(record: AnyRecord): string {
   const rest: Record<string, unknown> = { ...record };
   delete rest['updatedAt'];
   delete rest['createdAt'];
-  return JSON.stringify(rest, Object.keys(rest).sort());
+  return canonicalJson(rest);
 }
 
 export interface BuildPlanInput {
