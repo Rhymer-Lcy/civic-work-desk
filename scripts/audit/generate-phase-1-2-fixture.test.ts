@@ -21,12 +21,27 @@ import { buildEnvelope, serialiseEnvelope } from '@/services/backup/envelope';
  * git worktree add ../p12 48480cf47fc6b9a6f5974de808e39f1576286a46
  * cd ../p12 && npm ci
  * cp <this file> tests/integration/zz-gen.test.ts
- * npx vitest run tests/integration/zz-gen.test.ts   # writes the fixture into the Phase-1.3 tree
+ * FIXTURE_OUT=<phase-1.3 tree>/tests/fixtures/phase-1-2-canonical-v3.json \
+ *   npx vitest run tests/integration/zz-gen.test.ts
  * ```
+ *
+ * The destination comes from `FIXTURE_OUT` so that no developer's absolute path is baked into a
+ * packaged file (the static security scan rejects one, rightly). Without it the fixture is written
+ * relative to the tree the generator runs in, which for a worktree is the worktree's own copy.
  *
  * Run on 2026-09-21 against that commit. The resulting envelope: `backupFormatVersion: 3`,
  * `completeness: "complete"`, `checksum.scope: "envelope"`, 2 records, 1 progress entry, with the
  * honour's `relatedWorkId` pointing at the work record.
+ *
+ * ## Why the committed fixture is not byte-identical to this script's raw output
+ *
+ * The repository's format gate covers `.json`, so the generated file was reformatted by Prettier
+ * before it was committed. Raw output is `sha256 8bf8b222…`, the committed file is `364b254e…`, and
+ * `prettier --write` on the former yields the latter byte for byte — re-verified 2026-09-21 by
+ * regenerating in a fresh worktree at the Phase-1.2 commit. Whitespace is outside the envelope
+ * digest's scope, so the file still verifies under its own recorded checksum
+ * (`fcbb6451ba07f5bb6e0b0a4687b38009a042ee94a1da3204a1ad170209d4b552`); that is what
+ * `tests/integration/v3-compatibility.test.ts` asserts.
  *
  * All content is synthetic: placeholder names, a generic unit, and a phone number from the
  * `138-0013-xxxx` documentation block. No real data.
@@ -80,11 +95,8 @@ describe('generate a Phase-1.2 v3 archive fixture', () => {
     const envelope = await buildEnvelope(await snapshotForBackup(), '2026-09-21T13:00:00.000Z');
     expect(envelope.backupFormatVersion).toBe(3);
     expect(envelope.completeness).toBe('complete');
-    writeFileSync(
-      'F:/CivicWorkDesk/tests/fixtures/phase-1-2-canonical-v3.json',
-      serialiseEnvelope(envelope),
-      'utf8',
-    );
+    const out = process.env.FIXTURE_OUT ?? 'tests/fixtures/phase-1-2-canonical-v3.json';
+    writeFileSync(out, serialiseEnvelope(envelope), 'utf8');
     // eslint-disable-next-line no-console
     console.log('WROTE', envelope.counts.records, 'records; digest', envelope.checksum.value);
   });

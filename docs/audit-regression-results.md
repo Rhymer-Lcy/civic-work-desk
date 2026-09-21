@@ -88,12 +88,38 @@ producer actually executed.
 
 `tests/fixtures/phase-1-2-canonical-v3.json` was **not written by hand**. It was produced by running
 `scripts/audit/generate-phase-1-2-fixture.test.ts` inside a worktree at
-`48480cf47fc6b9a6f5974de808e39f1576286a46`, and saved verbatim including its digest. Hand-writing the
+`48480cf47fc6b9a6f5974de808e39f1576286a46`, and saved with its digest untouched. Hand-writing the
 shape would only have proved that this build agrees with itself.
 
+**How to reproduce.**
+
+```bash
+git worktree add ../p12 48480cf47fc6b9a6f5974de808e39f1576286a46
+cd ../p12 && npm ci
+cp <package>/scripts/audit/generate-phase-1-2-fixture.test.ts tests/integration/zz-gen.test.ts
+FIXTURE_OUT=/tmp/regen.json npx vitest run tests/integration/zz-gen.test.ts
+```
+
+**The regenerated file is not byte-identical to the committed one, and that is expected.** The
+repository's Prettier gate covers `.json`, so the generated file was reformatted before it was
+committed. Re-run on 2026-09-21 in a fresh worktree, the relationship is exactly:
+
+```
+sha256 8bf8b222887478f1a5dfe602eb1eaab4536c0e5e6028c3ed55dbe6bacf411fe9  raw generator output
+sha256 364b254e5d110b92cad45b624c4a69c002940afe8d4db15e5c59886d5204bd2a  committed fixture
+                                                                        = prettier --write of the raw output, byte for byte
+envelope checksum recorded inside both files:
+       fcbb6451ba07f5bb6e0b0a4687b38009a042ee94a1da3204a1ad170209d4b552
+```
+
+Whitespace lies outside the envelope digest's scope, so the reformatted file still verifies under
+its own recorded checksum — which is what the compatibility test checks, and why reformatting it was
+safe.
+
 The file: `backupFormatVersion: 3`, `completeness: "complete"`, `checksum.scope: "envelope"`,
-2 records, 1 progress entry, the honour's `relatedWorkId` pointing at the work record. All content is
-synthetic — placeholder names, a generic unit, a `138-0013-xxxx` documentation-block phone number.
+2 records (1 work, 1 honour), 1 progress entry, 12 categories, 3 groups, the honour's `relatedWorkId`
+pointing at the work record. All content is synthetic — placeholder names, a generic unit, a
+`138-0013-xxxx` documentation-block phone number.
 
 `tests/integration/v3-compatibility.test.ts` restores it, merges it, and confirms that a Phase-1.2
 archive carrying relational corruption is still refused rather than repaired.
