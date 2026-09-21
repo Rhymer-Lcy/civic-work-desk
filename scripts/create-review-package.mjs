@@ -707,6 +707,37 @@ function main() {
   }
 }
 
+/*
+ * Actual test totals for the summary, parsed from the same captured output that produced
+ * TEST_RESULTS.md. Kept here rather than hand-written because a summary that states a count is the
+ * one place a stale number survives: the gate table only ever says PASS.
+ */
+function totalsRows(results) {
+  const byId = Object.fromEntries(results.map((r) => [r.id, r]));
+  const grab = (id, pattern) => {
+    const match = pattern.exec(byId[id]?.output ?? '');
+    return match ? match[0].replace(/\s+/g, ' ').trim() : 'not captured';
+  };
+  const files = vitestFileCounts(byId['unit']?.output ?? '');
+  const subtotal = (prefix) =>
+    files.filter((row) => row.file.startsWith(prefix)).reduce((sum, row) => sum + row.count, 0);
+  const inCategory = (prefix) => files.filter((row) => row.file.startsWith(prefix)).length;
+  const split =
+    files.length === 0
+      ? 'not captured'
+      : `${String(subtotal('tests/unit/'))} unit in ${String(inCategory('tests/unit/'))} files, ` +
+        `${String(subtotal('tests/integration/'))} integration in ` +
+        `${String(inCategory('tests/integration/'))} files`;
+  const skipped = /\d+ skipped/.exec(byId['cross']?.output ?? '');
+  return [
+    `| Vitest unit + integration | ${grab('unit', /Tests\s+\d+ passed[^\n]*/)} |`,
+    `| — split | ${split} |`,
+    `| Playwright, Chromium desktop + mobile | ${grab('e2e', /\d+ passed[^\n]*/)} |`,
+    `| Playwright, Firefox + WebKit | ${grab('cross', /\d+ passed[^\n]*/)}${skipped ? `, ${skipped[0]}` : ''} |`,
+    `| Playwright, accessibility (axe-core) | ${grab('a11y', /\d+ passed[^\n]*/)} |`,
+  ];
+}
+
 function buildSummary({ git, marks, results, skipGates, entryCount, zipName }) {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   const gateRows = skipGates
@@ -714,6 +745,7 @@ function buildSummary({ git, marks, results, skipGates, entryCount, zipName }) {
     : results.map(
         (r) => `| ${r.label} | \`${r.command} ${r.args.join(' ')}\` | ${r.ok ? 'PASS' : 'FAIL'} |`,
       );
+  const countRows = skipGates ? ['| (gates skipped) | — |'] : totalsRows(results);
 
   return `# CivicWorkDesk — Phase ${PHASE} review package
 
@@ -803,6 +835,20 @@ whole-envelope digest are all valid — a checksum proves the bytes were not alt
 statements inside them agree. \`unknown-legacy\` (v1) is exempt, because that format had no omission
 list at all.
 
+### Phase-1.3 regression evidence
+
+All twenty mandated regressions live in \`tests/integration/\`: \`live-integrity.test.ts\` (16),
+\`merge-semantics.test.ts\` (13), \`backup-health-scope.test.ts\` (15) and \`v3-compatibility.test.ts\`
+(5). \`review/AUDIT_REGRESSION_RESULTS.md\` maps each numbered requirement to its test, and carries
+the reproduction steps plus the captured failure output for the two claims made about the previous
+commit. Both probes are packaged and runnable rather than merely asserted:
+
+- \`scripts/audit/phase-1-2-live-integrity-probe.test.ts\` — written against the Phase-1.2 API, so it
+  runs unchanged at \`48480cf47fc6b9a6f5974de808e39f1576286a46\`, where it fails 3 of 3.
+- \`scripts/audit/generate-phase-1-2-fixture.test.ts\` — the generator that produced
+  \`tests/fixtures/phase-1-2-canonical-v3.json\` on that same commit, so the compatibility test
+  restores an archive written by the previous version rather than by this one.
+
 ### Browser matrix
 
 Chromium desktop + mobile (full suite), Firefox and WebKit (focused critical flows, including the new
@@ -826,6 +872,15 @@ Safari, and no real Safari or iOS device was used.
 | Gate | Command | Result |
 | --- | --- | --- |
 ${gateRows.join('\n')}
+
+Actual totals from that same run, parsed from its output rather than typed:
+
+| Suite | Result |
+| --- | --- |
+${countRows.join('\n')}
+
+The skipped cross-engine case is WebKit's offline **reload**, whose reason is recorded in the test
+itself. Per-file counts are in \`review/TEST_RESULTS.md\`.
 
 Raw output and exit codes: \`review/VERIFY_LOG.txt\`. Nothing in that file is hand-written.
 
