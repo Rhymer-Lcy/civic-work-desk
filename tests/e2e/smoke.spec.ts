@@ -11,7 +11,9 @@ test.describe('first run and core record flows', () => {
     await expect(page.getByText('尚未导出过 JSON 备份')).toHaveCount(0);
 
     await navigate(page, '设置');
-    await expect(page.getByText('全部记录通过结构校验')).toBeVisible();
+    await expect(
+      page.getByText('记录、进展、业务分类、归属分组与应用设置均通过结构校验，可以导出完整备份。'),
+    ).toBeVisible();
     await expect(page.getByText('回收站是空的')).toBeVisible();
   });
 

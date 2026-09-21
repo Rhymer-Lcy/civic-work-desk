@@ -29,14 +29,23 @@ test.describe('backup and restore', () => {
       application: string;
       backupFormatVersion: number;
       schemaVersion: number;
-      payloadChecksum: string | null;
+      completeness: string;
+      omittedInvalidRowIds: string[];
+      dataRevision: number | null;
+      checksum: { algorithm: string; scope: string; value: string | null };
       counts: { records: number };
       payload: { records: { title: string }[] };
     };
     expect(typed.application).toBe('civic-work-desk');
     expect(typed.backupFormatVersion).toBeGreaterThanOrEqual(1);
     expect(typed.schemaVersion).toBeGreaterThanOrEqual(1);
-    expect(typed.payloadChecksum).toMatch(/^[0-9a-f]{64}$/);
+    // v3: the digest covers the whole envelope, and the file states its own completeness.
+    expect(typed.checksum.algorithm).toBe('sha-256');
+    expect(typed.checksum.scope).toBe('envelope');
+    expect(typed.checksum.value).toMatch(/^[0-9a-f]{64}$/);
+    expect(typed.completeness).toBe('complete');
+    expect(typed.omittedInvalidRowIds).toEqual([]);
+    expect(typed.dataRevision).toBeGreaterThan(0);
     expect(typed.counts.records).toBe(1);
     expect(typed.payload.records[0]?.title).toBe('需要备份的示范事项');
 
@@ -132,7 +141,131 @@ test.describe('backup and restore', () => {
     await dialog.locator('input[type="file"]').setInputFiles(broken);
 
     await expect(dialog.getByText('文件不是有效的 JSON，无法解析。')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: '合并导入' })).toBeDisabled();
+    // With no plan there is nothing to name, so the button reads 导入 and is disabled. Phase 1.1
+    // labelled it 合并导入 even when no file had parsed.
+    await expect(dialog.getByRole('button', { name: '导入', exact: true })).toBeDisabled();
+  });
+
+  test('an incomplete archive is refused for exact restore, and merge is offered instead', async ({
+    page,
+  }, testInfo) => {
+    /*
+     * Phase 1.1 wrote `omittedInvalidRowIds` into the file and then never consulted it, so an archive
+     * that declared itself incomplete was still offered as 完整还原. This drives the whole flow through
+     * the real UI: build the file the way the product does (corrupt a row, acknowledge the omission),
+     * then try to restore it.
+     */
+    await gotoApp(page, 'work');
+    await createWorkRecord(page, { title: '不完整备份用的示范事项', date: '2026-09-12' });
+
+    // Plant a corrupt row directly in IndexedDB — the only way to reproduce corruption honestly.
+    await page.evaluate(async () => {
+      await new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('civic-work-desk');
+        open.onerror = () => reject(new Error('open failed'));
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction('records', 'readwrite');
+          tx.objectStore('records').put({ id: 'corrupt-row', kind: 'work', title: 7 });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(new Error('write failed'));
+        };
+      });
+    });
+
+    await navigate(page, '设置');
+    await page.reload();
+    await waitForAppReady(page);
+
+    // The diagnostics panel must name the damage, per store.
+    await expect(page.getByText('1 行数据未通过结构校验')).toBeVisible();
+
+    // Exporting must refuse first, then allow a knowing export that declares itself incomplete.
+    await page.getByRole('button', { name: '导出 JSON 备份' }).click();
+    await expect(page.getByText('无法生成完整备份。')).toBeVisible();
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: '仍要导出（将缺少这些行）' }).click();
+    const download = await downloadPromise;
+    const incompletePath = await download.path();
+
+    const envelope = JSON.parse(readFileSync(incompletePath, 'utf8')) as {
+      completeness: string;
+      omittedInvalidRowIds: string[];
+    };
+    expect(envelope.completeness).toBe('incomplete');
+    expect(envelope.omittedInvalidRowIds).toEqual(['corrupt-row']);
+
+    // Now try to use it as an exact restore source.
+    await page.getByRole('button', { name: '导入 / 还原备份' }).click();
+    const dialog = page.getByRole('dialog', { name: '导入 / 还原备份' });
+    await dialog.getByRole('radio', { name: '替换 / 还原' }).check();
+    await dialog.locator('input[type="file"]').setInputFiles(incompletePath);
+    await expect(dialog.getByText('导入预览（尚未写入）')).toBeVisible();
+
+    // The preview states completeness, the button refuses to call it 完整还原, and it is disabled.
+    await expect(dialog.getByText('不完整（不能用于完整还原）')).toBeVisible();
+    // Exact, because getByRole name matching is substring-based and 无法完整还原 contains 完整还原.
+    await expect(dialog.getByRole('button', { name: '完整还原', exact: true })).toHaveCount(0);
+    const refused = dialog.getByRole('button', { name: '无法完整还原' });
+    await expect(refused).toBeVisible();
+    await expect(refused).toBeDisabled();
+    await expect(dialog.getByText(/无法用于“完整还原”/)).toBeVisible();
+
+    /*
+     * Merge of the same file is NOT blocked: the incompleteness refusal is specific to exact restore.
+     * This particular file happens to add nothing — every record in it is already in the destination,
+     * because it was exported from this very database — so the button is disabled for the ordinary
+     * "nothing to write" reason rather than for a completeness reason. What must be true is that the
+     * completeness refusal is gone and the operation is named as a merge.
+     */
+    await dialog.getByRole('radio', { name: '合并' }).first().check();
+    await dialog.locator('input[type="file"]').setInputFiles(incompletePath);
+    await expect(dialog.getByText('导入预览（尚未写入）')).toBeVisible();
+    await expect(dialog.getByText(/无法用于“完整还原”/)).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '合并导入' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '无法完整还原' })).toHaveCount(0);
+  });
+
+  test('an incomplete export does not silence the backup reminder', async ({ page }) => {
+    await gotoApp(page, 'work');
+    await createWorkRecord(page, { title: '备份提醒用的示范事项', date: '2026-09-12' });
+
+    await page.evaluate(async () => {
+      await new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('civic-work-desk');
+        open.onerror = () => reject(new Error('open failed'));
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction('records', 'readwrite');
+          tx.objectStore('records').put({ id: 'corrupt-row', kind: 'work', title: 7 });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(new Error('write failed'));
+        };
+      });
+    });
+
+    await navigate(page, '设置');
+    await page.reload();
+    await waitForAppReady(page);
+
+    await page.getByRole('button', { name: '导出 JSON 备份' }).click();
+    await expect(page.getByText('无法生成完整备份。')).toBeVisible();
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: '仍要导出（将缺少这些行）' }).click();
+    await downloadPromise;
+
+    /*
+     * Phase 1.1 recorded this as a successful backup and the panel switched to 今天已备份。 A file the
+     * application itself calls incomplete must not establish freshness.
+     */
+    await expect(page.getByText('今天已备份。')).toHaveCount(0);
+    await expect(page.getByText('尚未导出过 JSON 备份。')).toBeVisible();
   });
 
   test('replace mode demands a typed confirmation', async ({ page }, testInfo) => {

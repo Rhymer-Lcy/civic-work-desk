@@ -75,3 +75,51 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Firefox and WebKit, critical flows only.
+  #
+  # A separate job for two reasons. It needs two extra browser downloads (~150 MB) that the Chromium
+  # job has no use for, and keeping it separate means a cross-engine failure is identifiable at a
+  # glance instead of being the twentieth step of one long job.
+  #
+  # Phase 1.1 added this suite and wired it into the review-package producer but not into CI, so an
+  # ordinary pull request could regress Firefox or WebKit while CI stayed green. That is the gap this
+  # job closes.
+  #
+  # WebKit here is Playwright's WebKit on Linux. It is **not** Safari and says nothing about iOS; the
+  # suite itself skips the offline-reload case on WebKit because the harness cannot drive it. See
+  # docs/qa-plan.md.
+  cross-engine:
+    name: Cross-engine critical flows (Firefox, WebKit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install from lockfile
+        run: npm ci
+
+      # The suite runs against the production build served by `vite preview`, so it must be built.
+      - name: Production build
+        run: npm run build
+
+      - name: Install Firefox and WebKit
+        run: npx playwright install --with-deps firefox webkit
+
+      - name: Cross-engine critical flows
+        run: npm run test:e2e:cross
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-cross-engine
+          path: playwright-report/
+          retention-days: 7
