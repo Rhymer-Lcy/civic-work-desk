@@ -416,6 +416,39 @@ describe('ordinary mutations cannot create a dangling reference', () => {
     expect(snapshot.complete).toBe(true);
   });
 
+  it('group deletion also detaches trashed members, and the UI says so', async () => {
+    /*
+     * The guard counts every row; the settings list counts live ones. A confirmation built from the
+     * live count alone would silently detach records sitting in the Trash — the same class of silent
+     * consequence as an undisclosed purge detach.
+     */
+    const { addGroup, deleteGroup } = await import('@/db/repositories/taxonomy');
+    const { categoryDeleteHint, groupDeleteConfirm } =
+      await import('@/features/settings/taxonomy-copy');
+    const group = await addGroup('只被回收站记录使用的分组');
+    const trashed = await createWorkRecord(workInput({ groupId: group.id }));
+    await softDeleteRecord(trashed.id);
+
+    expect(groupDeleteConfirm(0, 1)).toBe(
+      '该分组下有 1 条回收站中的记录，删除后它们会变为「未分组」，记录本身不会被删除。',
+    );
+    expect(groupDeleteConfirm(2, 1)).toContain('2 条记录（另有回收站中的 1 条）');
+    expect(groupDeleteConfirm(0, 0)).toBeUndefined();
+    // The same asymmetry on the category side, where the guard refuses instead of detaching.
+    expect(categoryDeleteHint(false, 0, 2)).toBe(
+      '回收站中还有 2 条记录使用该分类，不可删除，可停用。',
+    );
+    expect(categoryDeleteHint(false, 0, 0)).toBeUndefined();
+
+    const detached = await deleteGroup(group.id);
+    expect(detached, 'the trashed record is a member and is detached like any other').toBe(1);
+
+    const after = await listRecords();
+    const updated = after.records.find((record) => record.id === trashed.id);
+    expect(isWorkRecord(updated!) && updated.groupId).toBeNull();
+    expect((await readBackupSnapshot()).relationalIssues).toEqual([]);
+  });
+
   it('a complete backup of any reachable live state restores exactly', async () => {
     // A small but relationally interesting state, built only through repository calls.
     const categories = await listCategories();

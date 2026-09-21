@@ -46,7 +46,7 @@ morning.
 The two new files each keep the **defective** Phase-1 implementation beside the corrected one, so an
 assertion states what actually regressed rather than testing current code against itself.
 
-### Integration — 157 tests in 12 files
+### Integration — 158 tests in 12 files
 
 `database.test.ts` — seeding idempotence, CRUD, schema rejection on write, invalid-row reporting on
 read, soft delete and restore, purge with progress, trash emptying, progress entries addressed by
@@ -113,7 +113,9 @@ backup-viability gate: an injected dangling honour relation, an orphan progress 
 category/group each block a complete backup and appear in the recovery export. Then the mutation guards:
 a progress entry for a nonexistent record, an honour linked to a nonexistent work record or to another
 honour, a record with a nonexistent category or group, and an edit that would dangle any of them — all
-refused; a soft-deleted target still satisfies a reference; deleting a group detaches its members.
+refused; a soft-deleted target still satisfies a reference; deleting a group detaches its members, including
+members sitting in the Trash — with the confirmation and hint strings that disclose it pinned, since
+the settings list counts live records while the guards count every row.
 
 `merge-semantics.test.ts` — **Phase 1.3, the projected final state.** A new note for a record the
 destination already holds merges (Phase 1.2 skipped it); a note for a record arriving in the same file
@@ -192,7 +194,7 @@ Captured from the run that produced the review package; the raw output is in
 | Format                         | `npm run format:check`   | PASS                                                             |
 | Lint (`--max-warnings=0`)      | `npm run lint`           | PASS                                                             |
 | Typecheck (both projects)      | `npm run typecheck`      | PASS                                                             |
-| Unit + integration             | `npm run test:unit`      | **PASS — 314/314** in 20 files (157 unit, 157 integration)       |
+| Unit + integration             | `npm run test:unit`      | **PASS — 315/315** in 20 files (157 unit, 158 integration)       |
 | Production build               | `npm run build`          | PASS                                                             |
 | Static security scan           | `npm run scan:static`    | PASS — 0 findings                                                |
 | E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 83/83**                                                 |

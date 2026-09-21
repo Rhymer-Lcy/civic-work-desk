@@ -42,6 +42,11 @@ AssertionError: a file the application labelled complete must be exact-restorabl
   already refused while in use — both now verified as part of the same invariant.
 - **A soft-deleted record still satisfies a reference**, deliberately: the row exists and is carried in
   backups, so only permanent deletion breaks a link.
+- **Taxonomy deletion now discloses the trashed records it affects.** The settings list counts live
+  records, but the database counts a trashed one as a user of its category and group. So a category
+  used only by trashed records offered a delete the database then refused without saying why, and
+  deleting a group detached trashed members with no confirmation at all. Both now state the trashed
+  count (`src/features/settings/taxonomy-copy.ts`).
 
 ### Fixed — a complete backup is restorable by construction
 
