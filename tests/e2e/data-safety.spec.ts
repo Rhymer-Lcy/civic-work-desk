@@ -148,7 +148,7 @@ test.describe('backup and restore', () => {
 
   test('an incomplete archive is refused for exact restore, and merge is offered instead', async ({
     page,
-  }, testInfo) => {
+  }) => {
     /*
      * Phase 1.1 wrote `omittedInvalidRowIds` into the file and then never consulted it, so an archive
      * that declared itself incomplete was still offered as 完整还原. This drives the whole flow through
@@ -162,7 +162,9 @@ test.describe('backup and restore', () => {
     await page.evaluate(async () => {
       await new Promise<void>((resolve, reject) => {
         const open = indexedDB.open('civic-work-desk');
-        open.onerror = () => reject(new Error('open failed'));
+        open.onerror = () => {
+          reject(new Error('open failed'));
+        };
         open.onsuccess = () => {
           const db = open.result;
           const tx = db.transaction('records', 'readwrite');
@@ -171,7 +173,9 @@ test.describe('backup and restore', () => {
             db.close();
             resolve();
           };
-          tx.onerror = () => reject(new Error('write failed'));
+          tx.onerror = () => {
+            reject(new Error('write failed'));
+          };
         };
       });
     });
@@ -236,7 +240,9 @@ test.describe('backup and restore', () => {
     await page.evaluate(async () => {
       await new Promise<void>((resolve, reject) => {
         const open = indexedDB.open('civic-work-desk');
-        open.onerror = () => reject(new Error('open failed'));
+        open.onerror = () => {
+          reject(new Error('open failed'));
+        };
         open.onsuccess = () => {
           const db = open.result;
           const tx = db.transaction('records', 'readwrite');
@@ -245,7 +251,9 @@ test.describe('backup and restore', () => {
             db.close();
             resolve();
           };
-          tx.onerror = () => reject(new Error('write failed'));
+          tx.onerror = () => {
+            reject(new Error('write failed'));
+          };
         };
       });
     });
