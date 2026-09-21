@@ -3,6 +3,8 @@ import { getMeta } from '@/db/repositories/taxonomy';
 import { EMPTY_INVALID, invalidRowCount, readStoreSnapshot } from '@/db/snapshot';
 import type { InvalidEntityGroups } from '@/db/snapshot';
 import { todayIso } from '@/domain/dates';
+import { validateRelationalIntegrity } from '@/domain/integrity';
+import type { IntegrityIssue } from '@/domain/integrity';
 import { defaultSettings } from '@/domain/defaults';
 import type {
   AnyRecord,
@@ -43,7 +45,15 @@ export interface DataSnapshot {
    * corrupt and a canonical backup was quietly dropping it.
    */
   readonly integrity: InvalidEntityGroups;
-  /** True when a complete canonical backup is currently possible. */
+  /**
+   * Relational defects between otherwise valid rows — orphan progress, dangling references.
+   *
+   * Reported beside the schema failures because they have the same consequence: while either exists,
+   * no complete canonical backup can be produced. Phase 1.2 checked these only when restoring, so a
+   * broken live state was invisible until the user tried to use their backup.
+   */
+  readonly relationalIssues: readonly IntegrityIssue[];
+  /** True when a complete, restorable canonical backup is currently possible. */
   readonly storeIntact: boolean;
   /** Today's business date, resolved once per load so all views agree. */
   readonly today: string;
@@ -77,7 +87,12 @@ export async function loadSnapshot(): Promise<DataSnapshot> {
   for (const entry of snapshot.progressEntries) {
     counts.set(entry.recordId, (counts.get(entry.recordId) ?? 0) + 1);
   }
-  const live = snapshot.records.filter((record) => record.deletedAt === null);
+  const relationalIssues = validateRelationalIntegrity({
+    records: snapshot.records,
+    progressEntries: snapshot.progressEntries,
+    categories: snapshot.categories,
+    groups: snapshot.groups,
+  });
   const today = todayIso();
   return {
     records: snapshot.records,
@@ -89,9 +104,15 @@ export async function loadSnapshot(): Promise<DataSnapshot> {
     // corruption travels alongside in `integrity` rather than disappearing.
     settings,
     meta,
-    backupHealth: assessBackupHealth(meta, live.length, settings.backupReminderDays, today),
+    // No record count: backup health describes whether the last complete backup captured the current
+    // data revision. Zero live records is not a statement about whether anything is worth keeping.
+    backupHealth: assessBackupHealth(meta, settings.backupReminderDays, today),
     integrity: snapshot.invalid,
-    storeIntact: invalidRowCount(snapshot.invalid) === 0 && snapshot.settings !== null,
+    relationalIssues,
+    storeIntact:
+      invalidRowCount(snapshot.invalid) === 0 &&
+      snapshot.settings !== null &&
+      relationalIssues.length === 0,
     today,
   };
 }
@@ -122,6 +143,7 @@ export function useData(): DataSnapshot {
       meta: null,
       backupHealth: { state: 'unknown' },
       integrity: EMPTY_INVALID,
+      relationalIssues: [],
       storeIntact: true,
       today: todayIso(),
     };

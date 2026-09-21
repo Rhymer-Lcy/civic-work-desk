@@ -8,9 +8,11 @@ import {
   createRecoveryExport,
   describeBackupHealth,
   IncompleteBackupError,
+  RelationalIntegrityError,
 } from '@/services/backup';
 import type { BackupHealth } from '@/services/backup';
 import { downloadBlob } from '@/services/download';
+import { describeIntegrityIssues } from '@/domain/integrity';
 import { filenameStamp, formatInstant } from '@/utils/clock';
 import { Button, Card, Panel, useToast } from '@/components/common';
 import { ImportDialog } from '../backup-restore/ImportDialog';
@@ -36,6 +38,7 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
   const toast = useToast();
   const [busy, setBusy] = useState<'backup' | 'xlsx' | 'recovery' | null>(null);
   const [incomplete, setIncomplete] = useState<IncompleteBackupError | null>(null);
+  const [relationalError, setRelationalError] = useState<RelationalIntegrityError | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   const live = records.filter((record) => record.deletedAt === null);
@@ -59,6 +62,15 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
         result.omitted.length > 0 ? 'error' : 'success',
       );
     } catch (cause) {
+      if (cause instanceof RelationalIntegrityError) {
+        /*
+         * Not acknowledgeable. An "incomplete" archive must carry an omission list, and relational
+         * damage produces none — every row is valid. There is no honest label for a file written from
+         * this state, so the only paths forward are the diagnostic recovery export and a restore.
+         */
+        setRelationalError(cause);
+        return;
+      }
       if (cause instanceof IncompleteBackupError) {
         // Not a failure to report and forget: the user must choose between exporting evidence
         // first and knowingly accepting an incomplete archive.
@@ -126,6 +138,44 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
         ) : (
           <Panel tone="info">{describeBackupHealth(health)}</Panel>
         )}
+
+        {relationalError ? (
+          <Panel tone="danger">
+            <p>
+              <strong>无法生成完整备份：本机数据的关联关系不自洽。</strong>
+            </p>
+            <ul className={styles.list}>
+              {describeIntegrityIssues(relationalError.issues, 'store').map((line) => (
+                <li key={line} className={styles.note}>
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <p className={styles.note}>
+              这些数据行本身都通过了结构校验，但引用无法解析，因此写出的文件
+              <strong>无法还原</strong>
+              ——所以不会写出这样一份“完整备份”。请先导出诊断恢复文件留证，
+              再从一份已知良好的备份还原。详情见「存储与数据诊断」。
+            </p>
+            <div className={styles.row}>
+              <Button
+                variant="secondary"
+                busy={busy === 'recovery'}
+                onClick={() => void runRecoveryExport()}
+              >
+                导出诊断恢复文件
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setRelationalError(null);
+                }}
+              >
+                关闭
+              </Button>
+            </div>
+          </Panel>
+        ) : null}
 
         {incomplete ? (
           <Panel tone="danger">
@@ -236,6 +286,8 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
         open={importOpen}
         existing={records}
         existingProgressIds={data.progress.map((entry) => entry.id)}
+        existingCategoryIds={data.categories.map((category) => category.id)}
+        existingGroupIds={data.groups.map((group) => group.id)}
         onClose={() => {
           setImportOpen(false);
         }}

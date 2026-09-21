@@ -28,6 +28,15 @@ export interface ImportDialogProps {
   readonly existing: readonly AnyRecord[];
   /** Destination progress ids, so merge can guarantee it never overwrites an existing note. */
   readonly existingProgressIds: readonly string[];
+  /**
+   * Destination taxonomy ids.
+   *
+   * The planner evaluates an incoming record's category and group against the **projected** final
+   * taxonomy — the destination's plus whatever the file adds — so a merge can neither skip a valid
+   * record nor write one whose reference would not resolve afterwards.
+   */
+  readonly existingCategoryIds: readonly string[];
+  readonly existingGroupIds: readonly string[];
   readonly onClose: () => void;
 }
 
@@ -35,6 +44,8 @@ export function ImportDialog({
   open,
   existing,
   existingProgressIds,
+  existingCategoryIds,
+  existingGroupIds,
   onClose,
 }: ImportDialogProps): ReactNode {
   const refresh = useRefresh();
@@ -62,7 +73,16 @@ export function ImportDialog({
     try {
       const text = await readBackupFile(file);
       const parsed: unknown = JSON.parse(text);
-      setPlan(await buildImportPlan({ parsed, mode, existing, existingProgressIds }));
+      setPlan(
+        await buildImportPlan({
+          parsed,
+          mode,
+          existing,
+          existingProgressIds,
+          existingCategoryIds,
+          existingGroupIds,
+        }),
+      );
     } catch (cause) {
       if (cause instanceof ImportParseError) {
         setParseError({ message: cause.message, details: cause.details });

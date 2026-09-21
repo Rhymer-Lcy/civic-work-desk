@@ -4,6 +4,8 @@ import { HardDrive, ShieldCheck } from 'lucide-react';
 import { SCHEMA_VERSION } from '@/db/schema';
 import { invalidRowCount } from '@/db/snapshot';
 import type { InvalidEntityGroups } from '@/db/snapshot';
+import { describeIntegrityIssues } from '@/domain/integrity';
+import type { IntegrityIssue } from '@/domain/integrity';
 import type { AppSettings } from '@/domain/types';
 import {
   formatBytes,
@@ -27,6 +29,8 @@ import styles from './SettingsPage.module.css';
 export interface DiagnosticsSectionProps {
   /** Invalid rows per user-data store. */
   readonly integrity: InvalidEntityGroups;
+  /** Relational defects between otherwise valid rows. */
+  readonly relationalIssues: readonly IntegrityIssue[];
   readonly settings: AppSettings;
 }
 
@@ -39,7 +43,11 @@ const ENTITY_GROUPS: readonly { key: keyof InvalidEntityGroups; label: string }[
   { key: 'settings', label: '应用设置' },
 ]);
 
-export function DiagnosticsSection({ integrity, settings }: DiagnosticsSectionProps): ReactNode {
+export function DiagnosticsSection({
+  integrity,
+  relationalIssues,
+  settings,
+}: DiagnosticsSectionProps): ReactNode {
   const total = invalidRowCount(integrity);
   const toast = useToast();
   const [diagnostics, setDiagnostics] = useState<StorageDiagnostics | null>(null);
@@ -193,11 +201,40 @@ export function DiagnosticsSection({ integrity, settings }: DiagnosticsSectionPr
             诊断恢复文件<strong>不能</strong>通过「导入 / 还原备份」写回应用。
           </p>
         </Panel>
-      ) : (
-        <Panel tone="info">
-          记录、进展、业务分类、归属分组与应用设置均通过结构校验，可以导出完整备份。
+      ) : null}
+
+      {/*
+        Relational integrity, reported separately because it is a different kind of damage: every row
+        is individually valid and the state between them is not. Phase 1.2 checked this only when a
+        backup was being restored, so a broken live state stayed invisible until the moment the user
+        needed the backup to work.
+      */}
+      {relationalIssues.length > 0 ? (
+        <Panel tone="danger">
+          <p>
+            <strong>{relationalIssues.length} 处关联关系不自洽</strong>
+            。这些数据行本身都通过了结构校验，但它们之间的引用无法解析， 因此
+            <strong>无法导出可还原的完整备份</strong>。
+          </p>
+          <ul className={styles.list}>
+            {describeIntegrityIssues(relationalIssues, 'store').map((line) => (
+              <li key={line} className={styles.note}>
+                {line}
+              </li>
+            ))}
+          </ul>
+          <p className={styles.note}>
+            正常操作不会产生这种状态。请导出<strong>诊断恢复文件</strong>
+            （其中按原样保留了这些问题的结构化清单），再从一份已知良好的备份还原。
+          </p>
         </Panel>
-      )}
+      ) : null}
+
+      {total === 0 && relationalIssues.length === 0 ? (
+        <Panel tone="info">
+          记录、进展、业务分类、归属分组与应用设置均通过结构校验，关联关系自洽，可以导出完整备份。
+        </Panel>
+      ) : null}
     </Card>
   );
 }

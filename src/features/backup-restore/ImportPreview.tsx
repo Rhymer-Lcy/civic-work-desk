@@ -62,6 +62,8 @@ export function ImportPreview({
           <Stat label="将被替换的现有记录" value={String(plan.replacesExisting)} />
         )}
         <Stat label="进展 ID 冲突" value={String(s.progressCollisions)} />
+        <Stat label="引用无法解析" value={String(s.referenceRejections)} />
+        <Stat label="进展找不到记录" value={String(s.orphanProgress)} />
         <Stat label="已拒绝" value={String(s.rejected)} />
         <Stat label="迁移提示" value={String(s.warnings)} />
         {plan.checksum !== null ? (
@@ -90,6 +92,39 @@ export function ImportPreview({
                   ? '同一文件内重复'
                   : '与本机现有进展 ID 相同'}
                 {collision.incomingNote !== '' ? `（${collision.incomingNote.slice(0, 40)}）` : ''}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      {/*
+        Rows a merge cannot write without breaking a reference. Reported per row with the reason,
+        because the alternatives are worse: rewriting the reference to null would alter the user's data
+        silently, and inventing the missing category would invent taxonomy that never existed.
+      */}
+      {plan.referenceRejections.length > 0 ? (
+        <details className={styles.details}>
+          <summary>
+            引用无法解析 {plan.referenceRejections.length} 条（已跳过，未改写任何引用）
+          </summary>
+          <ul className={styles.list}>
+            {plan.referenceRejections.slice(0, 30).map((rejection) => (
+              <li key={rejection.id}>
+                <code>{rejection.id}</code>：{rejection.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      {plan.orphanProgress.length > 0 ? (
+        <details className={styles.details}>
+          <summary>进展找不到所属记录 {plan.orphanProgress.length} 条（已跳过）</summary>
+          <ul className={styles.list}>
+            {plan.orphanProgress.slice(0, 30).map((entry) => (
+              <li key={entry.id}>
+                <code>{entry.id}</code>：所属记录 <code>{entry.recordId}</code> 导入后仍不存在
               </li>
             ))}
           </ul>

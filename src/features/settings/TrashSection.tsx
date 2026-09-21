@@ -35,12 +35,54 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
     .filter((record) => record.deletedAt !== null)
     .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
 
+  /*
+   * How many honours a permanent deletion would unlink.
+   *
+   * Permanently deleting a work record preserves any honour that references it and detaches the link
+   * (see `purgeRecord`). That is a change to a record the user did not select, so the confirmation
+   * must say so before it happens — "do not silently detach relationships without communicating it".
+   *
+   * An honour that is itself in the trash is going away in the same operation, so it is not counted:
+   * nothing survives to be detached.
+   */
+  const countLinkedHonors = (
+    workIds: readonly string[],
+    alsoDeletedIds: readonly string[] = [],
+  ) => {
+    const targets = new Set(workIds);
+    const doomed = new Set(alsoDeletedIds);
+    return records.filter(
+      (record) =>
+        record.kind === 'honor' &&
+        record.relatedWorkId !== null &&
+        targets.has(record.relatedWorkId) &&
+        !doomed.has(record.id),
+    ).length;
+  };
+
+  const pendingDetachCount =
+    pendingPurge !== null && pendingPurge.kind === 'work'
+      ? countLinkedHonors([pendingPurge.id])
+      : 0;
+
+  const deletedWorkIds = deleted.filter((record) => record.kind === 'work').map((r) => r.id);
+  const emptyTrashDetachCount = countLinkedHonors(
+    deletedWorkIds,
+    deleted.map((record) => record.id),
+  );
+
   const emptyTrash = async (): Promise<void> => {
     setBusy(true);
     try {
-      const count = await purgeAllDeleted();
+      const outcome = await purgeAllDeleted();
       await refresh();
-      toast.show(`已彻底删除 ${count} 条记录。`, 'success');
+      toast.show(
+        `已彻底删除 ${outcome.recordsPurged} 条记录。` +
+          (outcome.honorsDetached > 0
+            ? `其中 ${outcome.honorsDetached} 条荣誉记录与工作事项的关联已解除（荣誉本身保留）。`
+            : ''),
+        'success',
+      );
     } catch (cause) {
       toast.show(cause instanceof Error ? cause.message : String(cause), 'error');
     } finally {
@@ -124,6 +166,15 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
           <>
             将永久删除 <strong>{pendingPurge?.title ?? ''}</strong>{' '}
             及其全部进展记录。此操作不可撤销。
+            {pendingDetachCount > 0 ? (
+              <>
+                {' '}
+                <strong>
+                  另有 {pendingDetachCount} 条荣誉记录关联到该工作事项：荣誉会被保留，
+                  但其“关联工作记录”将被清除。
+                </strong>
+              </>
+            ) : null}
           </>
         }
         confirmLabel="彻底删除"
@@ -146,6 +197,15 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
         body={
           <>
             将永久删除回收站中的 <strong>{deleted.length} 条记录</strong>及其进展。此操作不可撤销。
+            {emptyTrashDetachCount > 0 ? (
+              <>
+                {' '}
+                <strong>
+                  另有 {emptyTrashDetachCount} 条荣誉记录关联到其中的工作事项：荣誉会被保留，
+                  但其“关联工作记录”将被清除。
+                </strong>
+              </>
+            ) : null}
           </>
         }
         onCancel={() => {

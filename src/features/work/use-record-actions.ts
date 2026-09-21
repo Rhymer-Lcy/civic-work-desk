@@ -111,13 +111,28 @@ export function useRecordActions(): RecordActions {
     [run],
   );
 
+  /*
+   * Permanent deletion reports its relational consequence.
+   *
+   * Detaching an honour's link is a change to a record the user did not select, so it is named in the
+   * toast rather than left to be discovered later. The Trash dialog states the same count *before*
+   * the action, from the same live snapshot.
+   */
   const purge = useCallback(
     async (id: string): Promise<void> => {
+      let detached = 0;
       await run(async () => {
-        await purgeRecord(id);
+        const outcome = await purgeRecord(id);
+        detached = outcome.honorsDetached;
       }, '已彻底删除。');
+      if (detached > 0) {
+        toast.show(
+          `已解除 ${String(detached)} 条荣誉记录与该工作事项的关联（荣誉本身已保留）。`,
+          'info',
+        );
+      }
     },
-    [run],
+    [run, toast],
   );
 
   const addProgress = useCallback(
