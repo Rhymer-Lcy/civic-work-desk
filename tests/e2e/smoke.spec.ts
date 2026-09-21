@@ -12,7 +12,9 @@ test.describe('first run and core record flows', () => {
 
     await navigate(page, '设置');
     await expect(
-      page.getByText('记录、进展、业务分类、归属分组与应用设置均通过结构校验，可以导出完整备份。'),
+      page.getByText(
+        '记录、进展、业务分类、归属分组与应用设置均通过结构校验，关联关系自洽，可以导出完整备份。',
+      ),
     ).toBeVisible();
     await expect(page.getByText('回收站是空的')).toBeVisible();
   });
