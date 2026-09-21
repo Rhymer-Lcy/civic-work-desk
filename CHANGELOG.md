@@ -77,7 +77,7 @@ product features, no architectural change, no new runtime dependency. Branch
 ### Note
 
 The original Phase-1 archive was deleted by mistake during this pass and could not be recovered. The
-commit it described is intact; `_review_packages/PROVENANCE.md` records what was lost, what replaced it,
+commit it described is intact; `docs/review-package-provenance.md` records what was lost, what replaced it,
 and why the replacement is a reconstruction rather than the original.
 
 ## [Unreleased] — Phase 1 modernisation

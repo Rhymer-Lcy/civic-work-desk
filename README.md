@@ -150,7 +150,7 @@ listed as warnings for you to resolve. Full rules in `docs/migration.md`.
 ```
 .github/workflows/ci.yml     CI: Node 24, install → lint → typecheck → test → build → scan → e2e
 _private_reference/          legacy source (git-ignored, never packaged) + its README
-_review_packages/            generated review ZIPs (git-ignored)
+_review_packages/            generated review ZIPs (git-ignored; docs/review-package-provenance.md)
 docs/                        architecture, data model, security, migration, UX, QA, ADRs
 public/                      static manifest and icons
 scripts/                     icon generation, CSS module types, security scan, packaging, verifier
