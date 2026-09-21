@@ -229,7 +229,9 @@ function writeZip(target, entries, date) {
     central.writeUInt16LE(0, 32); // comment
     central.writeUInt16LE(0, 34); // disk
     central.writeUInt16LE(0, 36); // internal attrs
-    central.writeUInt32LE(0o100644 << 16, 38); // external attrs
+    // Unix mode 0644 in the high 16 bits. `<<` is a signed 32-bit operation in JS and would
+    // overflow to a negative number here, which `writeUInt32LE` rejects.
+    central.writeUInt32LE((0o100644 * 0x10000) >>> 0, 38); // external attrs
     central.writeUInt32LE(offset, 42);
     centrals.push(central, nameBytes);
 
