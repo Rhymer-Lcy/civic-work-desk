@@ -195,10 +195,12 @@ describe('merge mode', () => {
       mode: 'merge',
       existing: [],
     });
+    expect(plan.strategy).toBe('merge');
     expect(plan.duplicateIdsInSource).toEqual(['dup_1']);
     expect(plan.accepted).toHaveLength(1);
     expect(plan.rejected).toHaveLength(1);
 
+    // Merge tolerates a messy source: the duplicate is reported and the first row is written.
     await applyImportPlan(plan);
     expect((await listRecords()).records).toHaveLength(1);
   });
@@ -233,12 +235,20 @@ describe('replace mode', () => {
       '2026-09-21T09:00:00.000Z',
     );
 
-    // Merge against an empty "existing" set so every record is accepted and the plan does write.
-    const mergePlan = await buildImportPlan({ parsed: envelope, mode: 'merge', existing: [] });
+    // Merge against the REAL destination. Every id already exists, so merge accepts nothing and
+    // leaves settings alone — the caller must not misreport the destination, because the write
+    // path uses `bulkAdd` and would (correctly) reject an inconsistent plan.
+    const live = (await listRecords()).records;
+    const mergePlan = await buildImportPlan({ parsed: envelope, mode: 'merge', existing: live });
+    expect(mergePlan.strategy).toBe('merge');
     await applyImportPlan(mergePlan);
     expect((await getSettings()).appTitle).toBe('本机设置的标题');
 
-    const replacePlan = await buildImportPlan({ parsed: envelope, mode: 'replace', existing: [] });
+    const replacePlan = await buildImportPlan({
+      parsed: envelope,
+      mode: 'replace',
+      existing: live,
+    });
     await applyImportPlan(replacePlan);
     expect((await getSettings()).appTitle).toBe('文件里的标题');
   });
@@ -257,7 +267,11 @@ describe('replace mode', () => {
       '2026-09-21T09:00:00.000Z',
     );
 
-    const plan = await buildImportPlan({ parsed: envelope, mode: 'merge', existing: [] });
+    const plan = await buildImportPlan({
+      parsed: envelope,
+      mode: 'merge',
+      existing: (await listRecords()).records,
+    });
     await applyImportPlan(plan);
 
     expect((await listCategories()).find((c) => c.id === local.id)?.name).toBe('本机分类');
