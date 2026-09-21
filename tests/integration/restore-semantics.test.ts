@@ -26,6 +26,30 @@ import { snapshotForBackup } from '@/services/backup';
 import { applyImportPlan } from '@/services/import/apply';
 import { buildImportPlan } from '@/services/import/plan';
 
+/*
+ * The destination taxonomy, read at call time.
+ *
+ * `buildImportPlan` requires it: an incoming record's category and group are judged against the
+ * projected final taxonomy, so a caller that omitted them would be claiming the destination has none
+ * and every record carrying a category would be rejected as unresolvable.
+ */
+async function destinationTaxonomy(): Promise<{
+  categories: string[];
+  groups: string[];
+  progressIds: string[];
+}> {
+  const [categories, groups, progress] = await Promise.all([
+    listCategories(),
+    listGroups(),
+    listProgressEntries(),
+  ]);
+  return {
+    categories: categories.map((category) => category.id),
+    groups: groups.map((group) => group.id),
+    progressIds: progress.map((entry) => entry.id),
+  };
+}
+
 /**
  * Restore semantics — the Phase-1.1 P0 regression suite.
  *
@@ -114,7 +138,14 @@ async function exportBackup() {
 
 async function exactRestore(envelope: unknown): Promise<void> {
   const { records } = await listRecords();
-  const plan = await buildImportPlan({ parsed: envelope, mode: 'replace', existing: records });
+  const plan = await buildImportPlan({
+    parsed: envelope,
+    mode: 'replace',
+    existing: records,
+    existingCategoryIds: (await destinationTaxonomy()).categories,
+    existingProgressIds: (await destinationTaxonomy()).progressIds,
+    existingGroupIds: (await destinationTaxonomy()).groups,
+  });
   await applyImportPlan(plan);
 }
 
@@ -244,7 +275,14 @@ describe('canonical exact restore', () => {
     };
 
     const { records } = await listRecords();
-    const plan = await buildImportPlan({ parsed: envelope, mode: 'replace', existing: records });
+    const plan = await buildImportPlan({
+      parsed: envelope,
+      mode: 'replace',
+      existing: records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     await expect(applyImportPlan(plan)).rejects.toThrow();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -267,7 +305,14 @@ describe('legacy replace', () => {
 
     const legacy = { works: [{ id: 'legacy_1', title: '旧版记录', date: '2026-01-01' }] };
     const { records } = await listRecords();
-    const plan = await buildImportPlan({ parsed: legacy, mode: 'replace', existing: records });
+    const plan = await buildImportPlan({
+      parsed: legacy,
+      mode: 'replace',
+      existing: records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     // The preview must not claim a whole-application restore for a format that cannot provide one.
     expect(plan.strategy).toBe('legacy-replace');
     expect(plan.restoresTaxonomy).toBe(false);
@@ -285,7 +330,14 @@ describe('legacy replace', () => {
     await createWorkRecord(workInput({ title: '示范' }));
     const envelope = await exportBackup();
     const { records } = await listRecords();
-    const plan = await buildImportPlan({ parsed: envelope, mode: 'replace', existing: records });
+    const plan = await buildImportPlan({
+      parsed: envelope,
+      mode: 'replace',
+      existing: records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     expect(plan.strategy).toBe('canonical-restore');
     expect(plan.restoresTaxonomy).toBe(true);
   });
@@ -298,7 +350,14 @@ describe('merge is unchanged and still never overwrites', () => {
     await updateRecord(a.id, { title: '本机后来改过的标题' });
 
     const { records } = await listRecords();
-    const plan = await buildImportPlan({ parsed: envelope, mode: 'merge', existing: records });
+    const plan = await buildImportPlan({
+      parsed: envelope,
+      mode: 'merge',
+      existing: records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     expect(plan.strategy).toBe('merge');
     expect(plan.accepted).toHaveLength(0);
     expect(plan.conflicts).toHaveLength(1);

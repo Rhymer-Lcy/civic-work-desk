@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createDatabase, setDatabase } from '@/db/client';
 import type { CivicWorkDeskDatabase } from '@/db/schema';
 import { ensureSeedData } from '@/db/migrations';
-import { createWorkRecord, listRecords } from '@/db/repositories/records';
-import { getSettings } from '@/db/repositories/taxonomy';
+import { createWorkRecord, listProgressEntries, listRecords } from '@/db/repositories/records';
+import { getSettings, listCategories, listGroups } from '@/db/repositories/taxonomy';
 import { ABSENT_DATE } from '@/domain/dates';
 import {
   IncompleteBackupError,
@@ -16,6 +16,30 @@ import { buildEnvelope } from '@/services/backup/envelope';
 import { snapshotForBackup } from '@/services/backup';
 import { applyImportPlan } from '@/services/import/apply';
 import { ImportParseError, buildImportPlan, detectSource } from '@/services/import/plan';
+
+/*
+ * The destination taxonomy, read at call time.
+ *
+ * `buildImportPlan` requires it: an incoming record's category and group are judged against the
+ * projected final taxonomy, so a caller that omitted them would be claiming the destination has none
+ * and every record carrying a category would be rejected as unresolvable.
+ */
+async function destinationTaxonomy(): Promise<{
+  categories: string[];
+  groups: string[];
+  progressIds: string[];
+}> {
+  const [categories, groups, progress] = await Promise.all([
+    listCategories(),
+    listGroups(),
+    listProgressEntries(),
+  ]);
+  return {
+    categories: categories.map((category) => category.id),
+    groups: groups.map((group) => group.id),
+    progressIds: progress.map((entry) => entry.id),
+  };
+}
 
 /**
  * Backup integrity — invalid stored rows, and backup/schema version compatibility.
@@ -185,6 +209,9 @@ describe('invalid stored rows are never silently omitted from a backup', () => {
       parsed: good,
       mode: 'replace',
       existing: (await listRecords()).records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     await applyImportPlan(plan);
 
@@ -269,6 +296,9 @@ describe('backup format and schema compatibility', () => {
       parsed: v1,
       mode: 'replace',
       existing: (await listRecords()).records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     expect(plan.strategy).toBe('canonical-restore');
     expect(plan.completeness).toBe('unknown-legacy');

@@ -63,7 +63,7 @@ function workInput(overrides: Record<string, unknown> = {}) {
 
 async function health() {
   const meta = await getMeta();
-  return assessBackupHealth(meta, 1, 7, '2026-09-21');
+  return assessBackupHealth(meta, 7, '2026-09-21');
 }
 
 describe('only a complete canonical backup establishes freshness', () => {

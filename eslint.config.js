@@ -30,6 +30,15 @@ export default tseslint.config(
       '_private_reference/**',
       '_review_packages/**',
       'dev-dist/**',
+      /*
+       * Audit evidence, not build input.
+       *
+       * `scripts/audit/` holds probes that are *copied into an older checkout* and run there, so they
+       * are written against that commit's API surface and belong to no tsconfig project here. They are
+       * packaged for inspection (see review/AUDIT_REGRESSION_RESULTS.md) and deliberately excluded from
+       * linting and typechecking of this tree.
+       */
+      'scripts/audit/**',
     ],
   },
   js.configs.recommended,

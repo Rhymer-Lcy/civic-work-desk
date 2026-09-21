@@ -174,18 +174,31 @@ describe('backup health', () => {
     createdAt: '2026-01-01T00:00:00.000Z',
   });
 
-  it('never nags about an empty store', () => {
+  it('never nags about a pristine database', () => {
     // The legacy fix for this noise was to hard-hide the banner on every load, which disabled the
-    // warning permanently. Suppressing it only when there is nothing to lose is the correct rule.
-    expect(assessBackupHealth(meta(null, null), 0, 7, '2026-09-21').state).toBe('fresh');
+    // warning permanently. Suppressing it only while *nothing has ever been persisted* is the correct
+    // rule, and `dataRevision === 0` is exactly that state.
+    expect(assessBackupHealth(meta(null, null, 0), 7, '2026-09-21').state).toBe('pristine');
   });
 
-  it('reports never-backed-up when records exist', () => {
-    expect(assessBackupHealth(meta(null, null), 5, 7, '2026-09-21').state).toBe('never');
+  it('REGRESSION: once the data revision has advanced, zero live records does not suppress', () => {
+    /*
+     * Phase 1.2 short-circuited to `fresh` whenever the count of *live* records was zero — which is
+     * true of a database whose every record is in the Trash, or which has custom categories, or edited
+     * settings, or which held records and was emptied. All of that is user data, all of it is carried
+     * in backups, and the application reported 今天已备份 while holding none of it in a backup.
+     *
+     * The record count is no longer an input at all.
+     */
+    expect(assessBackupHealth(meta(null, null, 4), 7, '2026-09-21').state).toBe('never');
+  });
+
+  it('reports never-backed-up when data exists', () => {
+    expect(assessBackupHealth(meta(null, null, 5), 7, '2026-09-21').state).toBe('never');
   });
 
   it('is fresh while the data has not changed since the backup', () => {
-    const health = assessBackupHealth(meta('2026-09-19T00:00:00Z', 5, 11), 5, 7, '2026-09-21');
+    const health = assessBackupHealth(meta('2026-09-19T00:00:00Z', 5, 11), 7, '2026-09-21');
     expect(health.state).toBe('fresh');
   });
 
@@ -193,37 +206,36 @@ describe('backup health', () => {
     // Phase 1 compared age and record count only, so editing an existing record left the backup
     // looking current. The revision counter makes any mutation detectable.
     const afterEdit = meta('2026-09-21T00:00:00Z', 5, /* dataRevision */ 12, /* captured */ 11);
-    const health = assessBackupHealth(afterEdit, 5, 7, '2026-09-21');
+    const health = assessBackupHealth(afterEdit, 7, '2026-09-21');
     expect(health.state).toBe('stale');
     expect(health.state === 'stale' && health.reason).toBe('data-changed');
   });
 
   it('goes stale on age even when the data is unchanged', () => {
-    const health = assessBackupHealth(meta('2026-09-10T00:00:00Z', 5, 11), 5, 7, '2026-09-21');
+    const health = assessBackupHealth(meta('2026-09-10T00:00:00Z', 5, 11), 7, '2026-09-21');
     expect(health.state).toBe('stale');
     expect(health.state === 'stale' && health.reason).toBe('age');
   });
 
   it('treats a missing captured revision as diverged rather than assuming freshness', () => {
     const legacyMeta = meta('2026-09-21T00:00:00Z', 5, 3, null);
-    expect(assessBackupHealth(legacyMeta, 5, 7, '2026-09-21').state).toBe('stale');
+    expect(assessBackupHealth(legacyMeta, 7, '2026-09-21').state).toBe('stale');
   });
 
   it('reports unknown rather than guessing when meta is missing or unreadable', () => {
-    expect(assessBackupHealth(null, 5, 7, '2026-09-21').state).toBe('unknown');
-    expect(assessBackupHealth(meta('not-a-date', 1, 0), 5, 7, '2026-09-21').state).toBe('unknown');
+    expect(assessBackupHealth(null, 7, '2026-09-21').state).toBe('unknown');
+    expect(assessBackupHealth(meta('not-a-date', 1, 3), 7, '2026-09-21').state).toBe('unknown');
   });
 
   it('uses the configured reminder interval for the age rule', () => {
     expect(
       assessBackupHealth(
         meta('2026-09-19T00:00:00Z', 5, 4),
-        5,
         settings.backupReminderDays,
         '2026-09-21',
       ).state,
     ).toBe('fresh');
-    expect(assessBackupHealth(meta('2026-09-19T00:00:00Z', 5, 4), 5, 1, '2026-09-21').state).toBe(
+    expect(assessBackupHealth(meta('2026-09-19T00:00:00Z', 5, 4), 1, '2026-09-21').state).toBe(
       'stale',
     );
   });

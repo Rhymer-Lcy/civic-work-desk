@@ -12,6 +12,8 @@ import {
 import {
   getMeta,
   getSettings,
+  listCategories,
+  listGroups,
   recordCanonicalBackup,
   saveSettings,
 } from '@/db/repositories/taxonomy';
@@ -21,6 +23,30 @@ import { buildEnvelope } from '@/services/backup/envelope';
 import { snapshotForBackup } from '@/services/backup';
 import { applyImportPlan } from '@/services/import/apply';
 import { buildImportPlan } from '@/services/import/plan';
+
+/*
+ * The destination taxonomy, read at call time.
+ *
+ * `buildImportPlan` requires it: an incoming record's category and group are judged against the
+ * projected final taxonomy, so a caller that omitted them would be claiming the destination has none
+ * and every record carrying a category would be rejected as unresolvable.
+ */
+async function destinationTaxonomy(): Promise<{
+  categories: string[];
+  groups: string[];
+  progressIds: string[];
+}> {
+  const [categories, groups, progress] = await Promise.all([
+    listCategories(),
+    listGroups(),
+    listProgressEntries(),
+  ]);
+  return {
+    categories: categories.map((category) => category.id),
+    groups: groups.map((group) => group.id),
+    progressIds: progress.map((entry) => entry.id),
+  };
+}
 
 /**
  * Import integrity — progress-entry collisions, and the data-revision invariant.
@@ -73,6 +99,8 @@ async function planFor(parsed: unknown, mode: 'merge' | 'replace') {
     parsed,
     mode,
     existing: records,
+    existingCategoryIds: (await destinationTaxonomy()).categories,
+    existingGroupIds: (await destinationTaxonomy()).groups,
     existingProgressIds: progress.map((entry) => entry.id),
   });
 }
@@ -195,7 +223,7 @@ describe('data revision drives backup health', () => {
     const fresh = await getMeta();
     expect(fresh?.lastBackupRevision).toBe(fresh?.dataRevision);
     expect(
-      assessBackupHealth(fresh, 1, 7, '2026-09-21').state,
+      assessBackupHealth(fresh, 7, '2026-09-21').state,
       'a just-taken backup must read as fresh',
     ).toBe('fresh');
 
@@ -204,7 +232,7 @@ describe('data revision drives backup health', () => {
 
     const afterEdit = await getMeta();
     expect(afterEdit?.dataRevision).toBeGreaterThan(afterEdit?.lastBackupRevision ?? -1);
-    const health = assessBackupHealth(afterEdit, 1, 7, '2026-09-21');
+    const health = assessBackupHealth(afterEdit, 7, '2026-09-21');
     expect(health.state).toBe('stale');
     expect(health.state === 'stale' && health.reason).toBe('data-changed');
   });
@@ -217,7 +245,7 @@ describe('data revision drives backup health', () => {
     });
     await saveSettings({ ...(await getSettings()), appTitle: '改过的标题' });
     const meta = await getMeta();
-    expect(assessBackupHealth(meta, 1, 7, '2026-09-21').state).toBe('stale');
+    expect(assessBackupHealth(meta, 7, '2026-09-21').state).toBe('stale');
   });
 
   it('a rolled-back mutation does not advance the revision', async () => {
@@ -232,7 +260,7 @@ describe('data revision drives backup health', () => {
     await expect(updateRecord('no-such-id', { title: 'x' })).rejects.toThrow();
 
     expect((await getMeta())?.dataRevision).toBe(before);
-    expect(assessBackupHealth(await getMeta(), 1, 7, '2026-09-21').state).toBe('fresh');
+    expect(assessBackupHealth(await getMeta(), 7, '2026-09-21').state).toBe('fresh');
   });
 
   it('an exact canonical restore leaves the backup state current, not stale', async () => {
@@ -243,6 +271,6 @@ describe('data revision drives backup health', () => {
     const meta = await getMeta();
     // The database now equals a backup the user holds, so nagging for another one is wrong.
     expect(meta?.lastBackupRevision).toBe(meta?.dataRevision);
-    expect(assessBackupHealth(meta, 1, 7, '2026-09-21').state).toBe('fresh');
+    expect(assessBackupHealth(meta, 7, '2026-09-21').state).toBe('fresh');
   });
 });

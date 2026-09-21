@@ -10,7 +10,13 @@ import {
   listRecords,
   softDeleteRecord,
 } from '@/db/repositories/records';
-import { addCategory, getSettings, listCategories, saveSettings } from '@/db/repositories/taxonomy';
+import {
+  addCategory,
+  getSettings,
+  listCategories,
+  listGroups,
+  saveSettings,
+} from '@/db/repositories/taxonomy';
 import { ABSENT_DATE } from '@/domain/dates';
 import { buildEnvelope, canonicalJson, serialiseEnvelope } from '@/services/backup/envelope';
 import { snapshotForBackup } from '@/services/backup';
@@ -23,6 +29,30 @@ import {
   legacySplitBackup,
   legacyVersionedBackup,
 } from '../fixtures/legacy-backups';
+
+/*
+ * The destination taxonomy, read at call time.
+ *
+ * `buildImportPlan` requires it: an incoming record's category and group are judged against the
+ * projected final taxonomy, so a caller that omitted them would be claiming the destination has none
+ * and every record carrying a category would be rejected as unresolvable.
+ */
+async function destinationTaxonomy(): Promise<{
+  categories: string[];
+  groups: string[];
+  progressIds: string[];
+}> {
+  const [categories, groups, progress] = await Promise.all([
+    listCategories(),
+    listGroups(),
+    listProgressEntries(),
+  ]);
+  return {
+    categories: categories.map((category) => category.id),
+    groups: groups.map((group) => group.id),
+    progressIds: progress.map((entry) => entry.id),
+  };
+}
 
 let db: CivicWorkDeskDatabase;
 let counter = 0;
@@ -101,6 +131,9 @@ describe('export/import round trip', () => {
       parsed: JSON.parse(text),
       mode: 'replace',
       existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     expect(plan.format).toBe('civic-envelope');
     expect(plan.checksum).toBe('match');
@@ -125,7 +158,14 @@ describe('export/import round trip', () => {
     const first = tampered.payload.records[0];
     if (first) first.title = '被篡改的标题';
 
-    const plan = await buildImportPlan({ parsed: tampered, mode: 'replace', existing: [] });
+    const plan = await buildImportPlan({
+      parsed: tampered,
+      mode: 'replace',
+      existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     expect(plan.checksum).toBe('mismatch');
     await expect(applyImportPlan(plan)).rejects.toBeInstanceOf(ImportBlockedError);
     // Nothing was written.
@@ -166,7 +206,14 @@ describe('merge mode', () => {
       '2026-09-21T09:00:00.000Z',
     );
 
-    const plan = await buildImportPlan({ parsed: incoming, mode: 'merge', existing });
+    const plan = await buildImportPlan({
+      parsed: incoming,
+      mode: 'merge',
+      existing,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     expect(plan.summary.conflicts).toBeGreaterThan(0);
     expect(plan.accepted.map((r) => r.id)).toContain('brand-new-id');
 
@@ -181,7 +228,14 @@ describe('merge mode', () => {
     await seedStore();
     const existing = (await listRecords()).records;
     const envelope = await buildEnvelope(await snapshotForBackup(), '2026-09-21T09:00:00.000Z');
-    const plan = await buildImportPlan({ parsed: envelope, mode: 'merge', existing });
+    const plan = await buildImportPlan({
+      parsed: envelope,
+      mode: 'merge',
+      existing,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     expect(plan.summary.conflicts).toBe(existing.length);
     expect(plan.summary.identicalConflicts).toBe(existing.length);
     expect(plan.accepted).toHaveLength(0);
@@ -194,6 +248,9 @@ describe('merge mode', () => {
       parsed: duplicateIdBackup(),
       mode: 'merge',
       existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     expect(plan.strategy).toBe('merge');
     expect(plan.duplicateIdsInSource).toEqual(['dup_1']);
@@ -216,6 +273,9 @@ describe('replace mode', () => {
       parsed: legacyArrayBackup(),
       mode: 'replace',
       existing: (await listRecords()).records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     const outcome = await applyImportPlan(plan);
 
@@ -239,7 +299,14 @@ describe('replace mode', () => {
     // leaves settings alone — the caller must not misreport the destination, because the write
     // path uses `bulkAdd` and would (correctly) reject an inconsistent plan.
     const live = (await listRecords()).records;
-    const mergePlan = await buildImportPlan({ parsed: envelope, mode: 'merge', existing: live });
+    const mergePlan = await buildImportPlan({
+      parsed: envelope,
+      mode: 'merge',
+      existing: live,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
+    });
     expect(mergePlan.strategy).toBe('merge');
     await applyImportPlan(mergePlan);
     expect((await getSettings()).appTitle).toBe('本机设置的标题');
@@ -248,6 +315,9 @@ describe('replace mode', () => {
       parsed: envelope,
       mode: 'replace',
       existing: live,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     await applyImportPlan(replacePlan);
     expect((await getSettings()).appTitle).toBe('文件里的标题');
@@ -271,6 +341,9 @@ describe('replace mode', () => {
       parsed: envelope,
       mode: 'merge',
       existing: (await listRecords()).records,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     await applyImportPlan(plan);
 
@@ -284,6 +357,9 @@ describe('legacy formats', () => {
       parsed: legacyVersionedBackup(),
       mode: 'merge',
       existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     expect(plan.format).toBe('legacy-versioned');
     // One fixture has no title and is the only rejection.
@@ -302,6 +378,9 @@ describe('legacy formats', () => {
       parsed: legacySplitBackup(),
       mode: 'merge',
       existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     expect(plan.format).toBe('legacy-split');
     await applyImportPlan(plan);
@@ -316,6 +395,9 @@ describe('legacy formats', () => {
       parsed: legacyArrayBackup(),
       mode: 'merge',
       existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     expect(plan.format).toBe('legacy-array');
     expect(plan.accepted).toHaveLength(5);
@@ -328,6 +410,9 @@ describe('legacy formats', () => {
       parsed: legacyVersionedBackup(),
       mode: 'merge',
       existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     await applyImportPlan(plan);
     const entries = await listProgressEntries('fix_013');
@@ -340,6 +425,9 @@ describe('legacy formats', () => {
       parsed: legacyVersionedBackup(),
       mode: 'merge',
       existing: [],
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     await applyImportPlan(first);
     const afterFirst = (await listRecords()).records;
@@ -348,6 +436,9 @@ describe('legacy formats', () => {
       parsed: legacyVersionedBackup(),
       mode: 'merge',
       existing: afterFirst,
+      existingCategoryIds: (await destinationTaxonomy()).categories,
+      existingProgressIds: (await destinationTaxonomy()).progressIds,
+      existingGroupIds: (await destinationTaxonomy()).groups,
     });
     expect(second.accepted).toHaveLength(0);
     expect(second.summary.conflicts).toBe(afterFirst.length);

@@ -17,6 +17,30 @@ import type { BackupEnvelope } from '@/services/backup/envelope';
 import { applyImportPlan, ImportBlockedError } from '@/services/import/apply';
 import { buildImportPlan, planBlockers } from '@/services/import/plan';
 
+/*
+ * The destination taxonomy, read at call time.
+ *
+ * `buildImportPlan` requires it: an incoming record's category and group are judged against the
+ * projected final taxonomy, so a caller that omitted them would be claiming the destination has none
+ * and every record carrying a category would be rejected as unresolvable.
+ */
+async function destinationTaxonomy(): Promise<{
+  categories: string[];
+  groups: string[];
+  progressIds: string[];
+}> {
+  const [categories, groups, progress] = await Promise.all([
+    listCategories(),
+    listGroups(),
+    listProgressEntries(),
+  ]);
+  return {
+    categories: categories.map((category) => category.id),
+    groups: groups.map((group) => group.id),
+    progressIds: progress.map((entry) => entry.id),
+  };
+}
+
 /**
  * Exactness of a canonical restore.
  *
@@ -118,6 +142,8 @@ async function planFor(parsed: unknown, mode: 'merge' | 'replace') {
     parsed,
     mode,
     existing: records,
+    existingCategoryIds: (await destinationTaxonomy()).categories,
+    existingGroupIds: (await destinationTaxonomy()).groups,
     existingProgressIds: progress.map((entry) => entry.id),
   });
 }

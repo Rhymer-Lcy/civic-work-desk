@@ -128,6 +128,10 @@ describe('import preview uses the corrected signature', () => {
       parsed: await envelopeOf([incoming]),
       mode: 'merge',
       existing: [stored],
+      // No database in this unit test: the destination genuinely has no taxonomy.
+      existingProgressIds: [],
+      existingCategoryIds: [],
+      existingGroupIds: [],
     });
 
     expect(plan.conflicts).toHaveLength(1);
@@ -145,6 +149,10 @@ describe('import preview uses the corrected signature', () => {
       parsed: await envelopeOf([sameContentLaterEdit]),
       mode: 'merge',
       existing: [stored],
+      // No database in this unit test: the destination genuinely has no taxonomy.
+      existingProgressIds: [],
+      existingCategoryIds: [],
+      existingGroupIds: [],
     });
 
     expect(plan.conflicts).toHaveLength(1);

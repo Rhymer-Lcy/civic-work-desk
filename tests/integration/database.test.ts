@@ -196,7 +196,12 @@ describe('soft delete and trash', () => {
     await softDeleteRecord(b.id);
     await addProgressEntry({ recordId: a.id, note: '会被一并删除' });
 
-    expect(await purgeAllDeleted()).toBe(2);
+    const purged = await purgeAllDeleted();
+
+    expect(purged.recordsPurged).toBe(2);
+
+    // Nothing referenced the purged records, so nothing needed detaching.
+    expect(purged.honorsDetached).toBe(0);
     const { records } = await listRecords();
     expect(records.map((r) => r.title)).toEqual(['kept']);
     expect(await listProgressEntries(a.id)).toHaveLength(0);
