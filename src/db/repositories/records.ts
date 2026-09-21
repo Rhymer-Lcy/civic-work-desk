@@ -3,6 +3,7 @@ import type { AnyRecord, HonorRecord, ProgressEntry, WorkRecord } from '@/domain
 import { anyRecordSchema, progressEntrySchema } from '@/domain/validation';
 import { newId, nowInstant } from '@/utils/clock';
 import { withDatabase, withMutation } from '../client';
+import type { CivicWorkDeskDatabase } from '../schema';
 import type { InvalidRow } from '../invalid-row';
 
 /**
@@ -96,15 +97,52 @@ export function buildHonorRecord(input: NewHonorRecordInput): HonorRecord {
   };
 }
 
+/**
+ * Refuse a write whose references do not resolve, inside the caller's transaction.
+ *
+ * The live database must satisfy the same relational rules a canonical restore demands
+ * (`@/domain/integrity`). Checking here — rather than trusting the UI to only offer existing ids — is
+ * what makes the guarantee structural: a reference can only be written when its target exists, so no
+ * mutation path can leave a state the application's own backup would refuse.
+ *
+ * A soft-deleted target is accepted deliberately: the row exists and is carried in backups.
+ */
+async function assertReferencesResolve(
+  db: CivicWorkDeskDatabase,
+  record: AnyRecord,
+): Promise<void> {
+  if (record.kind === 'work') {
+    if (record.categoryId !== null && !(await db.categories.get(record.categoryId))) {
+      throw new Error(`business category does not exist: ${record.categoryId}`);
+    }
+    if (record.groupId !== null && !(await db.groups.get(record.groupId))) {
+      throw new Error(`work group does not exist: ${record.groupId}`);
+    }
+    return;
+  }
+  if (record.relatedWorkId === null) return;
+  const target = await db.records.get(record.relatedWorkId);
+  if (!target) throw new Error(`related work record does not exist: ${record.relatedWorkId}`);
+  if (target.kind !== 'work') {
+    throw new Error(`related record is not a work record: ${record.relatedWorkId}`);
+  }
+}
+
 export async function createWorkRecord(input: NewWorkRecordInput): Promise<WorkRecord> {
   const record = buildWorkRecord(input);
-  await withMutation('createWorkRecord', ['records'], (db) => db.records.add(record));
+  await withMutation('createWorkRecord', ['records', 'categories', 'groups'], async (db) => {
+    await assertReferencesResolve(db, record);
+    await db.records.add(record);
+  });
   return record;
 }
 
 export async function createHonorRecord(input: NewHonorRecordInput): Promise<HonorRecord> {
   const record = buildHonorRecord(input);
-  await withMutation('createHonorRecord', ['records'], (db) => db.records.add(record));
+  await withMutation('createHonorRecord', ['records'], async (db) => {
+    await assertReferencesResolve(db, record);
+    await db.records.add(record);
+  });
   return record;
 }
 
@@ -121,7 +159,7 @@ export async function updateRecord(
   id: string,
   patch: WorkRecordPatch | HonorRecordPatch,
 ): Promise<AnyRecord> {
-  return withMutation('updateRecord', ['records'], async (db) => {
+  return withMutation('updateRecord', ['records', 'categories', 'groups'], async (db) => {
     {
       const existing = await db.records.get(id);
       if (!existing) throw new Error(`record not found: ${id}`);
@@ -132,6 +170,9 @@ export async function updateRecord(
           `refusing to write invalid record: ${parsed.error.issues[0]?.message ?? ''}`,
         );
       }
+      // An edit can dangle a reference as easily as a creation can — re-pointing an honour at a work
+      // record that has since been purged, for instance.
+      await assertReferencesResolve(db, parsed.data);
       await db.records.put(parsed.data);
       return parsed.data;
     }
@@ -155,11 +196,79 @@ export async function restoreRecord(id: string): Promise<void> {
   });
 }
 
-/** Irreversible. Removes the record and its progress entries in one transaction. */
-export async function purgeRecord(id: string): Promise<void> {
-  await withMutation('purgeRecord', ['records', 'progressEntries'], async (db) => {
+/** What a permanent deletion actually did, so the UI can report the relational consequence. */
+export interface PurgeOutcome {
+  readonly recordsPurged: number;
+  readonly progressPurged: number;
+  /** Honour records whose `relatedWorkId` was set to null because their work record was removed. */
+  readonly honorsDetached: number;
+}
+
+/**
+ * Detach every honour that references one of `workIds`, inside the caller's transaction.
+ *
+ * Read-modify-put rather than a partial `update`: Dexie's `UpdateSpec` cannot express a patch over a
+ * discriminated union, and writing the whole row keeps it valid by construction.
+ */
+async function detachHonorReferences(
+  db: CivicWorkDeskDatabase,
+  workIds: ReadonlySet<string>,
+): Promise<number> {
+  if (workIds.size === 0) return 0;
+  const rows = await db.records.toArray();
+  const stamp = nowInstant();
+  let detached = 0;
+  for (const row of rows) {
+    if (row.kind !== 'honor') continue;
+    if (row.relatedWorkId === null || !workIds.has(row.relatedWorkId)) continue;
+    const updated: HonorRecord = { ...row, relatedWorkId: null, updatedAt: stamp };
+    await db.records.put(updated);
+    detached += 1;
+  }
+  return detached;
+}
+
+/**
+ * Irreversible. Removes the record, its progress entries, and any honour link to it.
+ *
+ * **The honour is preserved and its reference detached**, in the same transaction. Phase 1.2 deleted
+ * the work record and its progress and left every honour pointing at a row that no longer existed —
+ * an ordinary Trash operation that produced a live state the application's own canonical backup could
+ * not restore. Deleting the honour instead would destroy unrelated user data (an award is a record of
+ * something that happened, whether or not the work item survives), and blocking the purge would leave
+ * the user unable to empty their own Trash without first hunting down every link.
+ *
+ * The detach is reported rather than silent: the Trash confirmation says how many honours will be
+ * unlinked, and the toast says how many were.
+ */
+export async function purgeRecord(id: string): Promise<PurgeOutcome> {
+  return withMutation('purgeRecord', ['records', 'progressEntries'], async (db) => {
+    const progressPurged = await db.progressEntries.where('recordId').equals(id).count();
     await db.progressEntries.where('recordId').equals(id).delete();
+    const target = await db.records.get(id);
+    // Only a work record can be referenced by an honour, so nothing to detach otherwise.
+    const honorsDetached =
+      target?.kind === 'work' ? await detachHonorReferences(db, new Set([id])) : 0;
     await db.records.delete(id);
+    return { recordsPurged: target ? 1 : 0, progressPurged, honorsDetached };
+  });
+}
+
+/**
+ * How many honours would be unlinked by permanently deleting `workIds`.
+ *
+ * Used by the Trash confirmation so the dialog can state the consequence before the user commits.
+ * It is a read, deliberately separate from the mutation — the authoritative detach happens inside
+ * `purgeRecord` / `purgeAllDeleted`, which report what they actually did.
+ */
+export async function countLinkedHonors(workIds: readonly string[]): Promise<number> {
+  if (workIds.length === 0) return 0;
+  const targets = new Set(workIds);
+  return withDatabase('countLinkedHonors', async (db) => {
+    const rows = await db.records.toArray();
+    return rows.filter(
+      (row) => row.kind === 'honor' && row.relatedWorkId !== null && targets.has(row.relatedWorkId),
+    ).length;
   });
 }
 
@@ -168,19 +277,59 @@ export async function listDeletedRecords(): Promise<AnyRecord[]> {
   return records.filter((record) => record.deletedAt !== null);
 }
 
-/** Empty the trash. Returns how many records were destroyed. */
-export async function purgeAllDeleted(): Promise<number> {
+/**
+ * Empty the trash, atomically.
+ *
+ * Every affected honour is detached first, then the doomed rows and their progress are removed, all
+ * inside one transaction that bumps the revision exactly once. An honour that is *itself* in the trash
+ * is purged along with the rest, so it needs no detaching — the reference dies with the referrer.
+ */
+export async function purgeAllDeleted(): Promise<PurgeOutcome> {
   return withMutation('purgeAllDeleted', ['records', 'progressEntries'], async (db) => {
-    {
-      const rows = await db.records.toArray();
-      const doomed = rows.filter((row) => row.deletedAt !== null).map((row) => row.id);
-      for (const id of doomed) {
-        await db.progressEntries.where('recordId').equals(id).delete();
-      }
-      await db.records.bulkDelete(doomed);
-      return doomed.length;
+    const rows = await db.records.toArray();
+    const doomed = rows.filter((row) => row.deletedAt !== null).map((row) => row.id);
+    const doomedWork = new Set(
+      rows.filter((row) => row.deletedAt !== null && row.kind === 'work').map((row) => row.id),
+    );
+
+    let progressPurged = 0;
+    for (const id of doomed) {
+      progressPurged += await db.progressEntries.where('recordId').equals(id).count();
+      await db.progressEntries.where('recordId').equals(id).delete();
     }
+
+    // Detach before deleting: `detachHonorReferences` walks the records table, and an honour that is
+    // also doomed must not be rewritten on its way out.
+    const survivingHonorRefs = new Set(doomedWork);
+    const honorsDetached = await detachHonorReferencesExcept(
+      db,
+      survivingHonorRefs,
+      new Set(doomed),
+    );
+
+    await db.records.bulkDelete(doomed);
+    return { recordsPurged: doomed.length, progressPurged, honorsDetached };
   });
+}
+
+/** Like `detachHonorReferences`, but skips honours that are themselves about to be deleted. */
+async function detachHonorReferencesExcept(
+  db: CivicWorkDeskDatabase,
+  workIds: ReadonlySet<string>,
+  skipIds: ReadonlySet<string>,
+): Promise<number> {
+  if (workIds.size === 0) return 0;
+  const rows = await db.records.toArray();
+  const stamp = nowInstant();
+  let detached = 0;
+  for (const row of rows) {
+    if (row.kind !== 'honor' || skipIds.has(row.id)) continue;
+    if (row.relatedWorkId === null || !workIds.has(row.relatedWorkId)) continue;
+    const updated: HonorRecord = { ...row, relatedWorkId: null, updatedAt: stamp };
+    await db.records.put(updated);
+    detached += 1;
+  }
+  return detached;
 }
 
 /* ------------------------------------------------------------------ progress */
@@ -241,9 +390,13 @@ export async function addProgressEntry(input: NewProgressInput): Promise<Progres
     createdAt: stamp,
     updatedAt: stamp,
   };
-  await withMutation('addProgressEntry', ['progressEntries'], (db) =>
-    db.progressEntries.add(entry),
-  );
+  await withMutation('addProgressEntry', ['progressEntries', 'records'], async (db) => {
+    // A note for a record that does not exist is an orphan, which a canonical restore refuses.
+    if (!(await db.records.get(entry.recordId))) {
+      throw new Error(`record does not exist: ${entry.recordId}`);
+    }
+    await db.progressEntries.add(entry);
+  });
   return entry;
 }
 
