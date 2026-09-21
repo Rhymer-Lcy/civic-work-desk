@@ -212,6 +212,77 @@ rule contributors have to remember.
 After a canonical restore the importer sets `lastBackupRevision` to the restored `dataRevision`: the
 database now equals a backup the user is holding, so asking for another one would be wrong.
 
+### The revision a backup records is the revision it captured
+
+Phase 1.1 wrote `lastBackupRevision = meta.dataRevision` **at the moment the export finished**, which
+is not necessarily the revision the file contains:
+
+1. the snapshot captures revision R1 and the envelope is built from it;
+2. another tab, or the user typing while a large export serialises, mutates data → R2;
+3. the export finishes and reads the meta row, seeing R2;
+4. it records `lastBackupRevision = R2`, so `dataRevision === lastBackupRevision`;
+5. freshness reports **fresh** although the file on disk contains only R1.
+
+`recordCanonicalBackup({ capturedRevision, recordCount })` takes the revision observed **inside the
+snapshot transaction**, so the comparison is against what the file actually holds. If the store has
+moved on, the correct state is stale — and `dataRevision` is never rewound to make a file look newer
+than it is. `tests/integration/backup-freshness.test.ts` drives exactly that interleaving.
+
+Only a **complete** canonical backup calls that function at all. An acknowledged incomplete export
+generates its file, says so, and leaves the backup state untouched; a diagnostic recovery export and
+the XLSX/DOCX reports never touch it either.
+
+### Freshness compares business dates, not an instant against a date
+
+`lastBackupAt` is a UTC instant; `today` is a local business date. Phase 1.1 compared
+`lastBackupAt.slice(0, 10)` — the **UTC** day — against a local `todayIso()`, and the two disagree for
+part of every day: at 16:30 UTC a UTC+8 user is already on the next day. A backup taken seconds earlier
+was reported as 「上次备份在 1 天前」 for the whole of a UTC+8 morning.
+
+`businessDateOf()` in `src/domain/dates.ts` converts the instant to a local day, and every comparison
+between a stored instant and a business date goes through it. Found on 2026-09-21 at 16:15 UTC, when an
+end-to-end assertion of 「今天已备份。」 started failing purely because the clock crossed 16:00.
+
+## The canonical snapshot boundary
+
+`readStoreSnapshot()` in `src/db/snapshot.ts` reads **every user-data store inside one Dexie read-only
+transaction**:
+
+```
+records · progressEntries · categories · groups · settings · meta
+```
+
+Inside that boundary the rows are read raw, validated, partitioned into valid values and invalid rows,
+and `meta.dataRevision` is captured.
+
+Phase 1.1 built a backup from six independent repository reads issued through `Promise.all`. Each is
+its own IndexedDB transaction, so the archive described records as they were at one instant, categories
+at another, and the revision counter at a third — a state that had never simultaneously existed, with
+nothing detecting the difference. A concurrent write in another tab was enough to produce it.
+
+Two consequences:
+
+- **the backup is a coherent snapshot**, and the revision it records is the revision it contains;
+- **corruption in any store is visible**, because validation happens here rather than inside the
+  convenience readers.
+
+The application's own load (`loadSnapshot()` in `src/app/store/data-store.ts`) uses the same function,
+so every view and the integrity report beside them describe one read.
+
+### The repositories keep their convenient shapes, on purpose
+
+`listCategories()` and `listGroups()` still return only valid rows, and `getSettings()` still falls back
+to the defaults. That is correct **for the UI**: a corrupt category cannot be rendered in a select, and
+the application must stay operable.
+
+What was wrong in Phase 1.1 is that a _backup_ was built from those same convenient shapes, so
+corruption became silent absence in an archive the product called complete — and `getSettings()`
+substituted defaults the user had never chosen. Anything that must account for corruption —
+diagnostics, backups, the recovery export — reads the snapshot instead.
+
+A missing settings row is treated as an integrity problem rather than as "no settings", for the same
+reason: nothing can tell us what the user's settings were, so a backup must not claim to carry them.
+
 ## Migrations
 
 Schema versions are declared in `applyVersions()` in `src/db/schema.ts`. A shipped version block is
@@ -229,21 +300,71 @@ counter silently becomes `NaN`.
 
 `backupFormatVersion` is checked against a declared supported range rather than `>= 1`:
 
-| Situation                               | Behaviour                                                                |
-| --------------------------------------- | ------------------------------------------------------------------------ |
-| version 2 (current)                     | accepted                                                                 |
-| version 1                               | accepted through an explicit `migrateV1ToV2`, which fills the new fields |
-| a version above the current one         | **refused**, naming the version and telling the user to upgrade the app  |
-| a `schemaVersion` above the current one | **refused**, naming the version                                          |
-| not a number                            | refused                                                                  |
+| Situation                               | Behaviour                                                                   |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| version 3 (current)                     | accepted                                                                    |
+| version 2                               | accepted through `migrateV2ToV3`; completeness derived, digest scope kept   |
+| version 1                               | accepted through `migrateV1ToV2` then `migrateV2ToV3`; completeness unknown |
+| a version above the current one         | **refused**, naming the version and telling the user to upgrade the app     |
+| a `schemaVersion` above the current one | **refused**, naming the version                                             |
+| not a number                            | refused                                                                     |
 
 Phase 1 validated `min(1)`, so a file written by a future build was read purely because its shape
 happened to validate — the most likely route to destroying data with a "successful" restore.
 `src/services/backup/compatibility.ts` is the single place those bounds live, and each failure message
 names the cause instead of reporting a generic validation error.
 
-Envelope version 2 adds two fields: `omittedInvalidRowIds`, so a backup can state that it is **not**
-complete, and `dataRevision`, so a restored database knows which revision it corresponds to.
+### What each envelope version knows about itself
+
+| version | phase     | completeness                                                                          | digest covers                        |
+| ------- | --------- | ------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1       | Phase 1   | nothing — the field did not exist, **and** the build could drop invalid rows silently | `payload`                            |
+| 2       | Phase 1.1 | `omittedInvalidRowIds`, but nothing consulted it on import                            | `payload`                            |
+| 3       | Phase 1.2 | explicit `completeness`, and the importer enforces it                                 | the whole envelope except the digest |
+
+### Completeness is a property of the file, and it is enforced
+
+`completeness` is one of three values:
+
+- **`complete`** — the producing build verified that every user-data store validated. Only this state
+  permits an exact canonical restore.
+- **`incomplete`** — the file itself lists rows it could not carry. It may be merged; it may **never**
+  be used for an exact restore, because restoring it cannot reproduce the original database. Phase 1.1
+  wrote this information into the file and then ignored it on import, so an archive that declared
+  itself incomplete was still offered as 完整还原.
+- **`unknown-legacy`** — a v1 archive. The format had no completeness field **and** the build that
+  wrote it could omit invalid rows without recording anything, so the absence of the field is not
+  evidence of completeness. Phase 1.1's migration wrote `omittedInvalidRowIds: []` for such files,
+  which reads as "nothing was omitted" — a claim the file cannot support. Restoring one is allowed,
+  because refusing every v1 archive would strand anyone whose only backup predates the field, but the
+  preview and the destructive confirmation both say that completeness is unknown.
+
+The importer exposes this as `plan.completeness` and `plan.exactRestorePossible`. The UI reads those
+rather than re-inspecting the raw file — the decision is made once, in a place tests can reach.
+
+### What the checksum covers, and what it is not
+
+The v3 digest is SHA-256 over **the entire envelope except the checksum field itself**, using the same
+`canonicalJson` serialiser as everything else.
+
+Phase 1.1 hashed `payload` alone. `omittedInvalidRowIds` — the field that decides whether a file may
+be used for an exact restore — sat outside the digest, so a one-character edit turned an incomplete
+archive into a complete-looking one with the checksum still matching.
+
+Every other field participates deliberately: `completeness` and `omittedInvalidRowIds` because they
+govern what the file may be used for; `application`, `backupFormatVersion` and `schemaVersion` because
+editing them changes how the file is read; `counts` because a mismatch is already a blocker and a
+tampered count should not verify; `dataRevision` because it becomes this installation's backup
+bookkeeping after a restore; `exportedAt` because it is displayed as provenance. Stating the rule as
+"everything except the digest" means a field added later needs no new judgement call.
+
+A v1/v2 file keeps its narrower **payload** scope, recorded in `checksum.scope` and verified that way.
+The digest is not recomputed over the wider material on migration: a digest this build calculated
+itself would verify nothing about the file as received.
+
+**This is corruption detection, not authentication.** Anyone who edits a file can recompute the
+digest. It catches truncation, a stray editor save, a half-written download. There is no key, so
+calling it a signature would be false.
 
 ### A record's content signature
 

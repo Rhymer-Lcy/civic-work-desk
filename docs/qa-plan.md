@@ -26,7 +26,7 @@ per-file lines of the same Vitest run rather than typed by hand. The figures bel
 run of 2026-09-21 that produced the Phase-1.1 package; if a later run disagrees, the package is right
 and this file is stale.
 
-### Unit — 153 tests in 8 files
+### Unit — 156 tests in 8 files
 
 | File                           | Covers                                                                                                                                                                                                                                                                        |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -36,14 +36,17 @@ and this file is stale.
 | `status-and-reports.test.ts`   | every legacy status label, `未完成`→todo, unrecognised→null, period construction, **membership by the record's own date**, first-of-month boundary, completion rate from canonical status, overdue vs stale separation                                                        |
 | `legacy-normalisation.test.ts` | all 20 fixtures against the schema; dates, phones, statuses, progress, honours (both shapes), categories, residue, rejection, id preservation                                                                                                                                 |
 | `backup-envelope.test.ts`      | canonical JSON key ordering, envelope self-description, JSON round-trip, checksum match/mismatch/absent, counts consistency, filename sortability, backup-health state machine                                                                                                |
+| `record-signature.test.ts`     | deep content equality: a nested date, both ends of a range, a free-text date, an honour award date and `legacyResidue` all participate; audit timestamps do not; key order is irrelevant at any depth; the import preview's identical-vs-differing verdict                    |
+| `router.test.ts`               | every declared route; unknown, empty, bare, repeated-slash, trailing-slash and capitalised hashes; query retained on a known route and discarded with an unknown one; normalisation idempotence; the invariant that a canonical hash parses to the same route                 |
 
-| `record-signature.test.ts` | deep content equality: a nested date, both ends of a range, a free-text date, an honour award date and `legacyResidue` all participate; audit timestamps do not; key order is irrelevant at any depth; the import preview's identical-vs-differing verdict |
-| `router.test.ts` | every declared route; unknown, empty, bare, repeated-slash, trailing-slash and capitalised hashes; query retained on a known route and discarded with an unknown one; normalisation idempotence; the invariant that a canonical hash parses to the same route |
+`dates.test.ts` also covers `businessDateOf`: a stored UTC instant must be compared as the **local**
+business day — the defect that made a seconds-old backup read as 「上次备份在 1 天前」 for a whole UTC+8
+morning.
 
 The two new files each keep the **defective** Phase-1 implementation beside the corrected one, so an
 assertion states what actually regressed rather than testing current code against itself.
 
-### Integration — 63 tests in 5 files
+### Integration — 108 tests in 8 files
 
 `database.test.ts` — seeding idempotence, CRUD, schema rejection on write, invalid-row reporting on
 read, soft delete and restore, purge with progress, trash emptying, progress entries addressed by
@@ -79,7 +82,30 @@ compatibility: a future `backupFormatVersion` (999) is refused by name, a future
 non-numeric version is refused, and a genuine v1 file is accepted through `migrateV1ToV2` and still
 restores exactly.
 
-### End-to-end — 75 Chromium + 10 cross-engine + 14 accessibility
+`store-integrity.test.ts` — **Phase 1.2, every store.** A corrupt category, a corrupt group and a
+corrupt (or missing) settings row are each detected rather than filtered away or replaced with
+defaults; corruption in all five stores is counted at once; each of them alone makes `createBackup()`
+refuse, and an acknowledged export names every omitted row including the taxonomy and settings; the
+diagnostic recovery export preserves all five raw rows with their reasons and does **not** substitute
+defaults for corrupt settings. Plus the snapshot boundary: `readStoreSnapshot()` must open exactly one
+transaction, and that transaction's scope must cover all six stores — measured by wrapping
+`db.transaction`, which sees **zero** explicit transactions in Phase 1.1 and fails there.
+
+`backup-freshness.test.ts` — **Phase 1.2, what may mark a backup fresh.** A clean canonical backup
+does; an acknowledged incomplete export does not, and does not overwrite an earlier good state; a
+diagnostic recovery export does not; XLSX and DOCX do not (both built for real, so the assertion covers
+the actual code path). Then the completion race: snapshot at R1, mutate to R2, record the R1 file, and
+the state must be **stale** — with the no-race case still fresh, and `dataRevision` never rewound.
+
+`canonical-exactness.test.ts` — **Phase 1.2, what an exact restore may promise.** An incomplete archive
+is refused for exact restore while merge stays available; duplicate record, progress, category and group
+ids each block it; an orphan progress entry and dangling category, group and related-work references
+each block it; a healthy archive has no issues. Plus the v3 digest catching an edit to the completeness
+metadata, and v1/v2 compatibility — a v2 file migrates and restores exactly, a v2 file declaring
+omissions cannot, and a v1 file is `unknown-legacy` (never "complete"), restorable behind an explicit
+acknowledgement, deterministically migrated.
+
+### End-to-end — 82 Chromium + 19 cross-engine (1 skipped) + 14 accessibility
 
 **`smoke.spec.ts`** — first run and empty state; create/edit/complete; progress add and edit with
 the neighbouring entry verified untouched; long-term visibility and completion precedence; honour
@@ -137,17 +163,23 @@ Captured from the run that produced the review package; the raw output is in
 | Format                         | `npm run format:check`   | PASS                                                             |
 | Lint (`--max-warnings=0`)      | `npm run lint`           | PASS                                                             |
 | Typecheck (both projects)      | `npm run typecheck`      | PASS                                                             |
-| Unit + integration             | `npm run test:unit`      | **PASS — 216/216** in 13 files (153 unit, 63 integration)        |
+| Unit + integration             | `npm run test:unit`      | **PASS — 264/264** in 16 files (156 unit, 108 integration)       |
 | Production build               | `npm run build`          | PASS                                                             |
 | Static security scan           | `npm run scan:static`    | PASS — 0 findings                                                |
-| E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 75/75**                                                 |
-| E2E, Firefox + WebKit          | `npm run test:e2e:cross` | **PASS — 10/10** (5 critical flows × 2 engines)                  |
+| E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 82/82**                                                 |
+| E2E, Firefox + WebKit          | `npm run test:e2e:cross` | **PASS — 19 passed, 1 skipped** (see the WebKit limitation)      |
 | Accessibility (axe)            | `npm run test:a11y`      | PASS — 14/14, 0 unexplained violations                           |
 | `npm audit --omit=dev`         | high/critical            | PASS — 0 at `high` or above (2 moderate accepted and documented) |
 
-The desktop-Chromium project runs every spec, so `accessibility.spec.ts` is counted both inside the 75
+The desktop-Chromium project runs every spec, so `accessibility.spec.ts` is counted both inside the 82
 and again in the dedicated `a11y` project, which re-runs it at 1280×900. That double count is
 deliberate and stated rather than netted off.
+
+The one skipped cross-engine test is the offline **reload** on WebKit: `page.reload()` after
+`context.setOffline(true)` fails with "WebKit encountered an internal error" in Playwright 1.63.0 /
+WebKit 26.6, reproduced 2/2 on 2026-09-21. That is a harness limitation, not a product observation —
+the offline **write** path does run on WebKit, and Chromium and Firefox both cover the offline reload.
+The skip is declared in the test with that reason rather than quietly dropped from the matrix.
 
 ### Defects found and fixed by this test suite
 
@@ -218,6 +250,47 @@ Two claims of my own were withdrawn after measurement rather than shipped:
   path with the SPA fallback, so the assertion was rewritten to test whether the body **is** a source
   map.
 
+### Found during Phase 1.2, by the tests written for it
+
+The Phase-1.1 suite passed on all of these. Eleven were expressed against the Phase-1.1 API and run on
+commit `1e0c9cb`, where **all eleven fail** — the failure messages are quoted in the Phase-1.2 section of
+`CHANGELOG.md`. The twelfth was found by an end-to-end assertion that started failing at 16:15 UTC.
+
+1. **An incomplete archive was still offered as an exact restore.** `omittedInvalidRowIds` was written
+   into the file and never consulted on import: `planBlockers` returned nothing and the confirm button
+   read 完整还原.
+2. **An acknowledged incomplete export marked the backup fresh.** `createBackup(...)` called
+   `recordBackupSuccess()` regardless of completeness, so a file the application described as incomplete
+   silenced the reminder.
+3. **The recorded revision was the one current at completion, not the one captured.** A mutation between
+   snapshot and completion was counted as included, and the health state read fresh for data the file did
+   not contain.
+4. **A corrupt category vanished silently**, because `listCategories()` filtered failures out and the
+   backup was built from that reader. Same for groups.
+5. **Corrupt settings were silently replaced by defaults** in the backup, because `getSettings()` fell
+   back and the backup used it.
+6. **A corrupt taxonomy or settings row did not prevent a "complete" backup**, so the archive was
+   labelled complete while missing rows the database held.
+7. **The canonical snapshot was six independent transactions**, so the archive could describe a state
+   the database never simultaneously had.
+8. **A duplicate progress id was dropped and the restore still called exact** — detected, reported as a
+   collision, and then silently excluded from an archive being restored "exactly".
+9. **Relational integrity was never checked**: an orphan progress entry, a dangling `categoryId`,
+   `groupId` or `relatedWorkId` all restored happily into a database that could not resolve them.
+10. **The checksum did not cover the completeness metadata**, so editing `omittedInvalidRowIds` produced
+    a complete-looking archive whose digest still matched.
+11. **A v1 archive was migrated to "nothing was omitted"**, inferring historical completeness from a
+    field the format never had — while Phase 1 could drop invalid rows silently.
+12. **A seconds-old backup reported 「上次备份在 1 天前」 for a whole UTC+8 morning**, because freshness
+    compared a UTC-sliced day against a local business date. Found when an E2E assertion of
+    「今天已备份。」 began failing purely because the clock crossed 16:00 UTC — a test that had passed
+    earlier the same day for no better reason than the hour.
+
+One assertion of my own was withdrawn during this pass: an end-to-end test asserted that merging an
+incomplete archive leaves the confirm button **enabled**. It does not, and correctly so — that
+particular file adds no rows, so it is disabled for the ordinary "nothing to write" reason. The test now
+asserts what matters: the completeness refusal is gone and the operation is named as a merge.
+
 ## Manual review
 
 Automated accessibility tooling covers roughly a third of WCAG success criteria. The following were
@@ -256,12 +329,25 @@ checked by hand on 2026-09-21, Chromium 1440×900 and an emulated Pixel 7.
 - **Concurrent tabs.** Two tabs open on the same database is not tested. Dexie handles the
   connection, but last-write-wins between tabs is unverified.
 
-## Cross-engine verification, and the two defects it found
+## Cross-engine verification, and the three defects it found
 
-`npm run test:e2e:cross` runs `cross-browser.spec.ts` on Firefox and WebKit — five critical flows per
-engine, chosen because their implementations differ most between engines rather than to maximise a
-count. The Chromium desktop project runs the same file, so all three engines are measured on identical
-assertions. Browsers install with `npm run test:e2e:install:cross`.
+`npm run test:e2e:cross` runs `cross-browser.spec.ts` on Firefox and WebKit — critical flows only,
+chosen because their implementations differ most between engines rather than to maximise a count. The
+Chromium desktop project runs the same file, so all three engines are measured on identical assertions.
+Browsers install with `npm run test:e2e:install:cross`.
+
+**In CI since Phase 1.2.** Phase 1.1 wired this suite into the review-package producer but not into
+`.github/workflows/ci.yml`, so an ordinary pull request could regress Firefox or WebKit while CI stayed
+green. A separate `cross-engine` job now builds and runs it; it is separate because it needs two extra
+browser downloads the Chromium job has no use for, and because a cross-engine failure should be
+identifiable at a glance.
+
+The flows, per engine: first-run seeding and durability across a reload; a date-only value rendering as
+the day it was entered (tested at 1 January, where a UTC round-trip would show 2025-12-31); backup export
+→ canonical restore; both lazy export chunks producing real ZIP containers; keyboard-only dialog focus
+trap, Escape and focus restoration; **editing a persisted record and reading it back after a reload**;
+**adding two progress entries and reading them back after a reload**; **search filtering and clearing**;
+**a write with the network cut**; and **an offline reload** (skipped on WebKit — see below).
 
 Running it for the first time found two real problems, neither of which any Chromium test could have
 surfaced:
@@ -278,7 +364,14 @@ surfaced:
    convention rather than our focus handling. It now activates the trigger from the keyboard, which is
    what the test's name always claimed.
 
-Both are recorded here because a new test layer that reports no findings is not being run.
+3. **Playwright's WebKit cannot reload an offline page.** `page.reload()` after
+   `context.setOffline(true)` fails with "WebKit encountered an internal error", reproduced 2/2 on
+   2026-09-21 with Playwright 1.63.0 / WebKit 26.6. The offline suite is therefore split: the **write**
+   path runs on every engine, and the **reload** path is explicitly skipped on WebKit with that reason
+   recorded in the test. This is a limitation of the harness, not a statement about the product — and
+   certainly not about Safari, which remains untested on real hardware.
+
+All three are recorded here because a new test layer that reports no findings is not being run.
 
 ## Open items for Phase 2
 

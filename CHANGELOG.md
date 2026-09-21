@@ -3,6 +3,104 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project is internal and unversioned; entries are grouped by phase.
 
+## [Unreleased] — Phase 1.2 backup integrity closure
+
+Closing the remaining backup/restore integrity invariants before the data layer is signed off, after an
+independent audit of the Phase-1.1 review package. No new product features, no architectural change, no
+new runtime dependency. Branch `audit/phase-1.2-backup-integrity`, on top of `1e0c9cb`.
+
+**Eleven of these were expressed against the Phase-1.1 API and run on commit `1e0c9cb`, where all eleven
+fail.** The failure messages, verbatim:
+
+```
+incomplete file must not establish freshness: expected 1 to be null
+must record R1, not R2: expected 2 to be 1
+promise resolved "{ download: …, …(2) }" instead of rejecting        (corrupt category)
+promise resolved "{ download: …, …(2) }" instead of rejecting        (corrupt settings)
+the omission must be recorded: expected [] to include 'corrupt-group'
+exactly one transaction: expected [] to have a length of 1 but got +0
+an incomplete archive must be refused for exact restore: expected '' to contain '完整还原'
+must refuse to drop a progress row: expected '' to contain '进展 ID'
+an orphan must block an exact restore: expected 0 to be greater than 0
+the digest must cover completeness metadata: expected 'match' to be 'mismatch'
+a v1 file cannot prove completeness: expected undefined to be 'unknown-legacy'
+```
+
+### Fixed — completeness
+
+- **An archive that declares itself incomplete can no longer be used for an exact restore.** Phase 1.1
+  wrote `omittedInvalidRowIds` into the file and then never consulted it on import, so a file the
+  application itself described as incomplete was offered as 完整还原. Completeness is now explicit on the
+  file (`completeness`), explicit on the plan (`plan.completeness`, `plan.exactRestorePossible`), and
+  enforced by a blocker. Merge remains available; nothing is silently downgraded after confirmation, and
+  the confirm button reads 无法完整还原 rather than naming a promise it cannot keep.
+- **An incomplete export no longer marks the backup fresh.** `createBackup` called
+  `recordBackupSuccess()` regardless of completeness, so a degraded file silenced the reminder. Only a
+  complete canonical backup establishes freshness; the diagnostic recovery export and the XLSX/DOCX
+  reports never do.
+- **Corruption is detected in every user-data store, not only records and progress.**
+  `listCategories()` and `listGroups()` filtered failing rows away and `getSettings()` returned
+  `defaultSettings()`, so a "complete" backup could drop a corrupt category or ship defaults in place of
+  the user's settings with nothing recorded. All five stores are now read through one validated snapshot;
+  each of them alone makes the export refuse, Diagnostics reports the damage per store, and the recovery
+  export preserves all five raw rows with their reasons. A missing settings row counts as damage rather
+  than as absence.
+
+### Fixed — exactness
+
+- **A duplicate progress id now blocks a canonical restore.** Phase 1.1 detected the collision, dropped
+  the second row, and still labelled the operation exact.
+- **Relational integrity is validated before an exact restore.** An orphan progress entry, a dangling
+  `categoryId`, `groupId` or `relatedWorkId`, and duplicate record/progress/category/group ids are each
+  refused, with every defect reported at once. The policy is refuse, never repair: dropping the orphan or
+  nulling the reference would produce a database that does not match the file.
+
+### Fixed — snapshot coherence and revision accounting
+
+- **The canonical snapshot is one read-only transaction** over records, progress, categories, groups,
+  settings and meta. Phase 1.1 used six independent repository reads, so an archive could describe a
+  state the database never simultaneously had.
+- **The revision a backup records is the revision it captured**, taken inside that transaction. Phase 1.1
+  recorded whatever was current when the export finished, so a mutation between snapshot and completion
+  was counted as included and the backup read fresh for data the file did not contain. `dataRevision` is
+  never rewound to make a file look newer than it is.
+- **Freshness compares business dates.** `lastBackupAt` is a UTC instant and `today` is a local day;
+  Phase 1.1 compared the instant's first ten characters against the local date, so a seconds-old backup
+  reported 「上次备份在 1 天前」 for a whole UTC+8 morning. Found when an E2E assertion of 「今天已备份。」
+  started failing purely because the clock crossed 16:00 UTC.
+
+### Changed — backup format v3
+
+- The envelope is **v3**. It carries explicit `completeness`, and its digest covers **the whole envelope
+  except the digest itself** — so the completeness metadata that governs what the file may be used for is
+  protected. Phase 1.1 hashed `payload` alone, and editing `omittedInvalidRowIds` produced a
+  complete-looking archive whose checksum still matched.
+- **v1 and v2 remain readable, with explicit migrations.** A v2 file keeps its payload-scoped digest
+  (recorded in `checksum.scope`, not recomputed — a digest this build calculated would verify nothing) and
+  its completeness is derived. A **v1** file is classified `unknown-legacy`: the format had no
+  completeness field and the build that wrote it could drop rows silently, so absence of the field is not
+  evidence of completeness. Phase 1.1 migrated it to `omittedInvalidRowIds: []`, which reads as a claim
+  the file cannot support. It is still restorable, behind wording that says completeness is unknown.
+- The checksum is documented as **corruption detection, not authentication**. There is no key.
+
+### Added
+
+- `src/db/snapshot.ts` — the single-transaction validated read model for every store.
+- `src/services/import/integrity.ts` — canonical relational-integrity validation.
+- `tests/integration/store-integrity.test.ts`, `backup-freshness.test.ts`, `canonical-exactness.test.ts`
+  — 45 tests covering the invariants above.
+- Two end-to-end tests driving the incomplete-backup flow through the real UI: the refusal, the knowing
+  export, the preview wording, the disabled 无法完整还原 button, and that the reminder stays unsilenced.
+- Four more cross-engine flows (edit-and-reload, progress-and-reload, search, offline write) and an
+  offline reload, plus a **CI job** that runs the cross-engine suite — Phase 1.1 had wired it into the
+  review-package producer but not into CI, so an ordinary PR could regress Firefox or WebKit unnoticed.
+
+### Known limitation
+
+Playwright's WebKit cannot reload an offline page (`WebKit encountered an internal error`, reproduced
+2/2). The offline **write** path runs on every engine; the offline **reload** is skipped on WebKit with
+that reason declared in the test. Safari and iOS on real hardware remain untested, as in Phase 1.1.
+
 ## [Unreleased] — Phase 1.1 remediation
 
 A narrowly scoped correction pass following an independent audit of the Phase-1 review package. No new

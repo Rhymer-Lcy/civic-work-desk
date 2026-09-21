@@ -14,12 +14,12 @@ found again.
 
 ## Accepted formats
 
-| Format               | Shape                                                                                                                | Detection                  |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| CivicWorkDesk backup | `{application: 'civic-work-desk', backupFormatVersion, schemaVersion, exportedAt, counts, payloadChecksum, payload}` | `application` field        |
-| Legacy versioned     | `{version: 3, exportTime, works: [...]}`                                                                             | `works` array, no `honors` |
-| Legacy split         | `{works: [...], honors: [...]}`                                                                                      | both arrays                |
-| Legacy bare array    | `[...]`                                                                                                              | top-level array            |
+| Format               | Shape                                                                                                                                                           | Detection                  |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| CivicWorkDesk backup | `{application: 'civic-work-desk', backupFormatVersion, schemaVersion, exportedAt, counts, completeness, omittedInvalidRowIds, dataRevision, checksum, payload}` | `application` field        |
+| Legacy versioned     | `{version: 3, exportTime, works: [...]}`                                                                                                                        | `works` array, no `honors` |
+| Legacy split         | `{works: [...], honors: [...]}`                                                                                                                                 | both arrays                |
+| Legacy bare array    | `[...]`                                                                                                                                                         | top-level array            |
 
 Anything else is refused with a stated reason. A CivicWorkDesk envelope that fails its schema is
 refused rather than partially imported.
@@ -178,6 +178,11 @@ resolved from both, and the preview text and the confirm button are named after 
 categories, no groups and no settings; calling it a full restore would tell the user their
 configuration had been restored when it had merely been left alone.
 
+A `canonical-restore` is only _permitted_ when the file can actually deliver one — see completeness
+and relational integrity below. When it cannot, the operation is refused with a stated reason and the
+confirm button reads 无法完整还原. It is never silently downgraded to something narrower after the
+user has confirmed, and it is never labelled 完整还原 while being unable to be one.
+
 **Merge never overwrites.** An incoming record whose id already exists is skipped and listed in the
 preview, with both titles and both dates shown, and marked when the two are byte-identical (in which
 case the skip has no effect). "Byte-identical" is decided by a deep canonical serialisation of the
@@ -223,16 +228,46 @@ version, revision counter, backup history — which describes this installation,
 After a canonical restore the revision counter is stamped as "equal to the backup you hold", so the
 application does not immediately ask for a backup of data that just came out of one.
 
+### An exact restore must be _able_ to be exact
+
+A canonical restore promises `restore(D, B(S)) = S`. Several defects break that promise while every
+individual row still passes its schema, and Phase 1.1 permitted all of them. Each is now a blocker for
+`canonical-restore`, reported in the preview with its reason:
+
+| Refused when                                                 | why an exact restore is impossible                                               |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| the file declares itself `incomplete`                        | it lists rows it could not carry; restoring it cannot reproduce the database     |
+| a record id appears twice                                    | one of the two rows would have to be dropped                                     |
+| a **progress** id appears twice                              | same, and Phase 1.1 dropped the second row while still calling the restore exact |
+| a category or group id appears twice                         | the taxonomy cannot be written as given                                          |
+| a progress entry's `recordId` is not in the file             | the note would belong to nothing                                                 |
+| a work record's `categoryId` / `groupId` is not in the file  | the restored record would show an association the database cannot resolve        |
+| an honour's `relatedWorkId` is not a work record in the file | same, including an honour pointing at another honour                             |
+
+The policy is **refuse, never repair**. Dropping the orphan or nulling the dangling reference would
+produce a database that does not match the file the user was told it restored.
+`src/services/import/integrity.ts` performs these checks and returns every defect at once, because a
+preview that reveals one problem at a time lies about how damaged the file is.
+
+Legacy imports are explicitly out of scope: `legacy-replace` and merge of a legacy file use the
+documented best-effort normalisation path, which is allowed to reject rows and report warnings.
+
 ## Integrity
 
-A CivicWorkDesk envelope carries a SHA-256 of its canonically-serialised payload. On import:
+A CivicWorkDesk v3 envelope carries a SHA-256 over **the whole envelope except the digest itself** —
+including the completeness metadata that decides what the file may be used for. A v1/v2 file's digest
+covered only its payload, and the file says so in `checksum.scope`. On import:
 
 | Verdict        | Meaning                          | Effect            |
 | -------------- | -------------------------------- | ----------------- |
-| `match`        | payload is intact                | proceed           |
-| `mismatch`     | payload was altered after export | **blocked**       |
+| `match`        | content is intact                | proceed           |
+| `mismatch`     | content was altered after export | **blocked**       |
 | `absent`       | file carries no checksum         | reported, allowed |
 | `unverifiable` | this runtime cannot hash         | reported, allowed |
+
+The preview also states the scope when it is the narrower `payload`, so a user restoring an older
+archive knows the completeness declaration itself was not protected. See `docs/data-model.md` for what
+participates in the digest and why, and note that this is corruption detection, not authentication.
 
 Declared counts are also compared against the payload; a mismatch blocks the import.
 

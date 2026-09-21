@@ -104,6 +104,31 @@ Now:
   it is a manual, technical act, and the Diagnostics panel now says so in an ordered three-step
   procedure instead of the earlier contradictory advice.
 
+### Every store, not only records — and the file may never lie about it
+
+Phase 1.1 closed the omission defect for records and progress entries. It left three stores open:
+`listCategories()` and `listGroups()` ended in `.filter(r => r.success)`, and `getSettings()` returned
+`defaultSettings()` when the stored row did not validate. A "complete canonical backup" could therefore
+still drop a corrupt category, or ship defaults in place of settings the user had chosen, with nothing
+recorded anywhere and Diagnostics reporting 全部记录通过结构校验.
+
+Phase 1.2 closes it for all five user-data stores — records, progress entries, categories, groups and
+the settings row — through one validated read (`readStoreSnapshot()`), and enforces three consequences:
+
+1. **The export refuses.** A corrupt row in _any_ store raises `IncompleteBackupError`, naming which
+   stores are affected and how many rows.
+2. **A knowing export declares itself.** Proceeding writes `completeness: 'incomplete'` plus the
+   omitted ids, protected by the digest, and that file can never afterwards be used for an exact
+   restore. The toast says so.
+3. **An incomplete export does not establish freshness.** Phase 1.1 called `recordBackupSuccess()`
+   regardless, so a file the application itself described as incomplete silenced the backup reminder.
+   Only a complete canonical backup marks the data backed up; the diagnostic recovery export and the
+   XLSX/DOCX reports never do.
+
+Diagnostics reports the damage per store, and the recovery export preserves the raw rows of all five
+with their validation reasons. A missing settings row counts as damage rather than as absence: nothing
+can say what the user's settings were, so a backup must not claim to carry them.
+
 ## Content Security Policy
 
 Delivered in `index.html` as a meta tag:

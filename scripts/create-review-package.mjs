@@ -36,7 +36,7 @@ const OUT_DIR = join(ROOT, '_review_packages');
  * after one phase while its summary claims another. Bump it deliberately when a phase closes; earlier
  * archives keep the label they were built with, which is what makes a directory of them readable.
  */
-const PHASE = '1.1';
+const PHASE = '1.2';
 const PHASE_SLUG = `phase-${PHASE.replace(/\./g, '-')}`;
 
 /* ------------------------------------------------------------------ packaging allow-list */
@@ -721,20 +721,66 @@ It replaces a single 3,590-line HTML file that used \`localStorage\` as its data
 real personal records in source, and loaded third-party analytics while describing itself as
 offline. \`docs/legacy-audit.md\` documents that prototype finding by finding, with line numbers.
 
-## What changed since Phase 1
+## What changed in Phase 1.2
 
-This is a remediation pass, not a redesign: no new product features, no architectural change, no new
-runtime dependency. It corrects the defects an independent audit of the Phase-1 package found, the
-most serious being that **a replace-mode restore destroyed all data and wrote nothing back**.
+A backup-integrity closure pass, not a redesign: no new product features, no architectural change, no
+new runtime dependency. Eleven of the defects it closes were expressed against the Phase-1.1 API and run
+on commit \`1e0c9cb\`, where **all eleven fail**; \`CHANGELOG.md\` quotes the failure messages.
 
-\`CHANGELOG.md\` lists every change with the reason. Two entries worth reading first:
+### Backup completeness
 
-- \`docs/qa-plan.md\` — the ten defects found during this pass, and the two of my own claims that were
-  withdrawn after measurement rather than shipped.
-- \`docs/review-package-provenance.md\` — the original Phase-1 archive was deleted by mistake during
-  this pass and could not be recovered. The commit it described is intact; the archive beside this one
-  is a rebuild from that commit, with a different digest, and it still fails one verification check
-  because it carries the Phase-1 defect that check was written to catch.
+A canonical backup is either **complete**, **incomplete** or — for a v1 archive — **unknown-legacy**.
+The state is written into the file, protected by the digest, exposed on the import plan, and enforced:
+
+| state | may be merged | may be restored exactly | how it arises |
+| --- | --- | --- | --- |
+| \`complete\` | yes | **yes** | every user-data store validated when the file was written |
+| \`incomplete\` | yes | **no** | the user knowingly exported while rows failed validation |
+| \`unknown-legacy\` | yes | yes, behind explicit wording | a v1 archive, whose format could not record omissions |
+
+Completeness now covers **all five user-data stores** — records, progress entries, categories, groups
+and settings. Phase 1.1 covered only the first two, so a corrupt category vanished and corrupt settings
+were replaced by defaults inside an archive the product called complete.
+
+### Snapshot transaction model
+
+\`readStoreSnapshot()\` reads records, progressEntries, categories, groups, settings and meta inside
+**one Dexie read-only transaction**, validating as it goes. Phase 1.1 issued six independent repository
+reads, so an archive could describe a state the database never simultaneously had.
+
+### Captured-revision semantics
+
+The revision a backup records is the one observed **inside that transaction**, not the one current when
+the export finishes. A mutation between snapshot and completion therefore leaves the backup correctly
+**stale**; \`dataRevision\` is never rewound. Only a complete canonical backup records anything at all.
+
+### Format compatibility
+
+| version | completeness | digest covers |
+| --- | --- | --- |
+| 1 | unknown-legacy (never inferred as complete) | payload |
+| 2 | derived from \`omittedInvalidRowIds\` | payload |
+| 3 (current) | explicit | the whole envelope except the digest |
+
+v1 and v2 files are migrated explicitly and keep their narrower digest scope, recorded rather than
+recomputed. The digest is corruption detection, not authentication.
+
+### Canonical relational integrity
+
+Before an exact restore: unique record, progress, category and group ids; every progress \`recordId\`,
+work \`categoryId\`/\`groupId\` and honour \`relatedWorkId\` resolving inside the file. Any failure
+refuses the restore — refuse, never repair.
+
+### Remaining limitations
+
+- Safari and iOS on **real hardware** are untested. Playwright's WebKit is not Safari.
+- Playwright's WebKit cannot reload an offline page, so that one cross-engine case is skipped there
+  (the offline *write* path does run). Reproduced 2/2 and declared in the test.
+- The accepted moderate advisory (\`exceljs\` → \`uuid\`) is unchanged and documented in
+  \`docs/security.md\`.
+- \`docs/review-package-provenance.md\` records that the original Phase-1 archive was destroyed during
+  Phase 1.1 and rebuilt from its commit; that rebuild is still present and still fails one verification
+  check, because it carries the Phase-1 defect the check was written to catch.
 
 ## Verification
 
