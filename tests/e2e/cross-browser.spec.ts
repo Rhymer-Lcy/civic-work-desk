@@ -232,6 +232,73 @@ test.describe('critical flows on this engine', () => {
     await expect(page.getByRole('article', { name: '乙类日常工作' })).toBeVisible();
   });
 
+  test('linked honour survives a permanent delete, and a backup still succeeds', async ({
+    page,
+  }) => {
+    /*
+     * The Phase-1.3 hard-delete policy, end to end in a real browser.
+     *
+     * Permanently deleting a work record preserves any honour that references it and detaches the
+     * link, in one transaction. The consequence is stated in the confirmation before it happens. The
+     * resulting state must remain backup-viable — which is the whole point: Phase 1.2 produced a live
+     * state here whose own canonical backup could not be restored.
+     */
+    await openApp(page, 'work');
+    await addRecord(page, '将被彻底删除的工作', '2026-09-12');
+
+    // An honour linked to it.
+    await goToRoute(page, '荣誉');
+    await page.getByRole('button', { name: '新增荣誉' }).first().click();
+    const honorDialog = page.getByRole('dialog', { name: '新增荣誉记录' });
+    await expect(honorDialog).toBeVisible();
+    await honorDialog.getByRole('textbox', { name: '荣誉名称', exact: true }).fill('关联的荣誉');
+    await honorDialog
+      .getByRole('combobox', { name: '关联工作事项' })
+      .selectOption({ label: '将被彻底删除的工作' });
+    await honorDialog.getByRole('button', { name: '保存' }).click();
+    await expect(honorDialog).toBeHidden();
+    await expect(page.getByText('关联的荣誉')).toBeVisible();
+
+    // Soft delete the work record, then empty the Trash.
+    await goToRoute(page, '工作');
+    const card = page.getByRole('article', { name: '将被彻底删除的工作' });
+    await card.getByRole('button', { name: '展开详情' }).click();
+    await card.getByRole('button', { name: '删除' }).click();
+    const trashConfirm = page.getByRole('dialog', { name: '移入回收站？' });
+    await expect(trashConfirm).toBeVisible();
+    await trashConfirm.getByRole('button', { name: '移入回收站', exact: true }).click();
+    await expect(trashConfirm).toBeHidden();
+
+    await goToRoute(page, '设置');
+    await page.getByRole('button', { name: '清空回收站' }).click();
+    const confirm = page.getByRole('dialog', { name: '清空回收站？' });
+    await expect(confirm).toBeVisible();
+    // The consequence is stated before the user commits.
+    await expect(confirm.getByText(/条荣誉记录关联到其中的工作事项/)).toBeVisible();
+    await confirm.getByRole('textbox').fill('清空');
+    await confirm.getByRole('button', { name: '确认清空' }).click();
+    await expect(confirm).toBeHidden();
+
+    // The honour is still there and still usable.
+    await goToRoute(page, '荣誉');
+    await expect(page.getByText('关联的荣誉')).toBeVisible();
+
+    // And the live state is backup-viable: the export succeeds rather than being refused.
+    await goToRoute(page, '设置');
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出 JSON 备份' }).click();
+    const download = await downloadPromise;
+    const envelope = JSON.parse(readFileSync(await download.path(), 'utf8')) as {
+      completeness: string;
+      payload: { records: { kind: string; relatedWorkId?: string | null }[] };
+    };
+    expect(envelope.completeness).toBe('complete');
+    const honor = envelope.payload.records.find((record) => record.kind === 'honor');
+    expect(honor, 'the honour is in the backup').toBeTruthy();
+    expect(honor?.relatedWorkId, 'with its reference detached, not dangling').toBeNull();
+    await expect(page.getByText('无法生成完整备份')).toHaveCount(0);
+  });
+
   test('offline: a write still lands with the network cut', async ({ page, context }) => {
     await openApp(page, 'work');
     await addRecord(page, '离线验证的示范事项', '2026-09-12');

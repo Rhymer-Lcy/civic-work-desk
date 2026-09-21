@@ -1,0 +1,220 @@
+{
+  "application": "civic-work-desk",
+  "backupFormatVersion": 3,
+  "schemaVersion": 1,
+  "exportedAt": "2026-09-21T13:00:00.000Z",
+  "counts": {
+    "records": 2,
+    "workRecords": 1,
+    "honorRecords": 1,
+    "progressEntries": 1,
+    "categories": 12,
+    "groups": 3
+  },
+  "completeness": "complete",
+  "omittedInvalidRowIds": [],
+  "dataRevision": 3,
+  "payload": {
+    "records": [
+      {
+        "id": "test-id-0001",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "示范工作事项（Phase 1.2 归档）",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-01"
+        },
+        "status": "in-progress",
+        "statusLabel": "进行中",
+        "requirement": "示范完成要求",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-30"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-africa-cooperation",
+        "groupId": "grp-fixed",
+        "longTerm": false,
+        "counterpartUnit": "示范单位甲",
+        "counterpartContact": "示范联系人",
+        "counterpartPhone": "138-0013-8000",
+        "remark": "示范备注",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0003",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "honor",
+        "title": "示范荣誉（关联工作）",
+        "awardedOn": {
+          "kind": "plain",
+          "date": "2026-06-20"
+        },
+        "honorType": "表彰（先进集体/个人）",
+        "level": "市级",
+        "issuingOrg": "示范颁发单位",
+        "documentNo": "示范〔2026〕1 号",
+        "personalRole": "主要完成人",
+        "evidenceLocation": "示范存放位置",
+        "relatedWorkId": "test-id-0001",
+        "remark": "",
+        "legacyResidue": null
+      }
+    ],
+    "progressEntries": [
+      {
+        "id": "test-id-0002",
+        "recordId": "test-id-0001",
+        "occurredOn": {
+          "kind": "absent"
+        },
+        "note": "示范进展一",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      }
+    ],
+    "categories": [
+      {
+        "id": "cat-africa-cooperation",
+        "name": "对非合作",
+        "sortOrder": 0,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-sister-cities",
+        "name": "友城友协",
+        "sortOrder": 1,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-hosting-visits",
+        "name": "接待·出访",
+        "sortOrder": 2,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-joint-handling",
+        "name": "会办件·建议提案",
+        "sortOrder": 3,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-meetings-events",
+        "name": "会议·活动",
+        "sortOrder": 4,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-documents-drafting",
+        "name": "文稿·材料",
+        "sortOrder": 5,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-feedback",
+        "name": "意见反馈",
+        "sortOrder": 6,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-training-study",
+        "name": "培训·学习",
+        "sortOrder": 7,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-appraisal-filing",
+        "name": "考核·填报",
+        "sortOrder": 8,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-party-legal",
+        "name": "党建·纪检·法治",
+        "sortOrder": 9,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-united-front",
+        "name": "统战·双拥",
+        "sortOrder": 10,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-finance-logistics",
+        "name": "财务·后勤·综合",
+        "sortOrder": 11,
+        "builtIn": true,
+        "archived": false
+      }
+    ],
+    "groups": [
+      {
+        "id": "grp-fixed",
+        "name": "固定工作",
+        "sortOrder": 0,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "grp-long-term",
+        "name": "长期推进",
+        "sortOrder": 1,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "grp-supervised",
+        "name": "分管工作",
+        "sortOrder": 2,
+        "builtIn": true,
+        "archived": false
+      }
+    ],
+    "settings": {
+      "appTitle": "政务工作记录台",
+      "appSubtitle": "数据保存在本机浏览器，建议定期导出 JSON 备份",
+      "backupReminderDays": 7,
+      "options": {
+        "honorType": [
+          "感谢信",
+          "表扬信",
+          "表彰（先进集体/个人）",
+          "奖励（嘉奖/记功）",
+          "通报表扬",
+          "领导批示肯定",
+          "考核优秀",
+          "其他"
+        ],
+        "honorLevel": ["国家级", "省级", "市级", "县区级", "单位内部", "其他"],
+        "personalRole": ["主要承办人", "参与人", "组织协调", "集体荣誉"]
+      }
+    }
+  },
+  "checksum": {
+    "algorithm": "sha-256",
+    "scope": "envelope",
+    "value": "fcbb6451ba07f5bb6e0b0a4687b38009a042ee94a1da3204a1ad170209d4b552"
+  }
+}
