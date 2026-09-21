@@ -184,7 +184,25 @@ const FORBIDDEN_CONTENT = [
   {
     pattern: /beacon\.cdn\.qq\.com/,
     label: 'Tencent Beacon host',
-    allow: [/^docs\//, /^tests\//, /^review\/STATIC_SECURITY_SCAN\.txt$/, /^scripts\//],
+    /*
+     * The check is "no live reference to a telemetry host in shippable code". Four places name
+     * the host for the opposite reason — to record that it was removed, or to assert its absence:
+     *   docs/            the legacy audit, security doc and dependency notes
+     *   CHANGELOG.md     the "Removed" entry
+     *   SECURITY.md      the privacy posture
+     *   tests/           an E2E assertion, which must contain its own needle
+     *   scripts/         this rule and the static scanner's rule list
+     * A rule that flagged these would be pressure to delete the record of the removal.
+     */
+    allow: [
+      /^docs\//,
+      /^CHANGELOG\.md$/,
+      /^SECURITY\.md$/,
+      /^README\.md$/,
+      /^tests\//,
+      /^scripts\//,
+      /^review\/STATIC_SECURITY_SCAN\.txt$/,
+    ],
   },
 ];
 
