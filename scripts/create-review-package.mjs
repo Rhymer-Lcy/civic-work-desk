@@ -384,10 +384,25 @@ const GATES = [
   { id: 'format', label: 'Prettier format check', command: 'npm', args: ['run', 'format:check'] },
   { id: 'lint', label: 'ESLint (max-warnings=0)', command: 'npm', args: ['run', 'lint'] },
   { id: 'typecheck', label: 'TypeScript typecheck', command: 'npm', args: ['run', 'typecheck'] },
-  { id: 'unit', label: 'Unit + integration tests', command: 'npm', args: ['run', 'test:unit'] },
+  {
+    // `--reporter=verbose` so the log carries one line per test. That is the evidence the per-file
+    // and per-category counts in TEST_RESULTS.md are summed from; see `vitestFileCounts`.
+    id: 'unit',
+    label: 'Unit + integration tests',
+    command: 'npm',
+    args: ['run', 'test:unit', '--', '--reporter=verbose'],
+  },
   { id: 'build', label: 'Production build', command: 'npm', args: ['run', 'build'] },
   { id: 'scan', label: 'Static security scan', command: 'npm', args: ['run', 'scan:static'] },
   { id: 'e2e', label: 'End-to-end tests', command: 'npm', args: ['run', 'test:e2e'] },
+  {
+    // Firefox + WebKit, critical flows only. Present so the cross-engine claim rests on captured
+    // output rather than on prose. Needs `npm run test:e2e:install:cross` once per machine.
+    id: 'cross',
+    label: 'Cross-engine tests (FF/WebKit)',
+    command: 'npm',
+    args: ['run', 'test:e2e:cross'],
+  },
   { id: 'a11y', label: 'Accessibility tests', command: 'npm', args: ['run', 'test:a11y'] },
   {
     id: 'audit',
@@ -440,31 +455,89 @@ function verifyLog(results, startedAt) {
   return `${lines.join('\n')}\n`;
 }
 
+/**
+ * Per-file test counts, counted from Vitest's own per-test lines.
+ *
+ * The `unit` gate runs with `--reporter=verbose`, which emits one line per test:
+ * `✓ tests/unit/dates.test.ts > date arithmetic > handles a leap day 2ms`. Counting those gives the
+ * per-file and per-category totals *from the run*, so no subtotal is maintained by hand in a
+ * document. A hand-typed subtotal has no owner and goes stale the next time a file is added — which
+ * is how the Phase-1 documentation came to state test counts no run had produced.
+ *
+ * Returns an empty array if the output carries no such lines, and the caller then reports
+ * "not captured" rather than a confident zero.
+ */
+function vitestFileCounts(output) {
+  const counts = new Map();
+  const pattern = /^\s*[✓×]\s+(tests\/[^\s>]+\.test\.tsx?)\s*>/gm;
+  let match;
+  while ((match = pattern.exec(output)) !== null) {
+    const file = match[1];
+    if (file) counts.set(file, (counts.get(file) ?? 0) + 1);
+  }
+  return [...counts].map(([file, count]) => ({ file, count }));
+}
+
 function testResults(results) {
   const byId = Object.fromEntries(results.map((r) => [r.id, r]));
   const extract = (id, pattern) => {
     const match = pattern.exec(byId[id]?.output ?? '');
     return match ? match[0] : 'not captured';
   };
-  return [
+
+  const files = vitestFileCounts(byId['unit']?.output ?? '');
+  const subtotal = (prefix) =>
+    files.filter((row) => row.file.startsWith(prefix)).reduce((sum, row) => sum + row.count, 0);
+  const inCategory = (prefix) => files.filter((row) => row.file.startsWith(prefix)).length;
+  const describe = (prefix) =>
+    files.length === 0
+      ? 'not captured'
+      : `${String(subtotal(prefix))} tests in ${String(inCategory(prefix))} files`;
+  const unitTotal = subtotal('tests/unit/');
+  const integrationTotal = subtotal('tests/integration/');
+
+  const lines = [
     '# Test results',
     '',
-    'Counts parsed from the captured output in `VERIFY_LOG.txt`.',
+    'Every number here is parsed from the captured output in `VERIFY_LOG.txt`. Nothing is typed by',
+    'hand, and the per-category subtotals are summed from the per-file counts of the same run — so a',
+    'new test file changes these figures without anyone remembering to.',
     '',
     '| Suite | Command | Result |',
     '| --- | --- | --- |',
     `| Unit + integration (Vitest) | \`npm run test:unit\` | ${extract('unit', /Tests\s+\d+ passed[^\n]*/)} |`,
     `| Test files | \`npm run test:unit\` | ${extract('unit', /Test Files\s+\d+ passed[^\n]*/)} |`,
-    `| E2E + responsive + privacy (Playwright) | \`npm run test:e2e\` | ${extract('e2e', /\d+ passed[^\n]*/)} |`,
+    `| — of which unit (\`tests/unit/\`) | | ${describe('tests/unit/')} |`,
+    `| — of which integration (\`tests/integration/\`) | | ${describe('tests/integration/')} |`,
+    `| E2E: Chromium desktop + mobile | \`npm run test:e2e\` | ${extract('e2e', /\d+ passed[^\n]*/)} |`,
+    `| E2E: Firefox + WebKit, critical flows | \`npm run test:e2e:cross\` | ${extract('cross', /\d+ passed[^\n]*/)} |`,
     `| Accessibility (axe-core) | \`npm run test:a11y\` | ${extract('a11y', /\d+ passed[^\n]*/)} |`,
     '',
+  ];
+
+  if (files.length > 0) {
+    lines.push('## Vitest, per file', '', '| File | Tests |', '| --- | --- |');
+    for (const row of [...files].sort((a, b) => (a.file < b.file ? -1 : 1))) {
+      lines.push(`| \`${row.file}\` | ${String(row.count)} |`);
+    }
+    lines.push(
+      `| **total** | **${String(unitTotal + integrationTotal)}** |`,
+      '',
+      'WebKit here is Playwright WebKit on Windows, which is not Safari and not iOS. See',
+      '`docs/qa-plan.md` for what that does and does not establish.',
+      '',
+    );
+  }
+
+  lines.push(
     '## Gate status',
     '',
     '| Gate | Exit code | Status |',
     '| --- | --- | --- |',
     ...results.map((r) => `| ${r.label} | ${String(r.code)} | ${r.ok ? 'PASS' : 'FAIL'} |`),
     '',
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 /* ------------------------------------------------------------------ main */
@@ -538,7 +611,30 @@ function main() {
     entries.push({ name, data: Buffer.from(text, 'utf8') });
   }
 
-  const summary = buildSummary({ git, marks, results, skipGates, entries, zipName });
+  /*
+   * The entry count printed in REVIEW_SUMMARY.md is a prediction, and Phase 1 got it wrong.
+   *
+   * The summary has to be written *before* SHA256SUMS.txt, because the manifest must cover it — so
+   * at the moment the summary is built, two entries are still missing: itself and the manifest.
+   * Phase 1 compensated with `entries.length + 1`, one short, so every package shipped claiming one
+   * fewer entry than it contained. Nothing failed, because nothing compared the two numbers.
+   *
+   * Two changes here, and the second is the one that matters: the arithmetic is named and
+   * explained, and it is then checked against reality below. `verify-review-package.mjs` also reads
+   * the number back out of the shipped summary and compares it with the archive's own central
+   * directory, closing the claim from the other side.
+   */
+  const TRAILING_ENTRIES = ['review/REVIEW_SUMMARY.md', 'review/SHA256SUMS.txt'];
+  const predictedEntryCount = entries.length + TRAILING_ENTRIES.length;
+
+  const summary = buildSummary({
+    git,
+    marks,
+    results,
+    skipGates,
+    entryCount: predictedEntryCount,
+    zipName,
+  });
   entries.push({ name: 'review/REVIEW_SUMMARY.md', data: Buffer.from(summary, 'utf8') });
 
   // SHA256SUMS over every entry, added last so it covers everything before it.
@@ -550,6 +646,18 @@ function main() {
     name: 'review/SHA256SUMS.txt',
     data: Buffer.from(`${sums}\n`, 'utf8'),
   });
+
+  if (entries.length !== predictedEntryCount) {
+    throw new Error(
+      `entry-count prediction is wrong: REVIEW_SUMMARY.md says ${String(predictedEntryCount)}, ` +
+        `the archive holds ${String(entries.length)}. Update TRAILING_ENTRIES.`,
+    );
+  }
+  for (const name of TRAILING_ENTRIES) {
+    if (!entries.some((entry) => entry.name === name)) {
+      throw new Error(`TRAILING_ENTRIES names ${name}, which was never added to the archive`);
+    }
+  }
 
   entries.sort((a, b) => (a.name < b.name ? -1 : 1));
   const archive = writeZip(zipPath, entries, now);
@@ -578,7 +686,7 @@ function main() {
   }
 }
 
-function buildSummary({ git, marks, results, skipGates, entries, zipName }) {
+function buildSummary({ git, marks, results, skipGates, entryCount, zipName }) {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   const gateRows = skipGates
     ? ['| (gates skipped) | — | — |']
@@ -594,7 +702,7 @@ function buildSummary({ git, marks, results, skipGates, entries, zipName }) {
 | Built | ${marks.date} ${marks.time} (local time) |
 | Commit | \`${git.sha}\` on \`${git.branch}\` |
 | Working tree | ${git.clean ? 'clean' : '**not clean** — see GIT_STATUS.txt'} |
-| Entries | ${String(entries.length + 1)} |
+| Entries | ${String(entryCount)} |
 
 ## What this is
 

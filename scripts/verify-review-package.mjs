@@ -360,15 +360,28 @@ function main() {
     const hasExitCodes = /exit code: \d+/.test(log);
     const failures = (log.match(/^FAIL\s+/gm) ?? []).length;
     const passes = (log.match(/^PASS\s+/gm) ?? []).length;
+    const sections = (log.match(/^exit code: \d+$/gm) ?? []).length;
     check(
       'VERIFY_LOG.txt records a real run',
-      hasSummary && hasExitCodes,
-      `${String(passes)} PASS / ${String(failures)} FAIL lines, ${String(log.length)} bytes`,
+      hasSummary && hasExitCodes && passes > 0,
+      `${String(passes)} PASS / ${String(failures)} FAIL lines, ${String(sections)} captured ` +
+        `commands, ${String(log.length)} bytes`,
     );
+    /*
+     * `failures === 0` alone is not "every gate passed" — it is also true of a log with no gates in
+     * it at all, which is exactly what `--no-gates` produces. A review package must contain a real
+     * run, so require at least one PASS and one summary line per captured command.
+     */
     check(
       'VERIFY_LOG.txt reports no failing gate',
-      failures === 0,
-      failures === 0 ? 'every gate passed' : `${String(failures)} gate(s) failed — see the log`,
+      failures === 0 && passes > 0 && passes + failures === sections,
+      failures > 0
+        ? `${String(failures)} gate(s) failed — see the log`
+        : passes === 0
+          ? 'no gate was run (a --no-gates package is not a review package)'
+          : passes + failures === sections
+            ? `${String(passes)} gates passed, each with captured output`
+            : `${String(passes + failures)} summary lines vs ${String(sections)} captured commands`,
     );
   }
 
@@ -380,6 +393,58 @@ function main() {
       'REVIEW_SUMMARY.md names this archive',
       summary.includes(basename(zipPath)),
       basename(zipPath),
+    );
+
+    /*
+     * Read the claim back out of the document and compare it with the archive itself.
+     *
+     * Every Phase-1 package stated one fewer entry than it contained, and nothing noticed, because
+     * the producer was the only thing that knew the number. This is the other direction: parse the
+     * figure out of the shipped summary and measure the archive independently.
+     *
+     * A missing row is a failure, not a skip — otherwise renaming that row would silently retire
+     * the check.
+     */
+    const claimed = /^\|\s*Entries\s*\|\s*(\d+)\s*\|$/m.exec(summary);
+    if (!claimed?.[1]) {
+      check(
+        'REVIEW_SUMMARY.md states the entry count',
+        false,
+        'no "| Entries | N |" row found in the summary',
+      );
+    } else {
+      const stated = Number(claimed[1]);
+      check(
+        'REVIEW_SUMMARY.md entry count matches the archive',
+        stated === entries.length,
+        stated === entries.length
+          ? `${String(stated)} entries, agreed`
+          : `summary says ${String(stated)}, archive holds ${String(entries.length)}`,
+      );
+    }
+  }
+
+  // 9. the file listing must account for every packaged payload path. TREE.txt is generated before
+  // the review metadata exists, so it carries a placeholder line for those; what must hold is that
+  // no payload path is missing from it.
+  const treeEntry = entries.find((entry) => entry.name === 'review/TREE.txt');
+  if (!treeEntry) {
+    check('TREE.txt lists every packaged payload path', false, 'TREE.txt missing');
+  } else {
+    const listed = new Set(
+      treeEntry.data
+        .toString('utf8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
+    const unlisted = [...names].filter((name) => !name.startsWith('review/') && !listed.has(name));
+    check(
+      'TREE.txt lists every packaged payload path',
+      unlisted.length === 0,
+      unlisted.length === 0
+        ? `${String(listed.size)} paths listed`
+        : `not listed: ${unlisted.slice(0, 5).join(', ')}`,
     );
   }
 
