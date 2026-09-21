@@ -36,7 +36,7 @@ const OUT_DIR = join(ROOT, '_review_packages');
  * after one phase while its summary claims another. Bump it deliberately when a phase closes; earlier
  * archives keep the label they were built with, which is what makes a directory of them readable.
  */
-const PHASE = '1.2';
+const PHASE = '1.3';
 const PHASE_SLUG = `phase-${PHASE.replace(/\./g, '-')}`;
 
 /* ------------------------------------------------------------------ packaging allow-list */
@@ -615,6 +615,17 @@ function main() {
       '',
     ].join('\n'),
     'review/LEGACY_SOURCE_METADATA.txt': legacyMetadata(),
+    /*
+     * Audit evidence, packaged rather than merely asserted.
+     *
+     * Phase 1.2's final report cited supplementary verification whose probe and output were not in the
+     * package, so none of it could be re-run or inspected by a reviewer. This copies the tracked
+     * evidence document into `review/`; the probes it refers to are under `scripts/audit/`.
+     */
+    'review/AUDIT_REGRESSION_RESULTS.md': readFileSync(
+      join(ROOT, 'docs', 'audit-regression-results.md'),
+      'utf8',
+    ),
   };
 
   for (const [name, text] of Object.entries(review)) {
@@ -721,66 +732,94 @@ It replaces a single 3,590-line HTML file that used \`localStorage\` as its data
 real personal records in source, and loaded third-party analytics while describing itself as
 offline. \`docs/legacy-audit.md\` documents that prototype finding by finding, with line numbers.
 
-## What changed in Phase 1.2
+## What changed in Phase 1.3
 
-A backup-integrity closure pass, not a redesign: no new product features, no architectural change, no
-new runtime dependency. Eleven of the defects it closes were expressed against the Phase-1.1 API and run
-on commit \`1e0c9cb\`, where **all eleven fail**; \`CHANGELOG.md\` quotes the failure messages.
+Live-state integrity closure: the application's live database, its merges, its backups and its restores
+now agree on one definition of a valid state. No new product features, no architectural change, no new
+runtime dependency, and **no backup format change** — v3 is unchanged and existing v3 archives remain
+restorable.
 
-### Backup completeness
+### The defect this pass exists to close
 
-A canonical backup is either **complete**, **incomplete** or — for a v1 archive — **unknown-legacy**.
-The state is written into the file, protected by the digest, exposed on the import plan, and enforced:
+A normal workflow — link an honour to a work record, then permanently delete that work record from the
+Trash — left Phase 1.2 holding a state where every row was individually schema-valid, a canonical
+backup of it was labelled **complete** and recorded as successful, and restoring that same file was
+**refused** for a dangling \`relatedWorkId\`. The application produced an archive it would not accept.
+\`review/AUDIT_REGRESSION_RESULTS.md\` carries the probe, the reproduction steps and the captured
+failure output from commit \`48480cf47fc6b9a6f5974de808e39f1576286a46\`.
 
-| state | may be merged | may be restored exactly | how it arises |
-| --- | --- | --- | --- |
-| \`complete\` | yes | **yes** | every user-data store validated when the file was written |
-| \`incomplete\` | yes | **no** | the user knowingly exported while rows failed validation |
-| \`unknown-legacy\` | yes | yes, behind explicit wording | a v1 archive, whose format could not record omissions |
+### Final live relational invariants
 
-Completeness now covers **all five user-data stores** — records, progress entries, categories, groups
-and settings. Phase 1.1 covered only the first two, so a corrupt category vanished and corrupt settings
-were replaced by defaults inside an archive the product called complete.
+Enforced on every mutation path, by the same rules a canonical restore applies
+(\`src/domain/integrity.ts\`, one definition shared by restore validation, live diagnostics, backup
+viability and the merge planner):
 
-### Snapshot transaction model
+- every progress entry points to an existing record;
+- every non-null work \`categoryId\` points to an existing category;
+- every non-null work \`groupId\` points to an existing group;
+- every non-null honour \`relatedWorkId\` points to an existing **work** record;
+- record, progress, category and group ids are unique.
 
-\`readStoreSnapshot()\` reads records, progressEntries, categories, groups, settings and meta inside
-**one Dexie read-only transaction**, validating as it goes. Phase 1.1 issued six independent repository
-reads, so an archive could describe a state the database never simultaneously had.
+A **soft-deleted** record still satisfies a reference: the row exists and is carried in backups. Only
+permanent deletion breaks a link.
 
-### Captured-revision semantics
+### Hard-delete reference policy
 
-The revision a backup records is the one observed **inside that transaction**, not the one current when
-the export finishes. A mutation between snapshot and completion therefore leaves the backup correctly
-**stale**; \`dataRevision\` is never rewound. Only a complete canonical backup records anything at all.
+Permanently deleting a work record **preserves any honour that references it and detaches the link**,
+in one transaction that bumps the revision exactly once. Deleting the honour would destroy unrelated
+user data; blocking the purge would leave the user unable to empty their own Trash. The detach is
+never silent: the Trash confirmation states how many honours will be unlinked before the user commits,
+and the toast states how many were.
 
-### Format compatibility
+### Canonical-backup viability rules
 
-| version | completeness | digest covers |
-| --- | --- | --- |
-| 1 | unknown-legacy (never inferred as complete) | payload |
-| 2 | derived from \`omittedInvalidRowIds\` | payload |
-| 3 (current) | explicit | the whole envelope except the digest |
+Before a backup may be labelled complete and recorded, the snapshot must satisfy schema validity, row
+completeness, **relational integrity** and uniqueness. If the live store is relationally broken the
+export is refused outright — not written and labelled incomplete, because an "incomplete" envelope
+requires an omission list and relational damage produces none. The diagnostic recovery export remains
+available and now carries the structured issues.
 
-v1 and v2 files are migrated explicitly and keep their narrower digest scope, recorded rather than
-recomputed. The digest is corruption detection, not authentication.
+### Merge: projected final state
 
-### Canonical relational integrity
+A reference is judged against \`finalState = destination + acceptedChanges\`, never against the file
+alone. Consequences: a new progress entry for a record the **destination already holds** merges (Phase
+1.2 skipped it); and an incoming row whose category, group or related-work reference would not resolve
+after the write is refused with the reason stated — never written, never rewritten to null, never
+resolved by inventing taxonomy. Id collisions remain non-overwriting and duplicates never collapse.
 
-Before an exact restore: unique record, progress, category and group ids; every progress \`recordId\`,
-work \`categoryId\`/\`groupId\` and honour \`relatedWorkId\` resolving inside the file. Any failure
-refuses the restore — refuse, never repair.
+### Backup-health rule
+
+Health describes whether the latest **complete** canonical backup captured the current
+\`dataRevision\`. The count of live records is no longer an input: Phase 1.2 short-circuited to
+\`fresh\` whenever it was zero, which is also true of a database whose every record is in the Trash, or
+which has custom taxonomy, edited settings, or was emptied after holding data. Only a genuinely
+pristine store (\`dataRevision === 0\`, never backed up) avoids nagging.
+
+### v3 semantic consistency
+
+A v3 envelope may not contradict itself: \`completeness: "complete"\` requires an empty omission list
+and \`"incomplete"\` requires a non-empty one. Such a file is refused even when its shape, counts and
+whole-envelope digest are all valid — a checksum proves the bytes were not altered, not that the
+statements inside them agree. \`unknown-legacy\` (v1) is exempt, because that format had no omission
+list at all.
+
+### Browser matrix
+
+Chromium desktop + mobile (full suite), Firefox and WebKit (focused critical flows, including the new
+linked-honour purge workflow end to end). WebKit's offline **reload** case is skipped with its reason
+recorded in the test; the offline **write** path runs on every engine. Playwright's WebKit is not
+Safari, and no real Safari or iOS device was used.
 
 ### Remaining limitations
 
-- Safari and iOS on **real hardware** are untested. Playwright's WebKit is not Safari.
-- Playwright's WebKit cannot reload an offline page, so that one cross-engine case is skipped there
-  (the offline *write* path does run). Reproduced 2/2 and declared in the test.
+- Safari and iOS on real hardware remain untested.
+- Multi-tab coherence is unverified; last-write-wins between tabs is not exercised.
+- No performance characterisation at 5,000+ records.
 - The accepted moderate advisory (\`exceljs\` → \`uuid\`) is unchanged and documented in
   \`docs/security.md\`.
-- \`docs/review-package-provenance.md\` records that the original Phase-1 archive was destroyed during
-  Phase 1.1 and rebuilt from its commit; that rebuild is still present and still fails one verification
-  check, because it carries the Phase-1 defect the check was written to catch.
+- \`docs/review-package-provenance.md\` records the history of the archives in
+  \`_review_packages/\`, including the original Phase-1 archive restored by the user and verified
+  byte-identical during this pass.
 
 ## Verification
 
