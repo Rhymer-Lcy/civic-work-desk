@@ -98,20 +98,26 @@ profile's Downloads and Desktop, `E:\` and the session scratch directory found n
 `civic-work-desk-phase-1-20260921-081722-3727a186a9eb.zip` and no archive with digest `7a8654f2…`. The
 rebuild described below therefore remains the only Phase-1 artifact present, and nothing was overwritten.
 
-## The original Phase-1 package was deleted, and could not be recovered
+## How the original Phase-1 package was lost from this workspace
+
+Superseded as to its conclusion — the user restored the file from outside this workspace and it was
+verified byte-identical, as recorded above. The account of the loss is kept because it explains why a
+rebuild exists beside the original, and because the mistake is worth not repeating.
 
 `civic-work-desk-phase-1-20260921-081722-3727a186a9eb.zip`, SHA-256
-`7a8654f2d49a3b7aa73bfc4a511b9be7702d5617f903cd3da9b417da9b6593ed`, no longer exists.
+`7a8654f2d49a3b7aa73bfc4a511b9be7702d5617f903cd3da9b417da9b6593ed`.
 
 During Phase 1.1 it was removed by a `rm -f _review_packages/*.zip _review_packages/*.sha256` that
 was intended to clear two throwaway test packages built minutes earlier. `rm` from Git Bash does not
-use the Windows Recycle Bin, so the bytes are gone; the Recycle Bin was checked and holds nothing
-from that day.
+use the Windows Recycle Bin, so the bytes were gone from this machine; the Recycle Bin was checked
+and held nothing from that day. Every later phase has been forbidden to use wildcard deletion here,
+and none has deleted anything.
 
-**What survives is the content, not the artifact.** The tree that package described is git commit
-`3727a186a9eb8a91ebd3195c13a6ae74ed28a31c`, which is intact and is the parent of every Phase-1.1
-commit. What is irrecoverable is the packaged evidence: that particular archive, its timestamps, its
-captured gate output, and its digest.
+**What survived locally was the content, not the artifact.** The tree that package described is git
+commit `3727a186a9eb8a91ebd3195c13a6ae74ed28a31c`, which is intact and is the parent of every
+Phase-1.1 commit. What no local copy could reconstruct was the packaged evidence: that particular
+archive, its timestamps, its captured gate output, and its digest — which is why the user's restored
+copy was verified against the recorded digest rather than merely accepted.
 
 ## The Phase-1 archive here is a rebuild, not the original
 

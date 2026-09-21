@@ -95,6 +95,14 @@ AssertionError: a file the application labelled complete must be exact-restorabl
 - One cross-engine workflow covering create work → create linked honour → purge → honour still usable →
   backup succeeds.
 
+### Note — correcting the Phase-1.1 entry below
+
+The Phase-1.1 note says the original Phase-1 archive "could not be recovered". That was true of this
+machine at the time; the user has since restored the file from outside this workspace, and it was
+verified byte-identical against its recorded SHA-256 rather than assumed. It is present, untouched,
+including the `(2)` suffix its download added. `docs/review-package-provenance.md` carries the
+verification output. Nothing in `_review_packages/` was renamed, moved or deleted during this pass.
+
 ## [Unreleased] — Phase 1.2 backup integrity closure
 
 Closing the remaining backup/restore integrity invariants before the data layer is signed off, after an
@@ -266,9 +274,11 @@ product features, no architectural change, no new runtime dependency. Branch
 
 ### Note
 
-The original Phase-1 archive was deleted by mistake during this pass and could not be recovered. The
-commit it described is intact; `docs/review-package-provenance.md` records what was lost, what replaced it,
-and why the replacement is a reconstruction rather than the original.
+The original Phase-1 archive was deleted by mistake during this pass and could not be recovered from
+this machine. The commit it described is intact; `docs/review-package-provenance.md` records what was
+lost, what replaced it, and why the replacement is a reconstruction rather than the original.
+(Superseded in Phase 1.3: the user restored the original from outside this workspace and it was
+verified byte-identical. Both files are present.)
 
 ## [Unreleased] — Phase 1 modernisation
 
