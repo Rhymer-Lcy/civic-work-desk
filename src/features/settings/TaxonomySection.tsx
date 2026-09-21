@@ -15,6 +15,7 @@ import {
 import { isWorkRecord } from '@/domain/types';
 import type { AnyRecord, BusinessCategory, WorkGroup } from '@/domain/types';
 import { Button, Card, ConfirmDialog, useToast } from '@/components/common';
+import { categoryDeleteHint, groupDeleteConfirm } from './taxonomy-copy';
 import styles from './SettingsPage.module.css';
 
 /**
@@ -38,17 +39,33 @@ export function TaxonomySection({ categories, groups, records }: TaxonomySection
   const refresh = useRefresh();
   const toast = useToast();
 
+  /*
+   * Two counts per taxonomy row, deliberately.
+   *
+   * `usage` is what the user sees listed — live records only, because a record in the Trash is not
+   * something they are currently filtering or reporting on. But the database counts a trashed record
+   * as a user of its category and group: the row still exists, it is carried in backups, and
+   * `deleteCategoryIfUnused` refuses while it does. Counting only live records here would make the UI
+   * offer a deletion the database then refuses without saying why, and — worse — let a group deletion
+   * detach trashed records with no confirmation at all.
+   */
   const categoryUsage = new Map<string, number>();
   const groupUsage = new Map<string, number>();
+  const trashedCategoryUsage = new Map<string, number>();
+  const trashedGroupUsage = new Map<string, number>();
   for (const record of records) {
-    if (!isWorkRecord(record) || record.deletedAt !== null) continue;
+    if (!isWorkRecord(record)) continue;
+    const categories = record.deletedAt === null ? categoryUsage : trashedCategoryUsage;
+    const groups = record.deletedAt === null ? groupUsage : trashedGroupUsage;
     if (record.categoryId) {
-      categoryUsage.set(record.categoryId, (categoryUsage.get(record.categoryId) ?? 0) + 1);
+      categories.set(record.categoryId, (categories.get(record.categoryId) ?? 0) + 1);
     }
     if (record.groupId) {
-      groupUsage.set(record.groupId, (groupUsage.get(record.groupId) ?? 0) + 1);
+      groups.set(record.groupId, (groups.get(record.groupId) ?? 0) + 1);
     }
   }
+  const trashedCategories = (id: string): number => trashedCategoryUsage.get(id) ?? 0;
+  const trashedGroups = (id: string): number => trashedGroupUsage.get(id) ?? 0;
 
   const run = async (operation: () => Promise<string>): Promise<void> => {
     try {
@@ -95,7 +112,9 @@ export function TaxonomySection({ categories, groups, records }: TaxonomySection
                 })
               }
               onDelete={
-                category.builtIn || (categoryUsage.get(category.id) ?? 0) > 0
+                category.builtIn ||
+                (categoryUsage.get(category.id) ?? 0) > 0 ||
+                trashedCategories(category.id) > 0
                   ? undefined
                   : () =>
                       run(async () => {
@@ -103,13 +122,11 @@ export function TaxonomySection({ categories, groups, records }: TaxonomySection
                         return done ? '已删除该分类。' : '该分类仍在使用中，未删除。';
                       })
               }
-              deleteHint={
-                category.builtIn
-                  ? '内置分类不可删除，可停用。'
-                  : (categoryUsage.get(category.id) ?? 0) > 0
-                    ? '仍有记录使用该分类，不可删除，可停用。'
-                    : undefined
-              }
+              deleteHint={categoryDeleteHint(
+                category.builtIn,
+                categoryUsage.get(category.id) ?? 0,
+                trashedCategories(category.id),
+              )}
             />
           ))}
         </ul>
@@ -154,11 +171,10 @@ export function TaxonomySection({ categories, groups, records }: TaxonomySection
                       })
               }
               deleteHint={group.builtIn ? '内置分组不可删除。' : undefined}
-              deleteConfirm={
-                (groupUsage.get(group.id) ?? 0) > 0
-                  ? `该分组下有 ${groupUsage.get(group.id) ?? 0} 条记录，删除后它们会变为「未分组」，记录本身不会被删除。`
-                  : undefined
-              }
+              deleteConfirm={groupDeleteConfirm(
+                groupUsage.get(group.id) ?? 0,
+                trashedGroups(group.id),
+              )}
             />
           ))}
         </ul>
