@@ -1,6 +1,6 @@
-import { listRecords, readProgressEntries } from '@/db/repositories/records';
-import type { InvalidRow } from '@/db/repositories/records';
-import { getMeta, listCategories, listGroups, getSettings } from '@/db/repositories/taxonomy';
+import { readStoreSnapshot, allInvalidRows, invalidRowCount } from '@/db/snapshot';
+import type { InvalidEntityGroups } from '@/db/snapshot';
+import type { InvalidRow } from '@/db/invalid-row';
 import { SCHEMA_VERSION } from '@/db/schema';
 import { filenameStamp, nowInstant } from '@/utils/clock';
 import { downloadBlob, jsonBlob } from '../download';
@@ -21,7 +21,10 @@ import { BACKUP_FORMAT_VERSION } from './compatibility';
  * behaviours contradicted each other and the user was never told.
  *
  * This file is the other half of the fix: a separate export that preserves the raw rows exactly as
- * they sit in IndexedDB, for technical recovery and as evidence.
+ * they sit in IndexedDB, for technical recovery and as evidence. Since Phase 1.2 it covers **every**
+ * user-data store — records, progress entries, categories, groups and the settings row — because
+ * Phase 1.1 only closed the first two, leaving corrupt taxonomy to be dropped by `listCategories()`
+ * and a corrupt settings row to be replaced by `defaultSettings()` with nothing recorded anywhere.
  *
  * **It is deliberately NOT importable.** Its `application` field does not match the canonical
  * backup id, so `detectSource()` refuses it rather than half-restoring broken data. Recovering
@@ -29,7 +32,22 @@ import { BACKUP_FORMAT_VERSION } from './compatibility';
  */
 
 export const RECOVERY_APP_ID = 'civic-work-desk-diagnostic-recovery';
-export const RECOVERY_FORMAT_VERSION = 1;
+export const RECOVERY_FORMAT_VERSION = 2;
+
+export interface RecoveryCounts {
+  readonly validRecords: number;
+  readonly invalidRecords: number;
+  readonly validProgressEntries: number;
+  readonly invalidProgressEntries: number;
+  readonly validCategories: number;
+  readonly invalidCategories: number;
+  readonly validGroups: number;
+  readonly invalidGroups: number;
+  /** 1 when the stored settings row validated, 0 when it is missing or corrupt. */
+  readonly validSettings: number;
+  readonly invalidSettings: number;
+  readonly invalidTotal: number;
+}
 
 export interface RecoveryExport {
   readonly application: typeof RECOVERY_APP_ID;
@@ -41,15 +59,14 @@ export interface RecoveryExport {
   readonly schemaVersion: number;
   readonly canonicalBackupFormatVersion: number;
   readonly dataRevision: number | null;
-  readonly counts: {
-    readonly validRecords: number;
-    readonly invalidRecords: number;
-    readonly validProgressEntries: number;
-    readonly invalidProgressEntries: number;
-  };
+  readonly counts: RecoveryCounts;
   /** The rows that failed validation, verbatim, with the error that rejected them. */
   readonly invalidRecords: readonly InvalidRow[];
   readonly invalidProgressEntries: readonly InvalidRow[];
+  readonly invalidCategories: readonly InvalidRow[];
+  readonly invalidGroups: readonly InvalidRow[];
+  /** Zero or one entry: the stored settings row, raw, when it did not validate. */
+  readonly invalidSettings: readonly InvalidRow[];
   /**
    * Context needed to make sense of the broken rows: which categories and groups they may
    * reference, and the ids of the rows that were fine.
@@ -64,36 +81,45 @@ export interface RecoveryExport {
 }
 
 export interface RecoverySnapshot {
+  readonly invalid: InvalidEntityGroups;
   readonly invalidRecords: readonly InvalidRow[];
   readonly invalidProgressEntries: readonly InvalidRow[];
+  readonly invalidCategories: readonly InvalidRow[];
+  readonly invalidGroups: readonly InvalidRow[];
+  readonly invalidSettings: readonly InvalidRow[];
   readonly validRecordCount: number;
   readonly validProgressCount: number;
+  readonly invalidTotal: number;
 }
 
 /** Read everything the recovery export needs, including the rows a backup cannot carry. */
 export async function readRecoverySnapshot(): Promise<RecoverySnapshot> {
-  const [records, progress] = await Promise.all([listRecords(), readProgressEntries()]);
+  const snapshot = await readStoreSnapshot();
   return {
-    invalidRecords: records.invalid,
-    invalidProgressEntries: progress.invalid,
-    validRecordCount: records.records.length,
-    validProgressCount: progress.entries.length,
+    invalid: snapshot.invalid,
+    invalidRecords: snapshot.invalid.records,
+    invalidProgressEntries: snapshot.invalid.progressEntries,
+    invalidCategories: snapshot.invalid.categories,
+    invalidGroups: snapshot.invalid.groups,
+    invalidSettings: snapshot.invalid.settings,
+    validRecordCount: snapshot.records.length,
+    validProgressCount: snapshot.progressEntries.length,
+    invalidTotal: invalidRowCount(snapshot.invalid),
   };
 }
 
 export async function buildRecoveryExport(exportedAt: string): Promise<RecoveryExport> {
-  const [records, progress, categories, groups, settings, meta] = await Promise.all([
-    listRecords(),
-    readProgressEntries(),
-    listCategories(),
-    listGroups(),
-    getSettings(),
-    getMeta(),
-  ]);
+  const snapshot = await readStoreSnapshot();
+  const invalid = snapshot.invalid;
 
+  // The digest covers every raw invalid row, so a recovery file that was truncated or edited after
+  // the fact is detectable. It is corruption detection, not authentication.
   const body = {
-    invalidRecords: records.invalid,
-    invalidProgressEntries: progress.invalid,
+    invalidRecords: invalid.records,
+    invalidProgressEntries: invalid.progressEntries,
+    invalidCategories: invalid.categories,
+    invalidGroups: invalid.groups,
+    invalidSettings: invalid.settings,
   };
 
   return {
@@ -102,24 +128,37 @@ export async function buildRecoveryExport(exportedAt: string): Promise<RecoveryE
     restorable: false,
     note:
       '这是诊断恢复文件，不是备份，不能通过“导入 / 还原备份”写回应用。' +
-      '它按原样保留了未通过校验的数据行，供技术排查与留证使用。',
+      '它按原样保留了未通过校验的数据行（记录、进展、业务分类、归属分组与应用设置），' +
+      '供技术排查与留证使用。',
     exportedAt,
     schemaVersion: SCHEMA_VERSION,
     canonicalBackupFormatVersion: BACKUP_FORMAT_VERSION,
-    dataRevision: meta?.dataRevision ?? null,
+    dataRevision: snapshot.capturedRevision,
     counts: {
-      validRecords: records.records.length,
-      invalidRecords: records.invalid.length,
-      validProgressEntries: progress.entries.length,
-      invalidProgressEntries: progress.invalid.length,
+      validRecords: snapshot.records.length,
+      invalidRecords: invalid.records.length,
+      validProgressEntries: snapshot.progressEntries.length,
+      invalidProgressEntries: invalid.progressEntries.length,
+      validCategories: snapshot.categories.length,
+      invalidCategories: invalid.categories.length,
+      validGroups: snapshot.groups.length,
+      invalidGroups: invalid.groups.length,
+      validSettings: snapshot.settings === null ? 0 : 1,
+      invalidSettings: invalid.settings.length,
+      invalidTotal: invalidRowCount(invalid),
     },
-    invalidRecords: records.invalid,
-    invalidProgressEntries: progress.invalid,
+    invalidRecords: invalid.records,
+    invalidProgressEntries: invalid.progressEntries,
+    invalidCategories: invalid.categories,
+    invalidGroups: invalid.groups,
+    invalidSettings: invalid.settings,
     context: {
-      validRecordIds: records.records.map((record) => record.id),
-      categories: categories.map((category) => ({ id: category.id, name: category.name })),
-      groups: groups.map((group) => ({ id: group.id, name: group.name })),
-      settings,
+      validRecordIds: snapshot.records.map((record) => record.id),
+      categories: snapshot.categories.map((category) => ({ id: category.id, name: category.name })),
+      groups: snapshot.groups.map((group) => ({ id: group.id, name: group.name })),
+      // The valid stored settings, or null. Never the defaults: substituting them here would hide
+      // the very corruption this file exists to preserve.
+      settings: snapshot.settings,
     },
     rawChecksum: await sha256Hex(canonicalJson(body)),
   };
@@ -133,8 +172,18 @@ export interface RecoveryResult {
   readonly download: DownloadResult;
   readonly invalidRecords: number;
   readonly invalidProgressEntries: number;
+  readonly invalidCategories: number;
+  readonly invalidGroups: number;
+  readonly invalidSettings: number;
+  readonly invalidTotal: number;
 }
 
+/**
+ * Write the recovery file.
+ *
+ * Never touches canonical backup bookkeeping: this file cannot restore anything, so treating it as
+ * a backup would suppress the reminder exactly when the database is known to be damaged.
+ */
 export async function createRecoveryExport(at: Date = new Date()): Promise<RecoveryResult> {
   const payload = await buildRecoveryExport(nowInstant());
   const blob = jsonBlob(`${JSON.stringify(payload, null, 2)}\n`);
@@ -143,5 +192,12 @@ export async function createRecoveryExport(at: Date = new Date()): Promise<Recov
     download,
     invalidRecords: payload.counts.invalidRecords,
     invalidProgressEntries: payload.counts.invalidProgressEntries,
+    invalidCategories: payload.counts.invalidCategories,
+    invalidGroups: payload.counts.invalidGroups,
+    invalidSettings: payload.counts.invalidSettings,
+    invalidTotal: payload.counts.invalidTotal,
   };
 }
+
+/** Re-exported so callers can enumerate every invalid row without importing the db layer. */
+export { allInvalidRows };

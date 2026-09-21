@@ -9,20 +9,25 @@ import { SCHEMA_VERSION } from '@/db/schema';
  * happened to validate — the importer would silently discard fields it did not know about and
  * present the result as a faithful restore.
  *
- * The rule now: compatibility is declared, never inferred from structural similarity.
+ * The rule: compatibility is declared, never inferred from structural similarity. The same rule now
+ * applies to *completeness*, which is a separate question from readability — see `BackupCompleteness`.
  */
 
 /** The envelope version this build writes. */
-export const BACKUP_FORMAT_VERSION = 2;
+export const BACKUP_FORMAT_VERSION = 3;
 
 /**
  * Envelope versions this build can read.
  *
- * - **1** — Phase 1. No `omittedInvalidRowIds`, no `dataRevision`. Upgraded by `migrateEnvelope`.
- * - **2** — Phase 1.1. Records which rows a backup knowingly excluded, and the data revision it
- *   captured.
+ * - **1** — Phase 1. No completeness metadata, no `dataRevision`. Phase 1 could also omit invalid
+ *   rows *silently*, so a v1 file cannot prove that nothing was omitted: it is classified
+ *   `unknown-legacy`, never `complete`.
+ * - **2** — Phase 1.1. Added `omittedInvalidRowIds` and `dataRevision`. Completeness is derivable,
+ *   but the checksum covered only `payload`, so the completeness metadata itself was unprotected.
+ * - **3** — Phase 1.2. Completeness is explicit, and the checksum covers the whole envelope
+ *   including that metadata.
  */
-export const SUPPORTED_BACKUP_FORMAT_VERSIONS: readonly number[] = Object.freeze([1, 2]);
+export const SUPPORTED_BACKUP_FORMAT_VERSIONS: readonly number[] = Object.freeze([1, 2, 3]);
 
 /**
  * Database schema versions this build can restore.
@@ -32,6 +37,26 @@ export const SUPPORTED_BACKUP_FORMAT_VERSIONS: readonly number[] = Object.freeze
  */
 export const MIN_SUPPORTED_SCHEMA_VERSION = 1;
 export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
+
+/**
+ * How much of the original database a file can be trusted to contain.
+ *
+ * - `complete` — the producing build verified every user-data store validated, and says so in a
+ *   field the checksum protects. Only this state permits an exact canonical restore.
+ * - `incomplete` — the file itself declares rows it could not carry. It may be merged, but it can
+ *   never reproduce the original database, so exact restore is refused rather than mislabelled.
+ * - `unknown-legacy` — a v1 archive. The format had no completeness field **and** the build that
+ *   wrote it could drop invalid rows without recording anything, so absence of the field is not
+ *   evidence of completeness. Restorable, with wording that says completeness is unknown.
+ */
+export type BackupCompleteness = 'complete' | 'incomplete' | 'unknown-legacy';
+
+/** What material a file's checksum actually covers. */
+export type ChecksumScope =
+  /** v3: the entire envelope except the checksum field itself. */
+  | 'envelope'
+  /** v1/v2: the payload only. Completeness metadata was not protected. */
+  | 'payload';
 
 export interface CompatibilityVerdict {
   readonly compatible: boolean;
@@ -101,20 +126,27 @@ export function checkCompatibility(header: EnvelopeHeader): CompatibilityVerdict
  * Bring a supported older envelope up to the current shape.
  *
  * Explicit per-version steps, not a defaulting `??` scattered through the reader: a migration that
- * cannot be named is a migration nobody can review.
+ * cannot be named is a migration nobody can review. Each step is deterministic — the same input
+ * always produces the same output — which is what makes the migrated file's checksum verdict
+ * meaningful.
  */
 export function migrateEnvelope(raw: Record<string, unknown>): Record<string, unknown> {
+  const original = raw['backupFormatVersion'];
   let current = raw;
-  if (current['backupFormatVersion'] === 1) current = migrateV1ToV2(current);
+  if (original === 1) current = migrateV1ToV2(current);
+  if (current['backupFormatVersion'] === 2) {
+    current = migrateV2ToV3(current, original === 1 ? 1 : 2);
+  }
   return current;
 }
 
 /**
- * v1 -> v2.
+ * v1 -> v2, structurally.
  *
- * v1 had no way to say "this backup knowingly excluded rows", because v1 excluded them silently —
- * the defect this field exists to prevent. A v1 file is therefore treated as claiming nothing was
- * omitted, which is what it claimed at the time.
+ * v1 had no `omittedInvalidRowIds` field. It is added **empty** because that is the v2 shape, not
+ * because the file is known to be complete — `migrateV2ToV3` receives the original version and
+ * classifies a v1 file as `unknown-legacy` for exactly that reason. Phase 1.1's migration stopped
+ * here and let the empty list be read as proof of completeness; it was not.
  */
 function migrateV1ToV2(raw: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -123,4 +155,52 @@ function migrateV1ToV2(raw: Record<string, unknown>): Record<string, unknown> {
     omittedInvalidRowIds: [],
     dataRevision: null,
   };
+}
+
+/**
+ * v2 -> v3.
+ *
+ * Two shape changes:
+ *
+ *  - completeness becomes explicit, derived from the omission list for a genuine v2 file and set to
+ *    `unknown-legacy` when the file was originally v1;
+ *  - `payloadChecksum` becomes a `checksum` object carrying its **scope**. A v1/v2 digest covered
+ *    only `payload`, so it is recorded as `scope: 'payload'` and verified that way. It is not
+ *    recomputed over the wider v3 material: a digest this build calculated itself would verify
+ *    nothing about the file as received.
+ */
+function migrateV2ToV3(
+  raw: Record<string, unknown>,
+  originalVersion: 1 | 2,
+): Record<string, unknown> {
+  const omitted = raw['omittedInvalidRowIds'];
+  const omittedCount = Array.isArray(omitted) ? omitted.length : 0;
+  const completeness: BackupCompleteness =
+    originalVersion === 1 ? 'unknown-legacy' : omittedCount > 0 ? 'incomplete' : 'complete';
+
+  const legacyChecksum = raw['payloadChecksum'];
+  const next: Record<string, unknown> = {
+    ...raw,
+    backupFormatVersion: 3,
+    completeness,
+    checksum: {
+      algorithm: 'sha-256',
+      scope: 'payload' satisfies ChecksumScope,
+      value: typeof legacyChecksum === 'string' ? legacyChecksum : null,
+    },
+  };
+  delete next['payloadChecksum'];
+  return next;
+}
+
+/** Human wording for a completeness class, used by the import preview and the docs. */
+export function describeCompleteness(completeness: BackupCompleteness): string {
+  switch (completeness) {
+    case 'complete':
+      return '完整：写出这份备份时，本机所有用户数据均通过结构校验。';
+    case 'incomplete':
+      return '不完整：该文件自述省略了未通过校验的数据行，因此无法精确重建原数据库。';
+    case 'unknown-legacy':
+      return '完整性未知：这是旧版（v1）备份，当时的格式没有完整性声明，写出它的版本也可能已静默丢弃损坏行。';
+  }
 }

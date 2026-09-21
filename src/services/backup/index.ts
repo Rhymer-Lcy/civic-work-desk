@@ -1,13 +1,9 @@
-import { listRecords, readProgressEntries } from '@/db/repositories/records';
-import type { InvalidRow } from '@/db/repositories/records';
-import {
-  getMeta,
-  getSettings,
-  listCategories,
-  listGroups,
-  recordBackupSuccess,
-} from '@/db/repositories/taxonomy';
+import { readStoreSnapshot, allInvalidRows, invalidRowCount, storeIsIntact } from '@/db/snapshot';
+import type { InvalidEntityGroups, StoreSnapshot } from '@/db/snapshot';
+import type { InvalidRow } from '@/db/invalid-row';
+import { recordCanonicalBackup } from '@/db/repositories/taxonomy';
 import { daysBetween, todayIso } from '@/domain/dates';
+import { defaultSettings } from '@/domain/defaults';
 import type { AppMeta } from '@/domain/types';
 import { filenameStamp, nowInstant } from '@/utils/clock';
 import { downloadBlob, jsonBlob } from '../download';
@@ -22,10 +18,11 @@ export * from './recovery';
 /**
  * Backup orchestration.
  *
- * `createBackup` snapshots every table, builds the envelope, hands the blob to the browser and
- * — only then — records the success. The order matters: the legacy `exportJSON()` wrote
- * `gov_last_backup` on the same tick as `a.click()` regardless of outcome, and `exportExcel()`
- * wrote it too, so a spreadsheet export silenced the backup reminder for a week.
+ * `createBackup` takes one coherent snapshot of every store, builds the envelope, hands the blob to
+ * the browser and — only then, and only if the snapshot was complete — records the success. The
+ * order matters: the legacy `exportJSON()` wrote `gov_last_backup` on the same tick as `a.click()`
+ * regardless of outcome, and `exportExcel()` wrote it too, so a spreadsheet export silenced the
+ * backup reminder for a week.
  */
 
 export interface BackupResult {
@@ -33,17 +30,24 @@ export interface BackupResult {
   readonly envelope: BackupEnvelope;
   /** Ids the backup could not carry. Empty means the archive is complete. */
   readonly omitted: readonly string[];
+  /** True when this export established canonical backup freshness. */
+  readonly markedFresh: boolean;
 }
 
 /**
  * A backup snapshot, together with what it could not include.
  *
- * `omittedInvalidRowIds` is the honest part: a canonical backup can only carry rows that pass the
- * domain schema, so if the store holds a corrupt row the backup is *not* a complete archive.
- * Phase 1 dropped such rows silently and still called the result a complete backup.
+ * Built from one read-only transaction over every user-data store (`readStoreSnapshot`), so the
+ * archive describes a database state that actually existed at one instant, and `capturedRevision`
+ * is the revision it contains rather than whatever the counter reads when the export finishes.
  */
 export interface BackupSnapshot {
   readonly input: BackupInput;
+  readonly invalid: InvalidEntityGroups;
+  readonly capturedRevision: number | null;
+  /** True when every store validated. Only then may the file claim to be complete. */
+  readonly complete: boolean;
+  /** Kept for callers that only care about these two stores. */
   readonly invalidRecords: readonly InvalidRow[];
   readonly invalidProgressEntries: readonly InvalidRow[];
 }
@@ -52,32 +56,33 @@ export async function snapshotForBackup(): Promise<BackupInput> {
   return (await readBackupSnapshot()).input;
 }
 
-/** Read everything a backup needs, and everything it cannot include. */
+/**
+ * Read everything a backup needs, and everything it cannot include.
+ *
+ * Settings deserve a note. When the stored settings row is missing or corrupt the snapshot carries
+ * `null`, and this function substitutes the defaults **and records the omission** — the payload must
+ * still validate, but the file must not pretend those were the user's settings. Phase 1.1 called
+ * `getSettings()`, which silently returned the defaults, so a corrupt settings row produced a
+ * "complete" backup of settings the user had never chosen.
+ */
 export async function readBackupSnapshot(): Promise<BackupSnapshot> {
-  const [recordsResult, progressResult, categories, groups, settings, meta] = await Promise.all([
-    listRecords(),
-    readProgressEntries(),
-    listCategories(),
-    listGroups(),
-    getSettings(),
-    getMeta(),
-  ]);
-  const omitted: string[] = [
-    ...recordsResult.invalid.map((row: InvalidRow) => row.id),
-    ...progressResult.invalid.map((row: InvalidRow) => row.id),
-  ];
+  const snapshot: StoreSnapshot = await readStoreSnapshot();
+  const omitted = allInvalidRows(snapshot.invalid).map((row) => row.id);
   return {
     input: {
-      records: recordsResult.records,
-      progressEntries: progressResult.entries,
-      categories,
-      groups,
-      settings,
+      records: snapshot.records,
+      progressEntries: snapshot.progressEntries,
+      categories: snapshot.categories,
+      groups: snapshot.groups,
+      settings: snapshot.settings ?? defaultSettings(),
       omittedInvalidRowIds: omitted,
-      dataRevision: meta?.dataRevision ?? null,
+      dataRevision: snapshot.capturedRevision,
     },
-    invalidRecords: recordsResult.invalid,
-    invalidProgressEntries: progressResult.invalid,
+    invalid: snapshot.invalid,
+    capturedRevision: snapshot.capturedRevision,
+    complete: storeIsIntact(snapshot),
+    invalidRecords: snapshot.invalid.records,
+    invalidProgressEntries: snapshot.invalid.progressEntries,
   };
 }
 
@@ -86,21 +91,32 @@ export async function readBackupSnapshot(): Promise<BackupSnapshot> {
  *
  * The user must never be told a complete backup succeeded while known rows were dropped. The
  * caller either exports a diagnostic recovery file first, or explicitly acknowledges the omission
- * — in which case the envelope itself records which ids were left out.
+ * — in which case the envelope itself records which ids were left out, declares itself incomplete,
+ * and can never afterwards be used as the source of an exact restore.
  */
 export class IncompleteBackupError extends Error {
   override readonly name = 'IncompleteBackupError';
   readonly invalidRecordIds: readonly string[];
   readonly invalidProgressIds: readonly string[];
+  /** Every invalid row across every store, so the caller can explain what is wrong where. */
+  readonly invalid: InvalidEntityGroups;
 
-  constructor(invalidRecordIds: readonly string[], invalidProgressIds: readonly string[]) {
-    const total = invalidRecordIds.length + invalidProgressIds.length;
+  constructor(invalid: InvalidEntityGroups) {
+    const total = invalidRowCount(invalid);
+    const where = [
+      invalid.records.length > 0 ? `记录 ${String(invalid.records.length)}` : null,
+      invalid.progressEntries.length > 0 ? `进展 ${String(invalid.progressEntries.length)}` : null,
+      invalid.categories.length > 0 ? `业务分类 ${String(invalid.categories.length)}` : null,
+      invalid.groups.length > 0 ? `归属分组 ${String(invalid.groups.length)}` : null,
+      invalid.settings.length > 0 ? '应用设置' : null,
+    ].filter((part): part is string => part !== null);
     super(
-      `本机有 ${String(total)} 行数据未通过校验，无法写入“完整备份”。` +
+      `本机有 ${String(total)} 行数据未通过校验（${where.join('、')}），无法写入“完整备份”。` +
         '请先导出诊断恢复文件，或确认要导出一份不含这些行的备份。',
     );
-    this.invalidRecordIds = invalidRecordIds;
-    this.invalidProgressIds = invalidProgressIds;
+    this.invalid = invalid;
+    this.invalidRecordIds = invalid.records.map((row) => row.id);
+    this.invalidProgressIds = invalid.progressEntries.map((row) => row.id);
   }
 }
 
@@ -117,22 +133,36 @@ export async function createBackup(
   options: CreateBackupOptions = {},
 ): Promise<BackupResult> {
   const snapshot = await readBackupSnapshot();
-  const omittedRecords = snapshot.invalidRecords.map((row) => row.id);
-  const omittedProgress = snapshot.invalidProgressEntries.map((row) => row.id);
+  const omitted = allInvalidRows(snapshot.invalid).map((row) => row.id);
 
-  if (
-    (omittedRecords.length > 0 || omittedProgress.length > 0) &&
-    options.acknowledgeOmissions !== true
-  ) {
-    throw new IncompleteBackupError(omittedRecords, omittedProgress);
+  if (!snapshot.complete && options.acknowledgeOmissions !== true) {
+    throw new IncompleteBackupError(snapshot.invalid);
   }
 
   const envelope = await buildEnvelope(snapshot.input, nowInstant());
   const blob = jsonBlob(serialiseEnvelope(envelope));
   const download = downloadBlob(blob, backupFilename(filenameStamp(at)));
-  // Reached only if the blob was built and accepted without throwing.
-  await recordBackupSuccess(envelope.counts.records);
-  return { download, envelope, omitted: [...omittedRecords, ...omittedProgress] };
+
+  /*
+   * Freshness is established only by a COMPLETE canonical backup.
+   *
+   * Phase 1.1 called `recordBackupSuccess()` unconditionally, so a file the application itself
+   * described as incomplete set `lastBackupRevision = dataRevision` and suppressed the warning —
+   * the user was told their data was backed up by a file that could not restore it.
+   *
+   * The revision written is the one captured inside the snapshot transaction, not the one current
+   * now: if the data moved on while the file was being written, the correct state is stale.
+   */
+  let markedFresh = false;
+  if (snapshot.complete) {
+    await recordCanonicalBackup({
+      capturedRevision: snapshot.capturedRevision,
+      recordCount: envelope.counts.records,
+    });
+    markedFresh = true;
+  }
+
+  return { download, envelope, omitted, markedFresh };
 }
 
 /** Why a backup is stale, so the UI can say something more useful than "old". */
