@@ -1,9 +1,14 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { Download, FileSpreadsheet, LifeBuoy, Upload } from 'lucide-react';
 import { useData, useRefresh } from '@/app/store/data-store';
 import type { AnyRecord, AppMeta } from '@/domain/types';
-import { createBackup, describeBackupHealth } from '@/services/backup';
+import {
+  createBackup,
+  createRecoveryExport,
+  describeBackupHealth,
+  IncompleteBackupError,
+} from '@/services/backup';
 import type { BackupHealth } from '@/services/backup';
 import { downloadBlob } from '@/services/download';
 import { filenameStamp, formatInstant } from '@/utils/clock';
@@ -29,27 +34,54 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
   const data = useData();
   const refresh = useRefresh();
   const toast = useToast();
-  const [busy, setBusy] = useState<'backup' | 'xlsx' | null>(null);
+  const [busy, setBusy] = useState<'backup' | 'xlsx' | 'recovery' | null>(null);
+  const [incomplete, setIncomplete] = useState<IncompleteBackupError | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   const live = records.filter((record) => record.deletedAt === null);
   const work = live.filter((record) => record.kind === 'work').length;
   const honors = live.length - work;
 
-  const runBackup = async (): Promise<void> => {
+  const runBackup = async (acknowledgeOmissions = false): Promise<void> => {
     setBusy('backup');
     try {
-      const result = await createBackup();
+      const result = await createBackup(new Date(), { acknowledgeOmissions });
       // Refresh so the backup-health panel and the "last backup" row reflect the write that
       // `createBackup` just recorded.
       await refresh();
       toast.show(
         `已生成 ${result.download.filename}（${result.envelope.counts.records} 条记录，` +
-          `${Math.round(result.download.byteLength / 1024)} KB）。请确认浏览器已保存该文件。`,
+          `${Math.round(result.download.byteLength / 1024)} KB）。` +
+          (result.omitted.length > 0
+            ? `注意：该备份缺少 ${String(result.omitted.length)} 行未通过校验的数据。`
+            : '请确认浏览器已保存该文件。'),
+        result.omitted.length > 0 ? 'error' : 'success',
+      );
+    } catch (cause) {
+      if (cause instanceof IncompleteBackupError) {
+        // Not a failure to report and forget: the user must choose between exporting evidence
+        // first and knowingly accepting an incomplete archive.
+        setIncomplete(cause);
+        return;
+      }
+      toast.show(`备份失败：${cause instanceof Error ? cause.message : String(cause)}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runRecoveryExport = async (): Promise<void> => {
+    setBusy('recovery');
+    try {
+      const result = await createRecoveryExport();
+      toast.show(
+        `已生成诊断恢复文件 ${result.download.filename}` +
+          `（${String(result.invalidRecords)} 条无效记录、` +
+          `${String(result.invalidProgressEntries)} 条无效进展）。该文件不能用于还原。`,
         'success',
       );
     } catch (cause) {
-      toast.show(`备份失败：${cause instanceof Error ? cause.message : String(cause)}`, 'error');
+      toast.show(`导出失败：${cause instanceof Error ? cause.message : String(cause)}`, 'error');
     } finally {
       setBusy(null);
     }
@@ -93,12 +125,55 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
           <Panel tone="info">{describeBackupHealth(health)}</Panel>
         )}
 
+        {incomplete ? (
+          <Panel tone="danger">
+            <p>
+              <strong>无法生成完整备份。</strong>本机有{' '}
+              {incomplete.invalidRecordIds.length + incomplete.invalidProgressIds.length}{' '}
+              行数据未通过结构校验，它们不能写入可还原的备份文件。
+            </p>
+            <p className={styles.note}>
+              建议先导出<strong>诊断恢复文件</strong>
+              留证（其中按原样保留这些数据行，但不能用于还原）， 再决定是否导出一份
+              <strong>不含这些行</strong>的备份。
+            </p>
+            <div className={styles.addRow}>
+              <Button
+                variant="primary"
+                icon={<LifeBuoy size={16} />}
+                busy={busy === 'recovery'}
+                onClick={() => void runRecoveryExport()}
+              >
+                导出诊断恢复文件
+              </Button>
+              <Button
+                variant="danger"
+                busy={busy === 'backup'}
+                onClick={() => {
+                  setIncomplete(null);
+                  void runBackup(true);
+                }}
+              >
+                仍要导出（将缺少这些行）
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setIncomplete(null);
+                }}
+              >
+                取消
+              </Button>
+            </div>
+          </Panel>
+        ) : null}
+
         <div className={styles.addRow}>
           <Button
             variant="primary"
             icon={<Download size={16} />}
             busy={busy === 'backup'}
-            onClick={() => void runBackup()}
+            onClick={() => void runBackup(false)}
           >
             导出 JSON 备份
           </Button>
@@ -155,6 +230,7 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
       <ImportDialog
         open={importOpen}
         existing={records}
+        existingProgressIds={data.progress.map((entry) => entry.id)}
         onClose={() => {
           setImportOpen(false);
         }}

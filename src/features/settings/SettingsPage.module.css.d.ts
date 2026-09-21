@@ -16,6 +16,7 @@ declare const classes: {
   readonly "statLabel": string;
   readonly "statRow": string;
   readonly "statValue": string;
+  readonly "steps": string;
   readonly "tabs": string;
 };
 export default classes;

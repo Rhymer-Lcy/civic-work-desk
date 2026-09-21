@@ -137,8 +137,24 @@ export function DiagnosticsSection({ invalidRows, settings }: DiagnosticsSection
               </li>
             ))}
           </ul>
+          {/*
+            The Phase-1 wording told the user to "export a JSON backup as evidence", which was
+            wrong twice over: a canonical backup cannot contain an invalid row, and Phase 1 dropped
+            such rows without saying so. The correct procedure names the right file for each job.
+          */}
           <p className={styles.note}>
-            处理方式：导出一份 JSON 备份留存证据，然后以「替换」模式导入一份已知良好的备份。
+            <strong>处理顺序：</strong>
+          </p>
+          <ol className={styles.steps}>
+            <li>
+              在「数据与备份」中导出<strong>诊断恢复文件</strong>
+              ——普通 JSON 备份只能包含通过校验的数据行，<strong>无法</strong>作为这些行的证据。
+            </li>
+            <li>保存好该文件，它按原样保留了未通过校验的数据行，供技术排查使用。</li>
+            <li>再以「替换 / 还原」方式导入一份已知良好的 CivicWorkDesk 备份。</li>
+          </ol>
+          <p className={styles.note}>
+            诊断恢复文件<strong>不能</strong>通过「导入 / 还原备份」写回应用。
           </p>
         </Panel>
       ) : (

@@ -25,10 +25,17 @@ import styles from './ImportDialog.module.css';
 export interface ImportDialogProps {
   readonly open: boolean;
   readonly existing: readonly AnyRecord[];
+  /** Destination progress ids, so merge can guarantee it never overwrites an existing note. */
+  readonly existingProgressIds: readonly string[];
   readonly onClose: () => void;
 }
 
-export function ImportDialog({ open, existing, onClose }: ImportDialogProps): ReactNode {
+export function ImportDialog({
+  open,
+  existing,
+  existingProgressIds,
+  onClose,
+}: ImportDialogProps): ReactNode {
   const refresh = useRefresh();
   const toast = useToast();
   const [mode, setMode] = useState<ImportMode>('merge');
@@ -54,7 +61,7 @@ export function ImportDialog({ open, existing, onClose }: ImportDialogProps): Re
     try {
       const text = await readBackupFile(file);
       const parsed: unknown = JSON.parse(text);
-      setPlan(await buildImportPlan({ parsed, mode, existing }));
+      setPlan(await buildImportPlan({ parsed, mode, existing, existingProgressIds }));
     } catch (cause) {
       if (cause instanceof ImportParseError) {
         setParseError({ message: cause.message, details: cause.details });
@@ -127,7 +134,11 @@ export function ImportDialog({ open, existing, onClose }: ImportDialogProps): Re
                 else void apply();
               }}
             >
-              {mode === 'replace' ? '替换全部数据' : '合并导入'}
+              {plan?.strategy === 'canonical-restore'
+                ? '完整还原'
+                : plan?.strategy === 'legacy-replace'
+                  ? '替换记录与进展'
+                  : '合并导入'}
             </Button>
           </>
         }
@@ -164,9 +175,10 @@ export function ImportDialog({ open, existing, onClose }: ImportDialogProps): Re
                 }}
               />
               <span>
-                <strong>替换</strong>
+                <strong>替换 / 还原</strong>
                 <span className={styles.modeHint}>
-                  先删除本机全部记录与进展，再写入备份内容。用于完整还原，请先导出当前数据。
+                  用备份内容取代本机数据。CivicWorkDesk 备份可完整还原（含分类、分组与设置）；
+                  旧版格式只能替换记录与进展，分类、分组与设置保持本机现状。
                 </span>
               </span>
             </label>
@@ -209,7 +221,7 @@ export function ImportDialog({ open, existing, onClose }: ImportDialogProps): Re
             </Panel>
           ) : null}
 
-          {plan ? <ImportPreview plan={plan} mode={mode} blockers={blockers} /> : null}
+          {plan ? <ImportPreview plan={plan} blockers={blockers} /> : null}
         </div>
       </Dialog>
 
@@ -240,11 +252,9 @@ export function ImportDialog({ open, existing, onClose }: ImportDialogProps): Re
 
 function ImportPreview({
   plan,
-  mode,
   blockers,
 }: {
   readonly plan: ImportPlan;
-  readonly mode: ImportMode;
   readonly blockers: readonly string[];
 }): ReactNode {
   const s = plan.summary;
@@ -254,13 +264,22 @@ function ImportPreview({
         <CheckCircle2 aria-hidden="true" size={15} /> 导入预览（尚未写入）
       </h3>
 
+      <Panel tone={plan.strategy === 'merge' ? 'info' : 'warning'}>
+        {STRATEGY_DESCRIPTIONS[plan.strategy]}
+      </Panel>
+
       <dl className={styles.stats}>
         <Stat label="文件格式" value={FORMAT_LABELS[plan.format]} />
         <Stat label="源文件记录数" value={String(s.sourceRows)} />
         <Stat label="将写入工作记录" value={String(s.acceptedWork)} />
         <Stat label="将写入荣誉记录" value={String(s.acceptedHonors)} />
         <Stat label="将写入进展" value={String(s.acceptedProgress)} />
-        <Stat label="跳过（ID 已存在）" value={String(s.conflicts)} />
+        {plan.strategy === 'merge' ? (
+          <Stat label="跳过（ID 已存在）" value={String(s.conflicts)} />
+        ) : (
+          <Stat label="将被替换的现有记录" value={String(plan.replacesExisting)} />
+        )}
+        <Stat label="进展 ID 冲突" value={String(s.progressCollisions)} />
         <Stat label="已拒绝" value={String(s.rejected)} />
         <Stat label="迁移提示" value={String(s.warnings)} />
         {plan.checksum !== null ? (
@@ -278,10 +297,21 @@ function ImportPreview({
         </Panel>
       ) : null}
 
-      {mode === 'replace' ? (
-        <Panel tone="danger">
-          替换模式会先清空本机数据。备份中的分类与分组会补齐，应用设置会被备份中的设置覆盖。
-        </Panel>
+      {plan.progressCollisions.length > 0 ? (
+        <details className={styles.details}>
+          <summary>进展 ID 冲突 {plan.progressCollisions.length} 条（不会覆盖现有进展）</summary>
+          <ul className={styles.list}>
+            {plan.progressCollisions.slice(0, 30).map((collision) => (
+              <li key={collision.id}>
+                <code>{collision.id}</code>：
+                {collision.reason === 'duplicate-in-source'
+                  ? '同一文件内重复'
+                  : '与本机现有进展 ID 相同'}
+                {collision.incomingNote !== '' ? `（${collision.incomingNote.slice(0, 40)}）` : ''}
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
 
       {plan.conflicts.length > 0 ? (
@@ -340,6 +370,22 @@ function ImportPreview({
     </section>
   );
 }
+
+/**
+ * What each strategy will actually do, in the user's words.
+ *
+ * `legacy-replace` must never be described as 完整还原: a legacy file carries no categories, no
+ * groups and no settings, so it cannot restore them.
+ */
+const STRATEGY_DESCRIPTIONS: Readonly<Record<ImportPlan['strategy'], string>> = Object.freeze({
+  merge: '合并：只加入本机没有的记录与进展。已存在的 ID 会被跳过，不会覆盖任何现有内容。',
+  'canonical-restore':
+    '完整还原：本机的记录、进展、业务分类、归属分组与应用设置都将被备份内容取代，' +
+    '在同一个事务中完成，失败则整体回滚。',
+  'legacy-replace':
+    '旧版替换：只替换记录与进展。该格式不包含业务分类、归属分组与应用设置，' +
+    '这些内容将保持本机现状——因此这不是一次完整还原。',
+});
 
 const FORMAT_LABELS: Readonly<Record<ImportPlan['format'], string>> = Object.freeze({
   'civic-envelope': 'CivicWorkDesk 备份',
