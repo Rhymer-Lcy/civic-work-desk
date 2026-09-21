@@ -83,7 +83,19 @@ export default defineConfig({
   webServer: {
     command: 'npm run preview',
     url: BASE_URL,
-    reuseExistingServer: !process.env['CI'],
+    /*
+     * Never reuse a server already on this port, locally or in CI.
+     *
+     * `reuseExistingServer: !process.env.CI` looks like a convenience and is a correctness hazard:
+     * the reused server may be serving a **different** `dist/`, and the suite then reports on an
+     * artifact nobody is asking about. That happened for real on 2026-09-21 — a package build for
+     * one commit attached itself to a preview server left running from another, and two tests
+     * failed for reasons that had nothing to do with the code under test.
+     *
+     * With `strictPort` the run now fails immediately and visibly if 4173 is occupied, which is the
+     * correct outcome: stop the other server rather than silently testing the wrong build.
+     */
+    reuseExistingServer: false,
     timeout: 120_000,
     stdout: 'ignore',
     stderr: 'pipe',
