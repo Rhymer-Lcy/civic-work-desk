@@ -2,7 +2,7 @@ import { readStoreSnapshot, allInvalidRows, invalidRowCount, storeIsIntact } fro
 import type { InvalidEntityGroups, StoreSnapshot } from '@/db/snapshot';
 import type { InvalidRow } from '@/db/invalid-row';
 import { recordCanonicalBackup } from '@/db/repositories/taxonomy';
-import { daysBetween, todayIso } from '@/domain/dates';
+import { businessDateOf, daysBetween, todayIso } from '@/domain/dates';
 import { defaultSettings } from '@/domain/defaults';
 import type { AppMeta } from '@/domain/types';
 import { filenameStamp, nowInstant } from '@/utils/clock';
@@ -203,10 +203,12 @@ export function assessBackupHealth(
   if (meta.lastBackupAt === null) return { state: 'never' };
 
   const at = meta.lastBackupAt;
-  const day = at.slice(0, 10);
   let daysAgo: number;
   try {
-    daysAgo = Math.max(0, daysBetween(day, today));
+    // The stored value is a UTC instant; `today` is a local business date. Comparing the instant's
+    // first ten characters against it reads the UTC day and is wrong for part of every day — see
+    // `businessDateOf`.
+    daysAgo = Math.max(0, daysBetween(businessDateOf(at), today));
   } catch {
     return { state: 'unknown' };
   }

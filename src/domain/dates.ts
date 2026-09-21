@@ -99,6 +99,26 @@ export function todayIso(now: Date = new Date()): IsoDate {
 }
 
 /**
+ * The **business date** an ISO instant falls on, in the machine's local timezone.
+ *
+ * Stored timestamps are UTC instants (`2026-09-22T02:00:00.000Z`); business dates are local days.
+ * Slicing the first ten characters off an instant reads the *UTC* day, and the two disagree for
+ * part of every day: at 16:30 UTC the instant says 09-21 while a UTC+8 user is already on 09-22.
+ *
+ * That mismatch produced a real defect — a backup taken seconds ago was reported as
+ * 「上次备份在 1 天前」 for the whole of a UTC+8 morning, because `assessBackupHealth` compared a
+ * UTC-sliced day against a local `todayIso()`. Found on 2026-09-21 at 16:15 UTC, when an end-to-end
+ * assertion of 「今天已备份。」 began failing purely because the clock had crossed 16:00.
+ *
+ * Every comparison between a stored instant and a business date goes through here.
+ */
+export function businessDateOf(instant: string): IsoDate {
+  const date = new Date(instant);
+  if (Number.isNaN(date.getTime())) throw new RangeError(`not an instant: ${instant}`);
+  return todayIso(date);
+}
+
+/**
  * Whole calendar days from `from` to `to`. Negative means `to` is in the past.
  * Date-only and DST-safe: `differenceInCalendarDays` compares local calendar days, so a
  * spring-forward boundary (23h apart) still reports 1 day.

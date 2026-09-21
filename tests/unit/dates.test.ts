@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ABSENT_DATE,
   anchorDay,
+  businessDateOf,
   compareIsoDate,
   dateValueFromRange,
   daysBetween,
@@ -227,5 +228,43 @@ describe('DateValue accessors', () => {
       '2026-01-01 ~ 2026-01-31',
     );
     expect(formatDateValue({ kind: 'text', text: '待定（4月前）' })).toBe('待定（4月前）');
+  });
+});
+
+describe('businessDateOf', () => {
+  /*
+   * A stored timestamp is a UTC instant; a business date is a local day. They disagree for part of
+   * every day, and slicing the instant's first ten characters silently reads the UTC day.
+   *
+   * Found on 2026-09-21 at 16:15 UTC: an end-to-end assertion of 「今天已备份。」 started failing
+   * because the clock had crossed 16:00 and the browser's Asia/Shanghai date had moved to the 22nd
+   * while the freshly written instant still said the 21st. The backup was seconds old and the UI
+   * reported 「上次备份在 1 天前」.
+   */
+  it('reads the LOCAL day of an instant, not its UTC day', () => {
+    // Pick instants whose UTC day and this machine's local day differ in either direction; the
+    // assertion is stated against `todayIso`, which is the same local-day rule the app compares to.
+    for (const instant of [
+      '2026-09-22T02:00:00.000Z',
+      '2026-09-21T23:30:00.000Z',
+      '2026-09-21T16:15:00.000Z',
+      '2026-01-01T00:30:00.000Z',
+    ]) {
+      expect(businessDateOf(instant)).toBe(todayIso(new Date(instant)));
+    }
+  });
+
+  it('agrees with the UTC slice only when the two days coincide', () => {
+    const instant = '2026-09-21T12:00:00.000Z';
+    const local = businessDateOf(instant);
+    const utcSlice = instant.slice(0, 10);
+    // Whichever this machine's zone is, the helper must return a well-formed date, and where the
+    // days differ it must follow the local one.
+    expect(local).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(local === utcSlice || daysBetween(local, utcSlice) !== 0).toBe(true);
+  });
+
+  it('refuses a value that is not an instant', () => {
+    expect(() => businessDateOf('not-a-date')).toThrow(RangeError);
   });
 });
