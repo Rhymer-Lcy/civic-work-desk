@@ -32,6 +32,34 @@ export interface DialogProps {
   readonly initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
+/**
+ * Background scroll lock.
+ *
+ * A class whose rule lives in `styles/globals.css`, not a `document.body.style.overflow` write.
+ *
+ * Be precise about why, because the obvious reason is wrong: CSP's `style-src` does **not** govern
+ * CSSOM property writes, and a mutation test confirmed it — restoring the `style.overflow` write
+ * under `style-src 'self'` raised no violation at all. What the write does produce is an inline
+ * `style` attribute on `<body>`, which `style-src-attr` would govern if the policy were ever
+ * tightened that far, and which puts presentation in two places at once. The class keeps every
+ * declaration in the stylesheet and lets an E2E test assert the plain structural invariant that
+ * `<body>` carries no `style` attribute.
+ *
+ * Reference-counted because dialogs nest: an import preview can open a confirmation on top of
+ * itself, and the inner one closing must not release the outer one's lock.
+ */
+export const SCROLL_LOCK_CLASS = 'dialog-open';
+let scrollLocks = 0;
+
+function lockBackgroundScroll(): () => void {
+  scrollLocks += 1;
+  document.body.classList.add(SCROLL_LOCK_CLASS);
+  return () => {
+    scrollLocks = Math.max(0, scrollLocks - 1);
+    if (scrollLocks === 0) document.body.classList.remove(SCROLL_LOCK_CLASS);
+  };
+}
+
 const FOCUSABLE = [
   'a[href]',
   'button:not([disabled])',
@@ -83,11 +111,7 @@ export function Dialog({
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    return lockBackgroundScroll();
   }, [open]);
 
   useEffect(() => {

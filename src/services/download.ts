@@ -40,8 +40,12 @@ export function downloadBlob(blob: Blob, filename: string): DownloadResult {
     anchor.href = url;
     anchor.download = filename;
     anchor.rel = 'noopener';
-    // Appending before clicking is required by some browsers and harmless in the rest.
-    anchor.style.display = 'none';
+    // Appending before clicking is required by some browsers and harmless in the rest. `hidden`
+    // rather than an inline `style.display` write: the UA stylesheet already hides it, a
+    // programmatic `click()` still fires on a hidden element, and the element carries no `style`
+    // attribute. (That is tidiness and `style-src-attr` hygiene, not what makes the strict CSP
+    // possible — `style-src` does not govern CSSOM writes. See docs/security.md.)
+    anchor.hidden = true;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();

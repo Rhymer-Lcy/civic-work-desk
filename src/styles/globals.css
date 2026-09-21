@@ -134,6 +134,15 @@ body {
   overflow-x: hidden;
 }
 
+/*
+ * Background scroll lock for modal dialogs, applied by `components/common/Dialog.tsx`.
+ * A class rather than an inline `style.overflow` write, so the shipped Content-Security-Policy
+ * can forbid inline styles outright (`style-src 'self'`). See docs/security.md.
+ */
+body.dialog-open {
+  overflow: hidden;
+}
+
 /* Respect device safe areas on notched phones. */
 .safe-bottom {
   padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));

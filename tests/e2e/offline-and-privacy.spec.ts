@@ -91,6 +91,115 @@ test.describe('network privacy', () => {
     // The two that would defeat the point.
     expect(policy).not.toContain('unsafe-eval');
     expect(policy).not.toMatch(/script-src[^;]*unsafe-inline/);
+    // style-src used to carry 'unsafe-inline' on a justification that was simply untrue: CSS
+    // modules compile to a linked stylesheet, which 'self' already permits. The production build
+    // emits no inline <style> and no style attribute, so the policy must now be strict — and no
+    // directive may carry it, not merely script-src.
+    expect(policy).toContain("style-src 'self';");
+    expect(policy, 'no directive may allow inline sources').not.toContain('unsafe-inline');
+  });
+
+  test('runs under the strict policy without a violation, and proves the check can fail', async ({
+    page,
+  }) => {
+    // A policy that blocks something the app needs shows up here and nowhere else: the page still
+    // renders well enough for most assertions to pass while a stylesheet is silently refused.
+    //
+    // The detector is the specified `securitypolicyviolation` event rather than console-text
+    // matching, and it is **self-tested at the end of this test**: a listener that never fires
+    // looks exactly like a policy with nothing to report, so the test deliberately triggers a real
+    // violation and fails if that goes unreported.
+    await page.addInitScript(() => {
+      const violations: string[] = [];
+      (window as unknown as { __cspViolations: string[] }).__cspViolations = violations;
+      document.addEventListener('securitypolicyviolation', (event) => {
+        violations.push(`${event.violatedDirective} <- ${event.blockedURI || 'inline'}`);
+      });
+    });
+
+    await gotoApp(page, 'work');
+    await createWorkRecord(page, {
+      title: 'CSP 检查中的示范事项',
+      date: '2026-09-18',
+      unit: '示范单位乙',
+    });
+    // Open a dialog — the scroll lock used to be the app's last inline-style write.
+    await page.getByRole('button', { name: '新增记录' }).first().click();
+    await expect(page.getByRole('dialog', { name: '新增工作记录' })).toBeVisible();
+    // The lock must be in force as a class, not as an inline style on <body>.
+    await expect(page.locator('body.dialog-open')).toHaveCount(1);
+    await expect(page.locator('body[style]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('body.dialog-open')).toHaveCount(0);
+
+    // The stylesheet must actually be in force: if `style-src` had blocked it, computed styles
+    // would fall back to the UA defaults and this would be `rgba(0, 0, 0, 0)`.
+    const background = await page
+      .locator('body')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(background, 'the linked stylesheet was not applied').not.toBe('rgba(0, 0, 0, 0)');
+
+    const observed = await page.evaluate(
+      () => (window as unknown as { __cspViolations: string[] }).__cspViolations,
+    );
+    expect(observed, `CSP violations:\n${observed.join('\n')}`).toEqual([]);
+
+    // Self-test. An inline <style> element is precisely what `style-src 'self'` forbids, so
+    // injecting one must be reported. This is the assertion that makes the empty result above
+    // mean something.
+    //
+    // The event is fired from a queued task, not synchronously during `appendChild`, so this
+    // polls rather than reading the array in the same evaluate call.
+    await page.evaluate(() => {
+      const probe = document.createElement('style');
+      probe.textContent = 'body { outline: 1px solid red; }';
+      document.head.appendChild(probe);
+    });
+    await expect
+      .poll(
+        async () =>
+          (
+            await page.evaluate(
+              () => (window as unknown as { __cspViolations: string[] }).__cspViolations,
+            )
+          ).join(' '),
+        { message: 'the violation detector never fired on a deliberate violation' },
+      )
+      .toMatch(/style-src/);
+
+    // And the blocked stylesheet must genuinely not have taken effect.
+    const outline = await page.locator('body').evaluate((el) => getComputedStyle(el).outlineWidth);
+    expect(outline, 'the probe stylesheet was applied, so the policy did not block it').not.toBe(
+      '1px',
+    );
+  });
+
+  test('ships no source maps, so the built bundle discloses no source', async ({ request }) => {
+    const html = await (await request.get('/')).text();
+    const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1] ?? '');
+    expect(scripts.length, 'no module script found in index.html').toBeGreaterThan(0);
+
+    for (const src of scripts) {
+      const asset = await request.get(src.replace(/^\.\//, '/'));
+      expect(asset.status(), `${src} is not served`).toBe(200);
+      const code = await asset.text();
+      expect(code, `${src} points at a source map`).not.toMatch(/sourceMappingURL/);
+
+      // And the map must not be retrievable by guessing its name. Asserting on the status alone
+      // would be wrong: `vite preview` answers an unknown path with the SPA fallback, so a
+      // missing map returns 200 with `index.html` in it. What matters is whether the body IS a
+      // source map.
+      const map = await request.get(`${src.replace(/^\.\//, '/')}.map`);
+      if (map.status() === 200) {
+        const body = await map.text();
+        expect(
+          map.headers()['content-type'] ?? '',
+          `${src}.map is served as a document`,
+        ).not.toContain('json');
+        expect(body, `${src}.map returned a source map`).not.toMatch(/"mappings"\s*:/);
+        expect(body, `${src}.map returned a source map`).not.toMatch(/"sourcesContent"\s*:/);
+      }
+    }
   });
 });
 

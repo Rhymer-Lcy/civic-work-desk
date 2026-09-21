@@ -11,13 +11,19 @@
       ignored in a meta tag, and a meta policy only takes effect once the parser reaches it.
       docs/security.md lists the headers a deployment must add.
 
-      'unsafe-inline' is present for style-src ONLY. Vite emits no inline <script>, but CSS modules
-      and the theme-color meta produce inline style attributes; a nonce cannot be applied to those
-      in a static build. It is absent from script-src, and 'unsafe-eval' is absent entirely.
+      No directive carries 'unsafe-inline' or 'unsafe-eval'. An earlier revision allowed
+      'unsafe-inline' for style-src on a justification that did not hold: CSS modules compile to a
+      linked stylesheet, which 'self' already permits. The production build emits no inline style
+      element and no style attribute, so the directive is strict, and an E2E test drives the app
+      under this policy and fails on any reported violation.
+
+      The dev server is the one exception: Vite injects CSS inline for hot replacement.
+      vite.config.ts relaxes style-src for `vite dev` only, so the shipped artifact is never
+      weakened to suit the development loop. docs/security.md carries the full account.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'; media-src 'none'; upgrade-insecure-requests"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'; media-src 'none'; upgrade-insecure-requests"
     />
     <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#8c1d1d" />
