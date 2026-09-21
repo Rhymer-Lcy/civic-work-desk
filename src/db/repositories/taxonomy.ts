@@ -1,7 +1,7 @@
 import type { BusinessCategory, WorkGroup, WorkRecord } from '@/domain/types';
 import { businessCategorySchema, workGroupSchema } from '@/domain/validation';
 import { newId, nowInstant } from '@/utils/clock';
-import { withDatabase } from '../client';
+import { withDatabase, withMutation } from '../client';
 import { META_KEY, SETTINGS_KEY } from '../schema';
 import type { AppMeta, AppSettings } from '@/domain/types';
 import { appSettingsSchema } from '@/domain/validation';
@@ -42,8 +42,8 @@ export async function listGroups(): Promise<WorkGroup[]> {
 }
 
 export async function addCategory(name: string): Promise<BusinessCategory> {
-  return withDatabase('addCategory', (db) =>
-    db.transaction('rw', db.categories, async () => {
+  return withMutation('addCategory', ['categories'], async (db) => {
+    {
       const existing = await db.categories.toArray();
       const trimmed = name.trim();
       if (existing.some((c) => c.name === trimmed)) {
@@ -59,31 +59,29 @@ export async function addCategory(name: string): Promise<BusinessCategory> {
       businessCategorySchema.parse(category);
       await db.categories.add(category);
       return category;
-    }),
-  );
+    }
+  });
 }
 
 export async function renameCategory(id: string, name: string): Promise<void> {
   const trimmed = name.trim();
   if (trimmed === '') throw new Error('category name cannot be empty');
-  await withDatabase('renameCategory', (db) =>
-    db.transaction('rw', db.categories, async () => {
-      const clash = await db.categories.filter((c) => c.name === trimmed && c.id !== id).count();
-      if (clash > 0) throw new Error(`category already exists: ${trimmed}`);
-      await db.categories.update(id, { name: trimmed });
-    }),
-  );
+  await withMutation('renameCategory', ['categories'], async (db) => {
+    const clash = await db.categories.filter((c) => c.name === trimmed && c.id !== id).count();
+    if (clash > 0) throw new Error(`category already exists: ${trimmed}`);
+    await db.categories.update(id, { name: trimmed });
+  });
 }
 
 export async function setCategoryArchived(id: string, archived: boolean): Promise<void> {
-  await withDatabase('setCategoryArchived', async (db) => {
+  await withMutation('setCategoryArchived', ['categories'], async (db) => {
     await db.categories.update(id, { archived });
   });
 }
 
 export async function moveCategory(id: string, direction: -1 | 1): Promise<void> {
-  await withDatabase('moveCategory', (db) =>
-    db.transaction('rw', db.categories, async () => {
+  await withMutation('moveCategory', ['categories'], async (db) => {
+    {
       const ordered = (await db.categories.toArray()).sort((a, b) => a.sortOrder - b.sortOrder);
       const index = ordered.findIndex((c) => c.id === id);
       const target = index + direction;
@@ -93,8 +91,8 @@ export async function moveCategory(id: string, direction: -1 | 1): Promise<void>
       if (!a || !b) return;
       await db.categories.update(a.id, { sortOrder: b.sortOrder });
       await db.categories.update(b.id, { sortOrder: a.sortOrder });
-    }),
-  );
+    }
+  });
 }
 
 /**
@@ -102,16 +100,16 @@ export async function moveCategory(id: string, direction: -1 | 1): Promise<void>
  * can explain why rather than losing the association.
  */
 export async function deleteCategoryIfUnused(id: string): Promise<boolean> {
-  return withDatabase('deleteCategoryIfUnused', (db) =>
-    db.transaction('rw', [db.categories, db.records], async () => {
+  return withMutation('deleteCategoryIfUnused', ['categories', 'records'], async (db) => {
+    {
       const category = await db.categories.get(id);
       if (!category || category.builtIn) return false;
       const used = await db.records.where('categoryId').equals(id).count();
       if (used > 0) return false;
       await db.categories.delete(id);
       return true;
-    }),
-  );
+    }
+  });
 }
 
 export async function categoryUsage(): Promise<ReadonlyMap<string, number>> {
@@ -127,8 +125,8 @@ export async function categoryUsage(): Promise<ReadonlyMap<string, number>> {
 }
 
 export async function addGroup(name: string): Promise<WorkGroup> {
-  return withDatabase('addGroup', (db) =>
-    db.transaction('rw', db.groups, async () => {
+  return withMutation('addGroup', ['groups'], async (db) => {
+    {
       const existing = await db.groups.toArray();
       const trimmed = name.trim();
       if (existing.some((g) => g.name === trimmed)) {
@@ -144,20 +142,18 @@ export async function addGroup(name: string): Promise<WorkGroup> {
       workGroupSchema.parse(group);
       await db.groups.add(group);
       return group;
-    }),
-  );
+    }
+  });
 }
 
 export async function renameGroup(id: string, name: string): Promise<void> {
   const trimmed = name.trim();
   if (trimmed === '') throw new Error('group name cannot be empty');
-  await withDatabase('renameGroup', (db) =>
-    db.transaction('rw', db.groups, async () => {
-      const clash = await db.groups.filter((g) => g.name === trimmed && g.id !== id).count();
-      if (clash > 0) throw new Error(`group already exists: ${trimmed}`);
-      await db.groups.update(id, { name: trimmed });
-    }),
-  );
+  await withMutation('renameGroup', ['groups'], async (db) => {
+    const clash = await db.groups.filter((g) => g.name === trimmed && g.id !== id).count();
+    if (clash > 0) throw new Error(`group already exists: ${trimmed}`);
+    await db.groups.update(id, { name: trimmed });
+  });
 }
 
 /**
@@ -167,8 +163,8 @@ export async function renameGroup(id: string, name: string): Promise<void> {
  * every member inside the same click with no indication of how many records it touched.
  */
 export async function deleteGroup(id: string): Promise<number> {
-  return withDatabase('deleteGroup', (db) =>
-    db.transaction('rw', [db.groups, db.records], async () => {
+  return withMutation('deleteGroup', ['groups', 'records'], async (db) => {
+    {
       const group = await db.groups.get(id);
       if (!group || group.builtIn) return 0;
       const members = await db.records.where('groupId').equals(id).toArray();
@@ -182,8 +178,8 @@ export async function deleteGroup(id: string): Promise<number> {
       }
       await db.groups.delete(id);
       return members.length;
-    }),
-  );
+    }
+  });
 }
 
 export async function groupUsage(): Promise<ReadonlyMap<string, number>> {
@@ -211,7 +207,7 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function saveSettings(settings: AppSettings): Promise<AppSettings> {
   const validated = appSettingsSchema.parse(settings);
-  await withDatabase('saveSettings', (db) =>
+  await withMutation('saveSettings', ['settings'], (db) =>
     db.settings.put({ key: SETTINGS_KEY, value: validated }),
   );
   return validated;
@@ -224,6 +220,16 @@ export async function getMeta(): Promise<AppMeta | null> {
   });
 }
 
+/**
+ * Record that a canonical JSON backup succeeded.
+ *
+ * Captures the `dataRevision` the backup contains, so any later mutation — including an edit that
+ * leaves the record count unchanged — makes the backup measurably stale.
+ *
+ * Only canonical JSON backups call this. XLSX and DOCX are reports and must never mark data as
+ * backed up (the legacy prototype's `exportExcel()` wrote its backup marker, silencing the
+ * reminder for a week without a backup existing).
+ */
 export async function recordBackupSuccess(recordCount: number): Promise<void> {
   await withDatabase('recordBackupSuccess', (db) =>
     db.transaction('rw', db.meta, async () => {
@@ -231,7 +237,12 @@ export async function recordBackupSuccess(recordCount: number): Promise<void> {
       if (!row) return;
       await db.meta.put({
         key: META_KEY,
-        value: { ...row.value, lastBackupAt: nowInstant(), lastBackupRecordCount: recordCount },
+        value: {
+          ...row.value,
+          lastBackupAt: nowInstant(),
+          lastBackupRevision: row.value.dataRevision,
+          lastBackupRecordCount: recordCount,
+        },
       });
     }),
   );

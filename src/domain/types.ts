@@ -152,10 +152,25 @@ export interface AppSettings {
   readonly backupReminderDays: number;
 }
 
-/** Non-user data: schema bookkeeping and backup health. */
+/**
+ * Non-user data: schema bookkeeping and backup health.
+ *
+ * Deliberately **not** carried in or restored from a backup — it describes this installation,
+ * not the archive. See `src/services/import/apply.ts` for that boundary.
+ */
 export interface AppMeta {
   readonly schemaVersion: number;
+  /**
+   * Monotonic counter bumped by every successfully persisted user-data mutation.
+   *
+   * Phase 1 judged backup freshness by age and record count alone, so editing an existing record
+   * left the backup looking current: the count had not changed. Comparing revisions detects any
+   * mutation, including an edit, a soft delete and a settings change.
+   */
+  readonly dataRevision: number;
   readonly lastBackupAt: IsoInstant | null;
+  /** The `dataRevision` the last canonical JSON backup captured. Null when never backed up. */
+  readonly lastBackupRevision: number | null;
   readonly lastBackupRecordCount: number | null;
   readonly createdAt: IsoInstant;
 }

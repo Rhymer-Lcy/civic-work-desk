@@ -2,8 +2,7 @@ import { ABSENT_DATE } from '@/domain/dates';
 import type { AnyRecord, HonorRecord, ProgressEntry, WorkRecord } from '@/domain/types';
 import { anyRecordSchema, progressEntrySchema } from '@/domain/validation';
 import { newId, nowInstant } from '@/utils/clock';
-import { withDatabase } from '../client';
-import type { CivicWorkDeskDatabase } from '../schema';
+import { withDatabase, withMutation } from '../client';
 
 /**
  * Record and progress-entry persistence.
@@ -17,23 +16,40 @@ import type { CivicWorkDeskDatabase } from '../schema';
  * store produces a visible error instead of a plausible-looking but wrong list.
  */
 
+/** A stored row that failed its schema, kept verbatim so it can be recovered or inspected. */
+export interface InvalidRow {
+  readonly id: string;
+  readonly reason: string;
+  /**
+   * The row exactly as it came out of IndexedDB.
+   *
+   * Required by the diagnostic recovery export: a canonical backup cannot carry an invalid row
+   * (it would not validate on restore), so the raw value is the only evidence that survives.
+   */
+  readonly raw: unknown;
+}
+
 export interface RecordReadResult {
   readonly records: AnyRecord[];
-  /** Ids of rows that failed validation, with a short reason. Surfaced in Settings. */
-  readonly invalid: readonly { readonly id: string; readonly reason: string }[];
+  /** Rows that failed validation. Surfaced in Settings; never silently dropped. */
+  readonly invalid: readonly InvalidRow[];
 }
 
 export async function listRecords(): Promise<RecordReadResult> {
   return withDatabase('listRecords', async (db) => {
     const rows = await db.records.toArray();
     const records: AnyRecord[] = [];
-    const invalid: { id: string; reason: string }[] = [];
+    const invalid: InvalidRow[] = [];
     for (const row of rows) {
       const parsed = anyRecordSchema.safeParse(row);
       if (parsed.success) records.push(parsed.data);
       else {
         const id = typeof row.id === 'string' ? row.id : '(unknown id)';
-        invalid.push({ id, reason: parsed.error.issues[0]?.message ?? 'schema mismatch' });
+        invalid.push({
+          id,
+          reason: parsed.error.issues[0]?.message ?? 'schema mismatch',
+          raw: row,
+        });
       }
     }
     return { records, invalid };
@@ -88,13 +104,13 @@ export function buildHonorRecord(input: NewHonorRecordInput): HonorRecord {
 
 export async function createWorkRecord(input: NewWorkRecordInput): Promise<WorkRecord> {
   const record = buildWorkRecord(input);
-  await withDatabase('createWorkRecord', (db) => db.records.add(record));
+  await withMutation('createWorkRecord', ['records'], (db) => db.records.add(record));
   return record;
 }
 
 export async function createHonorRecord(input: NewHonorRecordInput): Promise<HonorRecord> {
   const record = buildHonorRecord(input);
-  await withDatabase('createHonorRecord', (db) => db.records.add(record));
+  await withMutation('createHonorRecord', ['records'], (db) => db.records.add(record));
   return record;
 }
 
@@ -111,8 +127,8 @@ export async function updateRecord(
   id: string,
   patch: WorkRecordPatch | HonorRecordPatch,
 ): Promise<AnyRecord> {
-  return withDatabase('updateRecord', async (db) => {
-    return db.transaction('rw', db.records, async () => {
+  return withMutation('updateRecord', ['records'], async (db) => {
+    {
       const existing = await db.records.get(id);
       if (!existing) throw new Error(`record not found: ${id}`);
       const next = { ...existing, ...patch, updatedAt: nowInstant() } as AnyRecord;
@@ -124,7 +140,7 @@ export async function updateRecord(
       }
       await db.records.put(parsed.data);
       return parsed.data;
-    });
+    }
   });
 }
 
@@ -133,26 +149,24 @@ export async function updateRecord(
  * Progress entries are left attached so a restore is complete.
  */
 export async function softDeleteRecord(id: string): Promise<void> {
-  await withDatabase('softDeleteRecord', async (db) => {
+  await withMutation('softDeleteRecord', ['records'], async (db) => {
     const stamp = nowInstant();
     await db.records.update(id, { deletedAt: stamp, updatedAt: stamp });
   });
 }
 
 export async function restoreRecord(id: string): Promise<void> {
-  await withDatabase('restoreRecord', async (db) => {
+  await withMutation('restoreRecord', ['records'], async (db) => {
     await db.records.update(id, { deletedAt: null, updatedAt: nowInstant() });
   });
 }
 
 /** Irreversible. Removes the record and its progress entries in one transaction. */
 export async function purgeRecord(id: string): Promise<void> {
-  await withDatabase('purgeRecord', (db) =>
-    db.transaction('rw', [db.records, db.progressEntries], async () => {
-      await db.progressEntries.where('recordId').equals(id).delete();
-      await db.records.delete(id);
-    }),
-  );
+  await withMutation('purgeRecord', ['records', 'progressEntries'], async (db) => {
+    await db.progressEntries.where('recordId').equals(id).delete();
+    await db.records.delete(id);
+  });
 }
 
 export async function listDeletedRecords(): Promise<AnyRecord[]> {
@@ -162,8 +176,8 @@ export async function listDeletedRecords(): Promise<AnyRecord[]> {
 
 /** Empty the trash. Returns how many records were destroyed. */
 export async function purgeAllDeleted(): Promise<number> {
-  return withDatabase('purgeAllDeleted', (db) =>
-    db.transaction('rw', [db.records, db.progressEntries], async () => {
+  return withMutation('purgeAllDeleted', ['records', 'progressEntries'], async (db) => {
+    {
       const rows = await db.records.toArray();
       const doomed = rows.filter((row) => row.deletedAt !== null).map((row) => row.id);
       for (const id of doomed) {
@@ -171,23 +185,49 @@ export async function purgeAllDeleted(): Promise<number> {
       }
       await db.records.bulkDelete(doomed);
       return doomed.length;
-    }),
-  );
+    }
+  });
 }
 
 /* ------------------------------------------------------------------ progress */
 
 export async function listProgressEntries(recordId?: string): Promise<ProgressEntry[]> {
-  return withDatabase('listProgressEntries', async (db) => {
+  return (await readProgressEntries(recordId)).entries;
+}
+
+export interface ProgressReadResult {
+  readonly entries: ProgressEntry[];
+  readonly invalid: readonly InvalidRow[];
+}
+
+/**
+ * Like `listProgressEntries`, but also reports rows that failed validation.
+ *
+ * Progress entries can be corrupted exactly as records can, and a backup that silently omitted
+ * them would be just as misleading.
+ */
+export async function readProgressEntries(recordId?: string): Promise<ProgressReadResult> {
+  return withDatabase('readProgressEntries', async (db) => {
     const rows =
       recordId === undefined
         ? await db.progressEntries.toArray()
         : await db.progressEntries.where('recordId').equals(recordId).toArray();
-    return rows
-      .map((row) => progressEntrySchema.safeParse(row))
-      .filter((r) => r.success)
-      .map((r) => r.data as ProgressEntry)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const entries: ProgressEntry[] = [];
+    const invalid: InvalidRow[] = [];
+    for (const row of rows) {
+      const parsed = progressEntrySchema.safeParse(row);
+      if (parsed.success) entries.push(parsed.data);
+      else {
+        const id = typeof row.id === 'string' ? row.id : '(unknown id)';
+        invalid.push({
+          id,
+          reason: parsed.error.issues[0]?.message ?? 'schema mismatch',
+          raw: row,
+        });
+      }
+    }
+    entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return { entries, invalid };
   });
 }
 
@@ -207,7 +247,9 @@ export async function addProgressEntry(input: NewProgressInput): Promise<Progres
     createdAt: stamp,
     updatedAt: stamp,
   };
-  await withDatabase('addProgressEntry', (db) => db.progressEntries.add(entry));
+  await withMutation('addProgressEntry', ['progressEntries'], (db) =>
+    db.progressEntries.add(entry),
+  );
   return entry;
 }
 
@@ -215,13 +257,15 @@ export async function updateProgressEntry(
   id: string,
   patch: Partial<Pick<ProgressEntry, 'note' | 'occurredOn'>>,
 ): Promise<void> {
-  await withDatabase('updateProgressEntry', async (db) => {
+  await withMutation('updateProgressEntry', ['progressEntries'], async (db) => {
     await db.progressEntries.update(id, { ...patch, updatedAt: nowInstant() });
   });
 }
 
 export async function deleteProgressEntry(id: string): Promise<void> {
-  await withDatabase('deleteProgressEntry', (db) => db.progressEntries.delete(id));
+  await withMutation('deleteProgressEntry', ['progressEntries'], (db) =>
+    db.progressEntries.delete(id),
+  );
 }
 
 /** Counts per record id, so a list can show "3 条进展" without loading every note. */
@@ -239,7 +283,7 @@ export async function replaceAllRecords(
   records: readonly AnyRecord[],
   progress: readonly ProgressEntry[],
 ): Promise<void> {
-  await withDatabase('replaceAllRecords', (db: CivicWorkDeskDatabase) =>
+  await withDatabase('replaceAllRecords', (db) =>
     db.transaction('rw', [db.records, db.progressEntries], async () => {
       await db.records.clear();
       await db.progressEntries.clear();

@@ -1,4 +1,4 @@
-import { CivicWorkDeskDatabase, DATABASE_NAME } from './schema';
+import { CivicWorkDeskDatabase, DATABASE_NAME, META_KEY } from './schema';
 import { ensureSeedData } from './migrations';
 
 /**
@@ -68,4 +68,43 @@ export async function withDatabase<T>(
   } catch (cause) {
     throw new DatabaseError(operation, cause);
   }
+}
+
+/** The tables a mutation may touch, named so call sites read as a declaration of scope. */
+export type MutableTable = 'records' | 'progressEntries' | 'categories' | 'groups' | 'settings';
+
+/**
+ * Run a user-data mutation and bump `meta.dataRevision` in the **same** transaction.
+ *
+ * The invariant this exists to make structural: *any successfully persisted user-data mutation
+ * marks the canonical backup stale*. Leaving that to each call site would mean one forgotten
+ * `bump()` silently reports a stale backup as current — exactly the class of defect Phase 1 had
+ * when it judged freshness by record count alone.
+ *
+ * Because the counter is written inside the caller's transaction, a rolled-back mutation also
+ * rolls back the revision: the two can never disagree.
+ */
+export async function withMutation<T>(
+  operation: string,
+  tables: readonly MutableTable[],
+  fn: (db: CivicWorkDeskDatabase) => Promise<T>,
+): Promise<T> {
+  return withDatabase(operation, (db) => {
+    const scope = [...tables.map((name) => db[name]), db.meta];
+    return db.transaction('rw', scope, async () => {
+      const result = await fn(db);
+      await bumpDataRevision(db);
+      return result;
+    });
+  });
+}
+
+/** Increment the revision counter. Must be called inside a transaction that includes `meta`. */
+export async function bumpDataRevision(db: CivicWorkDeskDatabase): Promise<void> {
+  const row = await db.meta.get(META_KEY);
+  if (!row) return;
+  await db.meta.put({
+    key: META_KEY,
+    value: { ...row.value, dataRevision: row.value.dataRevision + 1 },
+  });
 }

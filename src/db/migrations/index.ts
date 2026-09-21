@@ -1,6 +1,7 @@
 import type { CivicWorkDeskDatabase } from '../schema';
 import { META_KEY, SCHEMA_VERSION, SETTINGS_KEY } from '../schema';
 import { defaultCategories, defaultGroups, defaultSettings } from '@/domain/defaults';
+import type { AppMeta } from '@/domain/types';
 import { nowInstant } from '@/utils/clock';
 
 /**
@@ -55,7 +56,9 @@ export async function ensureSeedData(db: CivicWorkDeskDatabase): Promise<SeedOut
           key: META_KEY,
           value: {
             schemaVersion: SCHEMA_VERSION,
+            dataRevision: 0,
             lastBackupAt: null,
+            lastBackupRevision: null,
             lastBackupRecordCount: null,
             createdAt: nowInstant(),
           },
@@ -63,10 +66,26 @@ export async function ensureSeedData(db: CivicWorkDeskDatabase): Promise<SeedOut
         return { seeded: true, schemaVersion: SCHEMA_VERSION };
       }
 
-      if (existingMeta.value.schemaVersion !== SCHEMA_VERSION) {
+      // Backfill fields added after a store was first created. The meta row is a single value,
+      // not an indexed shape, so this needs no Dexie version bump — but it must be explicit, not
+      // left to `undefined` leaking into arithmetic.
+      //
+      // The declared type says these fields are always present; a row written by an earlier build
+      // does not honour that, so read it through a partial view rather than trusting the type.
+      const stored: Partial<AppMeta> = existingMeta.value;
+      const needsBackfill =
+        stored.schemaVersion !== SCHEMA_VERSION ||
+        typeof stored.dataRevision !== 'number' ||
+        stored.lastBackupRevision === undefined;
+      if (needsBackfill) {
         await db.meta.put({
           key: META_KEY,
-          value: { ...existingMeta.value, schemaVersion: SCHEMA_VERSION },
+          value: {
+            ...existingMeta.value,
+            schemaVersion: SCHEMA_VERSION,
+            dataRevision: stored.dataRevision ?? 0,
+            lastBackupRevision: stored.lastBackupRevision ?? null,
+          },
         });
       }
       return { seeded, schemaVersion: SCHEMA_VERSION };
