@@ -2,6 +2,7 @@ import type { BusinessCategory, WorkGroup, WorkRecord } from '@/domain/types';
 import { businessCategorySchema, workGroupSchema } from '@/domain/validation';
 import { newId, nowInstant } from '@/utils/clock';
 import { withDatabase, withMutation } from '../client';
+import { partitionRows } from '../invalid-row';
 import { META_KEY, SETTINGS_KEY } from '../schema';
 import type { AppMeta, AppSettings } from '@/domain/types';
 import { appSettingsSchema } from '@/domain/validation';
@@ -19,25 +20,38 @@ import { defaultSettings } from '@/domain/defaults';
  * count so the UI can require reassignment or archiving instead.
  */
 
+/**
+ * Valid categories, sorted.
+ *
+ * This still drops rows that fail validation, and that is correct **for the UI**: a corrupt category
+ * cannot be rendered in a select. What was wrong in Phase 1.1 is that the same convenient shape was
+ * also used to build a canonical backup, so corruption became silent absence in an archive the
+ * product called complete. Anything that must account for corruption — diagnostics, backups, the
+ * recovery export — reads `readStoreSnapshot()` in `../snapshot` instead, which reports the invalid
+ * rows rather than filtering them away.
+ */
 export async function listCategories(): Promise<BusinessCategory[]> {
   return withDatabase('listCategories', async (db) => {
     const rows = await db.categories.toArray();
-    return rows
-      .map((row) => businessCategorySchema.safeParse(row))
-      .filter((r) => r.success)
-      .map((r) => r.data as BusinessCategory)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+    return partitionRows(rows, (row) => {
+      const parsed = businessCategorySchema.safeParse(row);
+      return parsed.success
+        ? { ok: true, value: parsed.data }
+        : { ok: false, reason: parsed.error.issues[0]?.message ?? 'schema mismatch' };
+    }).valid.sort((a, b) => a.sortOrder - b.sortOrder);
   });
 }
 
+/** Valid groups, sorted. Same caveat as `listCategories`. */
 export async function listGroups(): Promise<WorkGroup[]> {
   return withDatabase('listGroups', async (db) => {
     const rows = await db.groups.toArray();
-    return rows
-      .map((row) => workGroupSchema.safeParse(row))
-      .filter((r) => r.success)
-      .map((r) => r.data as WorkGroup)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+    return partitionRows(rows, (row) => {
+      const parsed = workGroupSchema.safeParse(row);
+      return parsed.success
+        ? { ok: true, value: parsed.data }
+        : { ok: false, reason: parsed.error.issues[0]?.message ?? 'schema mismatch' };
+    }).valid.sort((a, b) => a.sortOrder - b.sortOrder);
   });
 }
 
@@ -220,18 +234,47 @@ export async function getMeta(): Promise<AppMeta | null> {
   });
 }
 
+/** What a completed canonical backup knows about itself. */
+export interface CanonicalBackupRecord {
+  /**
+   * The `dataRevision` observed **inside the snapshot transaction** that produced the file.
+   *
+   * Not "the revision now". See the race below.
+   */
+  readonly capturedRevision: number | null;
+  readonly recordCount: number;
+  /** When the file was handed to the browser. */
+  readonly at?: string;
+}
+
 /**
- * Record that a canonical JSON backup succeeded.
+ * Record that a **complete** canonical JSON backup succeeded.
  *
- * Captures the `dataRevision` the backup contains, so any later mutation — including an edit that
- * leaves the record count unchanged — makes the backup measurably stale.
+ * Two invariants live here, and Phase 1.1 satisfied neither fully.
  *
- * Only canonical JSON backups call this. XLSX and DOCX are reports and must never mark data as
- * backed up (the legacy prototype's `exportExcel()` wrote its backup marker, silencing the
- * reminder for a week without a backup existing).
+ * **1. The revision recorded is the revision the file contains.** Phase 1.1 wrote
+ * `lastBackupRevision: row.value.dataRevision` — the revision current when the *export finished*.
+ * The race that makes wrong:
+ *
+ *   1. the snapshot captures revision R1 and the envelope is built from it;
+ *   2. another tab, or the user, mutates data: the counter advances to R2;
+ *   3. the export finishes and this function reads the meta row, seeing R2;
+ *   4. it records `lastBackupRevision = R2`, so `dataRevision === lastBackupRevision`;
+ *   5. backup health reports **fresh** although the file on disk only contains R1.
+ *
+ * Passing the captured revision in removes the guess. If the store has moved on, the comparison
+ * correctly reports stale — `dataRevision` is never rewound to make a file look newer than it is.
+ *
+ * **2. Only a complete backup may call this at all.** A backup the application itself describes as
+ * incomplete (`omittedInvalidRowIds` non-empty) must not establish freshness, because restoring it
+ * would not reproduce the database. `createBackup` enforces that; this function is the only writer
+ * of canonical backup state, and the caller contract is stated in its name.
+ *
+ * XLSX and DOCX are reports and never reach here — the legacy prototype's `exportExcel()` wrote its
+ * backup marker and silenced the reminder for a week with no backup in existence.
  */
-export async function recordBackupSuccess(recordCount: number): Promise<void> {
-  await withDatabase('recordBackupSuccess', (db) =>
+export async function recordCanonicalBackup(entry: CanonicalBackupRecord): Promise<void> {
+  await withDatabase('recordCanonicalBackup', (db) =>
     db.transaction('rw', db.meta, async () => {
       const row = await db.meta.get(META_KEY);
       if (!row) return;
@@ -239,9 +282,10 @@ export async function recordBackupSuccess(recordCount: number): Promise<void> {
         key: META_KEY,
         value: {
           ...row.value,
-          lastBackupAt: nowInstant(),
-          lastBackupRevision: row.value.dataRevision,
-          lastBackupRecordCount: recordCount,
+          lastBackupAt: entry.at ?? nowInstant(),
+          // Deliberately NOT `row.value.dataRevision`.
+          lastBackupRevision: entry.capturedRevision,
+          lastBackupRecordCount: entry.recordCount,
         },
       });
     }),

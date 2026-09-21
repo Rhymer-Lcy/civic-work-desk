@@ -3,6 +3,7 @@ import type { AnyRecord, HonorRecord, ProgressEntry, WorkRecord } from '@/domain
 import { anyRecordSchema, progressEntrySchema } from '@/domain/validation';
 import { newId, nowInstant } from '@/utils/clock';
 import { withDatabase, withMutation } from '../client';
+import type { InvalidRow } from '../invalid-row';
 
 /**
  * Record and progress-entry persistence.
@@ -16,18 +17,11 @@ import { withDatabase, withMutation } from '../client';
  * store produces a visible error instead of a plausible-looking but wrong list.
  */
 
-/** A stored row that failed its schema, kept verbatim so it can be recovered or inspected. */
-export interface InvalidRow {
-  readonly id: string;
-  readonly reason: string;
-  /**
-   * The row exactly as it came out of IndexedDB.
-   *
-   * Required by the diagnostic recovery export: a canonical backup cannot carry an invalid row
-   * (it would not validate on restore), so the raw value is the only evidence that survives.
-   */
-  readonly raw: unknown;
-}
+/*
+ * `InvalidRow` lives in `../invalid-row` because every user-data store needs it, not only records.
+ * Re-exported here so existing call sites keep working.
+ */
+export type { InvalidRow } from '../invalid-row';
 
 export interface RecordReadResult {
   readonly records: AnyRecord[];
