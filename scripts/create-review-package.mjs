@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Build the Phase-1 review package.
+ * Build the review package for the phase named in `PHASE` below.
  *
- * Produces `_review_packages/civic-work-desk-phase-1-<YYYYMMDD>-<HHmmss>-<shortsha>.zip`
+ * Produces `_review_packages/civic-work-desk-<phase>-<YYYYMMDD>-<HHmmss>-<shortsha>.zip`
  * plus an adjacent `.sha256`.
  *
  * Design rules:
@@ -28,6 +28,16 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(ROOT, '_review_packages');
+
+/**
+ * Which review phase this package documents.
+ *
+ * One constant feeding both the archive name and the summary heading, so a package cannot be named
+ * after one phase while its summary claims another. Bump it deliberately when a phase closes; earlier
+ * archives keep the label they were built with, which is what makes a directory of them readable.
+ */
+const PHASE = '1.1';
+const PHASE_SLUG = `phase-${PHASE.replace(/\./g, '-')}`;
 
 /* ------------------------------------------------------------------ packaging allow-list */
 
@@ -563,7 +573,7 @@ function main() {
   }
 
   const git = gitInfo();
-  const zipName = `civic-work-desk-phase-1-${marks.date}-${marks.time}-${git.short}.zip`;
+  const zipName = `civic-work-desk-${PHASE_SLUG}-${marks.date}-${marks.time}-${git.short}.zip`;
   const zipPath = join(OUT_DIR, zipName);
 
   // Gather payload.
@@ -694,7 +704,7 @@ function buildSummary({ git, marks, results, skipGates, entryCount, zipName }) {
         (r) => `| ${r.label} | \`${r.command} ${r.args.join(' ')}\` | ${r.ok ? 'PASS' : 'FAIL'} |`,
       );
 
-  return `# CivicWorkDesk — Phase 1 review package
+  return `# CivicWorkDesk — Phase ${PHASE} review package
 
 | | |
 | --- | --- |
@@ -710,6 +720,21 @@ A local-first, installable PWA for keeping public-sector work records and an hon
 It replaces a single 3,590-line HTML file that used \`localStorage\` as its database, embedded ~180
 real personal records in source, and loaded third-party analytics while describing itself as
 offline. \`docs/legacy-audit.md\` documents that prototype finding by finding, with line numbers.
+
+## What changed since Phase 1
+
+This is a remediation pass, not a redesign: no new product features, no architectural change, no new
+runtime dependency. It corrects the defects an independent audit of the Phase-1 package found, the
+most serious being that **a replace-mode restore destroyed all data and wrote nothing back**.
+
+\`CHANGELOG.md\` lists every change with the reason. Two entries worth reading first:
+
+- \`docs/qa-plan.md\` — the ten defects found during this pass, and the two of my own claims that were
+  withdrawn after measurement rather than shipped.
+- \`docs/review-package-provenance.md\` — the original Phase-1 archive was deleted by mistake during
+  this pass and could not be recovered. The commit it described is intact; the archive beside this one
+  is a rebuild from that commit, with a different digest, and it still fails one verification check
+  because it carries the Phase-1 defect that check was written to catch.
 
 ## Verification
 
