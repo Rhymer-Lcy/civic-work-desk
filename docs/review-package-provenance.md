@@ -1,6 +1,38 @@
 # Review packages in this directory — provenance
 
-## What is in `_review_packages/` after Phase 1.2
+## What is in `_review_packages/` after Phase 1.3
+
+| archive                                         | gates                      | note                                                                                        |
+| ----------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------- |
+| `...phase-1-3-20260921-144946-1a9fb1fb05f0.zip` | **1 FAILED** (static scan) | superseded; the failure and its fix are described below                                     |
+| `...phase-1-3-20260921-150025-4f69c8b286b2.zip` | all passed, 21/21          | superseded; its `REVIEW_SUMMARY.md` stated gate results but not the counts                  |
+| `...phase-1-3-20260921-151003-7d59b82221b0.zip` | all passed, 21/21          | superseded by this section being added to the packaged docs                                 |
+| the newest `phase-1-3-…` archive                | all passed                 | **the Phase-1.3 deliverable**; it names itself in its own `REVIEW_SUMMARY.md` and `.sha256` |
+
+Nothing was deleted or renamed during Phase 1.3 either. Every archive and `.sha256` listed in this
+document is still present.
+
+### The superseded Phase-1.3 builds, and why each was replaced
+
+The **144946** build failed the static security scan, and the finding was real rather than a false
+positive: `scripts/audit/generate-phase-1-2-fixture.test.ts` — packaged as audit evidence for the
+first time in this phase — hard-coded `F:/CivicWorkDesk/...` as the destination it wrote the fixture
+to. The scan's `absolute-local-path` rule exists to keep a developer's filesystem out of a
+deliverable, and it caught exactly that. The generator now takes its destination from `FIXTURE_OUT`,
+defaulting to a repository-relative path, and the fixture was regenerated in a fresh worktree at the
+Phase-1.2 commit to confirm the parameterised script still reproduces it (see
+`docs/audit-regression-results.md` §2).
+
+The **150025** build passed every gate, but its `REVIEW_SUMMARY.md` recorded only PASS per gate — not
+the actual test totals, which the Phase-1.3 instructions require the review metadata to state
+explicitly. A summary that says PASS and nothing else is the one place a stale count could hide, so
+the totals are now parsed from the same captured run rather than typed.
+
+The **151003** build is superseded only by this section: it was produced before the provenance
+document described the Phase-1.3 archives, and a packaged document that is stale about its own
+directory is the defect this file exists to prevent.
+
+## What was in `_review_packages/` after Phase 1.2
 
 | archive                                         | gates                                 | note                                                                                                                         |
 | ----------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -11,7 +43,7 @@
 
 Nothing was deleted during Phase 1.2. The Phase-1.2 instructions forbid deleting any existing archive
 or checksum and forbid wildcard deletion in this directory, so the superseded build below stays where it
-is rather than being tidied away.
+is rather than being tidied away. Phase 1.3 inherited the same rule and kept every one of them.
 
 ### The superseded Phase-1.2 build, and why it failed
 
