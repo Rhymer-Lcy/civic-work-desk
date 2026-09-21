@@ -37,6 +37,27 @@ This document deliberately does not quote that archive's digest. It is packaged 
 cannot state the checksum of the container it is part of — writing one would guarantee a stale number.
 `node scripts/verify-review-package.mjs` computes it from the bytes instead.
 
+### The original Phase-1 archive was restored by the user, and verified
+
+At the start of Phase 1.3 the original archive was present in `_review_packages/`, restored from outside
+this workspace. It was verified rather than assumed:
+
+```
+file            : civic-work-desk-phase-1-20260921-081722-3727a186a9eb(2).zip
+size            : 2205995 bytes
+computed sha-256: 7a8654f2d49a3b7aa73bfc4a511b9be7702d5617f903cd3da9b417da9b6593ed
+recorded sha-256: 7a8654f2d49a3b7aa73bfc4a511b9be7702d5617f903cd3da9b417da9b6593ed
+BYTE-IDENTICAL  : True
+```
+
+It is the genuine original, byte for byte. Its filename carries a `(2)` suffix from the download, while
+its `.sha256` names the un-suffixed original; both files were left exactly as restored — Phase 1.3
+renamed, moved and deleted nothing in this directory. The rebuild from the same commit
+(`...100343-3727a186a9eb.zip`) is also still present, and the section below explaining why it exists is
+retained as history.
+
+### The earlier statement about it (superseded)
+
 ### The original Phase-1 archive was not recovered
 
 The Phase-1.2 instructions said the original archive "has been recovered externally and should be

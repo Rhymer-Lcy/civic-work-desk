@@ -228,6 +228,46 @@ version, revision counter, backup history — which describes this installation,
 After a canonical restore the revision counter is stamped as "equal to the backup you hold", so the
 application does not immediately ask for a backup of data that just came out of one.
 
+### Merge judges references against the projected final state
+
+A reference is valid when it resolves in the state that will exist **after** the write:
+
+```
+finalState = destination + acceptedChanges
+```
+
+Phase 1.2 judged an incoming progress entry against _the records accepted from the same file_, so a
+perfectly valid note for a record the destination already held was silently skipped — the commonest real
+merge there is. And it judged an incoming record's category, group and related-work references against
+nothing at all, so a merge could introduce exactly the dangling reference a restore refuses.
+
+The planner therefore places rows in dependency order — taxonomy, then work records, then honours, then
+progress — so every decision is made with the projected state already containing everything it could
+legitimately depend on. One pass, and the outcome does not depend on the order rows appear in the file.
+
+| incoming row   | accepted when                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| work record    | its id is free **and** its category and group resolve in the projected taxonomy             |
+| honour         | its id is free **and** its `relatedWorkId` resolves to a work record in the projected state |
+| progress entry | its id is free **and** its `recordId` resolves in the projected state                       |
+
+A row that fails is **refused and reported with its reason** — never written, never rewritten to null,
+never resolved by inventing the missing taxonomy. That is also what makes an _incomplete_ archive safe
+to merge: a record whose category was omitted from the file, and which the destination does not have
+either, is declined rather than silently repaired.
+
+The destination's progress, category and group ids are **required** inputs to `buildImportPlan`. They
+were optional in Phase 1.2, and an omitted list silently meant "the destination has none" — turning a
+missing argument into skipped rows, or into a raw `ConstraintError` at write time.
+
+### A destructive replace must have something to write
+
+A legacy file whose every row is unimportable contributes no records, so proceeding would clear the
+database and write nothing. Import must not become a disguised wipe: `legacy-replace` with zero accepted
+records is blocked, and the message points at the dedicated, separately confirmed destructive workflow in
+Settings. A canonical restore is deliberately exempt — a verified-complete backup of an empty database is
+a real archive, and restoring it is a real operation.
+
 ### An exact restore must be _able_ to be exact
 
 A canonical restore promises `restore(D, B(S)) = S`. Several defects break that promise while every

@@ -26,7 +26,7 @@ per-file lines of the same Vitest run rather than typed by hand. The figures bel
 run of 2026-09-21 that produced the Phase-1.1 package; if a later run disagrees, the package is right
 and this file is stale.
 
-### Unit — 156 tests in 8 files
+### Unit — 157 tests in 8 files
 
 | File                           | Covers                                                                                                                                                                                                                                                                        |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -46,7 +46,7 @@ morning.
 The two new files each keep the **defective** Phase-1 implementation beside the corrected one, so an
 assertion states what actually regressed rather than testing current code against itself.
 
-### Integration — 108 tests in 8 files
+### Integration — 157 tests in 12 files
 
 `database.test.ts` — seeding idempotence, CRUD, schema rejection on write, invalid-row reporting on
 read, soft delete and restore, purge with progress, trash emptying, progress entries addressed by
@@ -105,7 +105,36 @@ metadata, and v1/v2 compatibility — a v2 file migrates and restores exactly, a
 omissions cannot, and a v1 file is `unknown-legacy` (never "complete"), restorable behind an explicit
 acknowledgement, deterministically migrated.
 
-### End-to-end — 82 Chromium + 19 cross-engine (1 skipped) + 14 accessibility
+`live-integrity.test.ts` — **Phase 1.3, the primary blocker.** Purging a work record referenced by an
+honour preserves the honour, detaches the link, reports what it detached, and leaves a state whose
+canonical backup is complete _and_ exact-restorable — the contradiction Phase 1.2 shipped. Plus bulk
+purge, transaction atomicity with an injected failure, and the revision bumping exactly once. Then the
+backup-viability gate: an injected dangling honour relation, an orphan progress entry and a dangling
+category/group each block a complete backup and appear in the recovery export. Then the mutation guards:
+a progress entry for a nonexistent record, an honour linked to a nonexistent work record or to another
+honour, a record with a nonexistent category or group, and an edit that would dangle any of them — all
+refused; a soft-deleted target still satisfies a reference; deleting a group detaches its members.
+
+`merge-semantics.test.ts` — **Phase 1.3, the projected final state.** A new note for a record the
+destination already holds merges (Phase 1.2 skipped it); a note for a record arriving in the same file
+merges; id collisions never overwrite; duplicates never collapse; an orphan note is reported. Then the
+reference gating: a category, group or related-work reference that resolves in neither the file nor the
+destination is refused with its reason, while one that resolves in either is accepted — including an
+honour whose work record appears _later_ in the same file, which proves the planner does not depend on
+row order.
+
+`backup-health-scope.test.ts` — **Phase 1.3, what health may conclude and what v3 may claim.** Zero live
+records no longer suppresses a warning: all-soft-deleted, settings-only, category-only and group-only
+mutations each leave the backup state honest, and create-then-purge is stale rather than fresh, while a
+genuinely pristine first run still does not nag. Then v3 semantics — `complete` with a non-empty omission
+list, and `incomplete` with none, are both refused despite a recomputed matching digest — and the
+destructive-replace guard: an all-invalid legacy file cannot clear a populated destination.
+
+`v3-compatibility.test.ts` — **Phase 1.3, compatibility with the previous build.** A v3 archive generated
+by the Phase-1.2 code still verifies, is judged complete, restores exactly, merges safely, and — when
+edited to carry a dangling reference — is still refused rather than repaired.
+
+### End-to-end — 83 Chromium + 21 cross-engine (1 skipped) + 14 accessibility
 
 **`smoke.spec.ts`** — first run and empty state; create/edit/complete; progress add and edit with
 the neighbouring entry verified untouched; long-term visibility and completion precedence; honour
@@ -163,15 +192,15 @@ Captured from the run that produced the review package; the raw output is in
 | Format                         | `npm run format:check`   | PASS                                                             |
 | Lint (`--max-warnings=0`)      | `npm run lint`           | PASS                                                             |
 | Typecheck (both projects)      | `npm run typecheck`      | PASS                                                             |
-| Unit + integration             | `npm run test:unit`      | **PASS — 264/264** in 16 files (156 unit, 108 integration)       |
+| Unit + integration             | `npm run test:unit`      | **PASS — 314/314** in 20 files (157 unit, 157 integration)       |
 | Production build               | `npm run build`          | PASS                                                             |
 | Static security scan           | `npm run scan:static`    | PASS — 0 findings                                                |
-| E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 82/82**                                                 |
-| E2E, Firefox + WebKit          | `npm run test:e2e:cross` | **PASS — 19 passed, 1 skipped** (see the WebKit limitation)      |
+| E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 83/83**                                                 |
+| E2E, Firefox + WebKit          | `npm run test:e2e:cross` | **PASS — 21 passed, 1 skipped** (see the WebKit limitation)      |
 | Accessibility (axe)            | `npm run test:a11y`      | PASS — 14/14, 0 unexplained violations                           |
 | `npm audit --omit=dev`         | high/critical            | PASS — 0 at `high` or above (2 moderate accepted and documented) |
 
-The desktop-Chromium project runs every spec, so `accessibility.spec.ts` is counted both inside the 82
+The desktop-Chromium project runs every spec, so `accessibility.spec.ts` is counted both inside the 83
 and again in the dedicated `a11y` project, which re-runs it at 1280×900. That double count is
 deliberate and stated rather than netted off.
 

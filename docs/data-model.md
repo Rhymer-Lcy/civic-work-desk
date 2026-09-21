@@ -243,6 +243,50 @@ was reported as 「上次备份在 1 天前」 for the whole of a UTC+8 morning.
 between a stored instant and a business date goes through it. Found on 2026-09-21 at 16:15 UTC, when an
 end-to-end assertion of 「今天已备份。」 started failing purely because the clock crossed 16:00.
 
+## Relational invariants, live and at rest
+
+One definition, in `src/domain/integrity.ts`, over plain arrays — no IndexedDB, no envelopes, no React.
+The same function answers: may this archive be restored exactly? is the live database valid? may a
+backup of it be called complete? would this merge leave a valid state?
+
+| invariant                                                                   | kinds reported          |
+| --------------------------------------------------------------------------- | ----------------------- |
+| every progress entry points to an existing record                           | `orphan-progress`       |
+| every non-null work `categoryId` points to an existing category             | `dangling-category`     |
+| every non-null work `groupId` points to an existing group                   | `dangling-group`        |
+| every non-null honour `relatedWorkId` points to an existing **work** record | `dangling-related-work` |
+| record / progress / category / group ids are unique                         | `duplicate-*-id`        |
+
+Two deliberate non-violations: a **soft-deleted** record still satisfies a reference (the row exists and
+is carried in backups, so restoring it restores the relationship), and a **null** reference is always
+valid (all three are optional by design).
+
+Phase 1.2 applied these rules only when restoring an archive. The live database was free to reach a
+state its own backups could not restore — see the hard-delete policy below — and the application would
+produce a file labelled complete and then refuse it.
+
+### Where the rules are enforced
+
+- **Every mutation**: the repositories check that a reference resolves before writing, inside the same
+  transaction as the write. A write whose target does not exist fails rather than dangling.
+- **Backup viability**: `readBackupSnapshot()` reports `relationalIssues`; a non-empty list makes
+  `complete` false and `createBackup()` raise `RelationalIntegrityError`.
+- **Restore**: unchanged from Phase 1.2 — an archive that cannot be restored exactly is refused.
+- **Merge**: against the projected final state, `destination + acceptedChanges`.
+
+### Hard delete: preserve the honour, detach the link
+
+Permanently deleting a work record removes it and its progress entries, and **sets `relatedWorkId` to
+null on every honour that referenced it** — all in one transaction that bumps `dataRevision` once.
+
+The alternatives were considered and rejected. Deleting the honour destroys unrelated user data: an
+award records something that happened, whether or not the work item survives. Blocking the purge leaves
+the user unable to empty their own Trash without first hunting down every link. Leaving the reference
+dangling is what Phase 1.2 did, and it is what made a "complete" backup unrestorable.
+
+The detach is never silent. The Trash confirmation states how many honours will be unlinked before the
+user commits, and the toast states how many were.
+
 ## The canonical snapshot boundary
 
 `readStoreSnapshot()` in `src/db/snapshot.ts` reads **every user-data store inside one Dexie read-only

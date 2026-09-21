@@ -3,6 +3,98 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project is internal and unversioned; entries are grouped by phase.
 
+## [Unreleased] — Phase 1.3 live-state integrity closure
+
+Making the live database, merges, backups and restores agree on one definition of a valid state. No new
+product features, no architectural change, no new runtime dependency, and **no backup format change** —
+v3 is unchanged and existing v3 archives remain restorable.
+
+### The primary blocker
+
+**A normal workflow produced a backup the application refused to restore.** Link an honour to a work
+record, soft-delete the work record, empty the Trash: Phase 1.2 removed the work record and its progress
+and left the honour pointing at a row that no longer existed. Every row still passed its schema, so a
+canonical backup was labelled **complete** and recorded as a successful backup — and restoring that same
+file was refused for a dangling `relatedWorkId`.
+
+Demonstrated against `48480cf47fc6b9a6f5974de808e39f1576286a46` with a probe written for that API
+(`scripts/audit/phase-1-2-live-integrity-probe.test.ts`), where all three assertions fail:
+
+```
+AssertionError: the reference must be detached when the work record is purged:
+  expected 'test-id-0001' to be null
+AssertionError: the snapshot must contain no unresolved honour reference:
+  expected [ { id: 'test-id-0002', …(15) } ] to deeply equal []
+AssertionError: a file the application labelled complete must be exact-restorable:
+  expected [ "备份文件的关联关系不自洽…荣誉引用了文件中不存在的工作记录…" ] to deeply equal []
+```
+
+### Fixed — live relational integrity
+
+- **Permanent deletion now detaches, in one transaction.** Purging a work record preserves any honour
+  that references it, sets `relatedWorkId` to null, refreshes `updatedAt`, removes the record and its
+  progress, and bumps the revision exactly once. Bulk purge does the same for every affected honour. The
+  consequence is stated in the Trash confirmation **before** the user commits and reported in the toast
+  afterwards — never silent.
+- **No mutation path can create a dangling reference.** Creating or editing a record with a nonexistent
+  category, group or related work is refused; so is an honour linked to another honour, and a progress
+  entry for a record that does not exist. Group deletion already detached its members; category deletion
+  already refused while in use — both now verified as part of the same invariant.
+- **A soft-deleted record still satisfies a reference**, deliberately: the row exists and is carried in
+  backups, so only permanent deletion breaks a link.
+
+### Fixed — a complete backup is restorable by construction
+
+- **Relational validity is part of backup viability.** `readBackupSnapshot()` validates the live store
+  with the same rules a restore applies; a broken state raises `RelationalIntegrityError`, which is
+  **not** acknowledgeable — an "incomplete" envelope requires an omission list, and relational damage
+  produces none. Diagnostics reports the issues, and the recovery export carries them structured.
+- **Backup health no longer infers anything from the live record count.** Phase 1.2 short-circuited to
+  `fresh` whenever zero records were visible, which is equally true of a database whose every record is
+  in the Trash, or which has custom categories, groups, edited settings, or was emptied after holding
+  data. Only a genuinely pristine store (`dataRevision === 0`, never backed up) avoids nagging.
+
+### Fixed — merge evaluates the projected final state
+
+- **A new progress entry for a record the destination already holds now merges.** Phase 1.2 accepted a
+  note only when its record was newly imported from the same file, silently skipping the commonest real
+  merge there is.
+- **A merge can no longer introduce a dangling reference.** An incoming row whose category, group or
+  related-work reference would not resolve in `destination + acceptedChanges` is refused with the reason
+  stated — never written, never rewritten to null, never resolved by inventing taxonomy. This is also
+  what makes an _incomplete_ archive safe to merge.
+- Id collisions remain non-overwriting; duplicates never collapse; orphan progress is reported.
+
+### Fixed — semantic validation of v3 metadata
+
+- A v3 envelope claiming `completeness: "complete"` alongside a non-empty omission list — or
+  `"incomplete"` with no omission evidence — is **refused**, even with a recomputed, matching digest.
+  Checksum integrity is not semantic validity.
+- **A destructive legacy replace must have something to write.** A legacy file whose every row is
+  unimportable can no longer act as a disguised "wipe my database".
+
+### Changed
+
+- `src/domain/integrity.ts` — one relational-integrity definition over plain arrays, with no knowledge
+  of IndexedDB, envelopes or the browser, shared by restore validation, live diagnostics, backup
+  viability and the merge planner. Issues are structured (`orphan-progress`, `dangling-category`,
+  `dangling-group`, `dangling-related-work`, and the four duplicate-id kinds), not only strings.
+- `buildImportPlan` now **requires** the destination's progress, category and group ids. They were
+  optional; an omitted list silently meant "the destination has none", which turned a missing argument
+  into skipped rows or a raw `ConstraintError` at write time.
+
+### Added
+
+- `tests/integration/live-integrity.test.ts`, `merge-semantics.test.ts`, `backup-health-scope.test.ts`,
+  `v3-compatibility.test.ts` — 49 tests covering the twenty mandated regressions.
+- `tests/fixtures/phase-1-2-canonical-v3.json` — a v3 archive **generated by the Phase-1.2 build**, so
+  compatibility is proven against the previous version rather than against this one's own output.
+- `scripts/audit/` — the old-commit probe and the fixture generator, packaged so every supplementary
+  claim in the final report can be re-run or inspected. `review/AUDIT_REGRESSION_RESULTS.md` carries the
+  captured before/after output.
+- One cross-engine workflow covering create work → create linked honour → purge → honour still usable →
+  backup succeeds.
+
 ## [Unreleased] — Phase 1.2 backup integrity closure
 
 Closing the remaining backup/restore integrity invariants before the data layer is signed off, after an
