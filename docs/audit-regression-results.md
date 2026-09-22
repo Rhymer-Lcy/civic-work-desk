@@ -58,14 +58,14 @@ the file did not contain.
 
 ```
  ✓ PRIMARY BLOCKER: purging a work record referenced by an honour
-   ✓ leaves no dangling relation, and the resulting backup is exact-restorable 26ms
+   ✓ leaves no dangling relation, and the resulting backup is exact-restorable 25ms
    ✓ bulk purge detaches every affected honour and stays relationally valid 7ms
-   ✓ the purge mutation is atomic and bumps the revision exactly once 5ms
+   ✓ the purge mutation is atomic and bumps the revision exactly once 6ms
  ✓ a relationally broken live store cannot produce a complete canonical backup
    ✓ REGRESSION: a dangling honour relation blocks a complete backup 4ms
    ✓ REGRESSION: an orphan progress entry blocks a complete backup 3ms
    ✓ REGRESSION: a dangling category or group reference is diagnosed 3ms
-   ✓ the diagnostic recovery export carries the structured relational issues 3ms
+   ✓ the diagnostic recovery export carries the structured relational issues 2ms
  ✓ ordinary mutations cannot create a dangling reference
    ✓ refuses a progress entry for a record that does not exist 1ms
    ✓ refuses an honour linked to a nonexistent work record 1ms
@@ -73,12 +73,13 @@ the file did not contain.
    ✓ refuses a work record with a nonexistent category or group 2ms
    ✓ refuses an edit that would dangle a reference 3ms
    ✓ a soft-deleted work record still satisfies an honour reference 7ms
-   ✓ a category still referenced by a soft-deleted record cannot be deleted 3ms
-   ✓ deleting a group detaches its members rather than dangling them 2ms
+   ✓ a category still referenced by a soft-deleted record cannot be deleted 2ms
+   ✓ deleting a group detaches its members rather than dangling them 3ms
+   ✓ group deletion also detaches trashed members, and the UI says so 13ms
    ✓ a complete backup of any reachable live state restores exactly 4ms
 
  Test Files  1 passed (1)
-      Tests  16 passed (16)
+      Tests  17 passed (17)
 ```
 
 The full run is in `review/VERIFY_LOG.txt`, which is captured output from the gates this package's
