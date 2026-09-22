@@ -1,5 +1,21 @@
 # Review packages in this directory — provenance
 
+## Phase 3 Stage A: archives produced by gate runs, not releases
+
+Phase 3's review package is created only after Stage B — after the physical UOS workstation has
+returned evidence — so the packaging script's `PHASE` constant is deliberately still `2` during
+Stage A. Running the full gate set (`npm run review:package`) nevertheless writes an archive each
+time, which is how `...phase-2-20260922-054908-7da4c057b226.zip` and
+`...phase-2-20260922-055729-da76b48c2c51.zip` came to exist on the Phase-3 branch.
+
+They are gate evidence for Phase-3 Stage-A commits, not Phase-2 releases and not Phase-3 releases.
+The Phase-2 deliverable remains `...phase-2-20260922-012109-c51456361487.zip`. The 054908 archive
+additionally records two FAILED gates (format, lint), which is accurate: the UOS bundle stages a copy
+of `dist/` under `release/uos-rc1/app/`, and Prettier and ESLint were trying to check build output
+until that path was excluded.
+
+Kept rather than deleted, per this directory's standing rule.
+
 ## What is in `_review_packages/` after Phase 2
 
 Phase 2 deletes nothing. The Phase-1.3.1 deliverable
