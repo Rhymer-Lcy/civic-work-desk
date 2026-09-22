@@ -12,6 +12,7 @@ import {
   planWritesAnything,
 } from '@/services/import/plan';
 import type { ImportMode, ImportPlan } from '@/services/import/plan';
+import { StaleImportPlanError } from '@/services/import/preflight';
 import { Button, ConfirmDialog, Dialog, Panel, useToast } from '@/components/common';
 import { ImportPreview } from './ImportPreview';
 import styles from './ImportDialog.module.css';
@@ -114,7 +115,19 @@ export function ImportDialog({
       reset();
       onClose();
     } catch (cause) {
-      toast.show(`导入失败：${cause instanceof Error ? cause.message : String(cause)}`, 'error');
+      /*
+       * A stale plan is not a failed import so much as an expired one: the local data changed while
+       * this dialog was open, nothing was written, and the remedy is a fresh preview. So the preview
+       * is discarded rather than left on screen — leaving it would invite the user to confirm the same
+       * expired plan again and read the identical refusal as a bug. The dialog stays open on the
+       * file-choosing step with the explanation in the toast.
+       */
+      if (cause instanceof StaleImportPlanError) {
+        setPlan(null);
+        setParseError({ message: cause.message, details: [...cause.reasons] });
+      } else {
+        toast.show(`导入失败：${cause instanceof Error ? cause.message : String(cause)}`, 'error');
+      }
     } finally {
       setBusy(false);
     }
