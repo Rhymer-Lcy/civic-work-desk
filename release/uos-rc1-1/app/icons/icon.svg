@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CivicWorkDesk">
+  <rect width="512" height="512" rx="96" fill="#8c1d1d"/>
+  <rect x="163" y="128" width="186" height="230" rx="18" fill="#ffffff"/>
+  <g fill="#8c1d1d">
+    <rect x="196" y="176" width="120" height="13" rx="6"/>
+    <rect x="196" y="209" width="120" height="13" rx="6"/>
+    <rect x="196" y="242" width="68" height="13" rx="6"/>
+  </g>
+  <rect x="196" y="309" width="120" height="20" rx="10" fill="#a8853e"/>
+</svg>

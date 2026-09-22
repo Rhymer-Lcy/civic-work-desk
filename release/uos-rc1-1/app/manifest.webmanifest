@@ -1,0 +1,60 @@
+{
+  "id": "/civic-work-desk/",
+  "name": "政务工作记录台 CivicWorkDesk",
+  "short_name": "工作记录台",
+  "description": "本地优先的工作记录与荣誉档案工具。所有数据仅保存在本机浏览器，不联网、无遥测。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#8c1d1d",
+  "background_color": "#f7f5f2",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "新增工作记录",
+      "short_name": "新增",
+      "url": "./index.html#/work"
+    },
+    {
+      "name": "台账查询",
+      "short_name": "台账",
+      "url": "./index.html#/ledger"
+    }
+  ]
+}

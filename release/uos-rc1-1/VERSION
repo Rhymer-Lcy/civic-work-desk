@@ -1,0 +1,13 @@
+CivicWorkDesk UOS acceptance bundle
+bundleId=civic-work-desk-uos-rc1-1
+stage=RC1.1 (target acceptance candidate — NOT a release)
+supersedes=civic-work-desk-uos-rc1
+applicationCommit=91911b7a38ced50061be279635bb3ba4c27907a4
+applicationPhase=Phase 2 build, unchanged (payload byte-identical to RC1)
+canonicalOrigin=http://127.0.0.1:8765
+harnessCorrections=raw-path traversal probes; entry CSS captured; outer archive checksum; python foreground instructions; normalized tar metadata; stop-script timing comment
+builtAt=2026-09-22T11:10:05Z
+builtOn=development workstation, Node 24
+serverCandidates=busybox-httpd, python3-stdlib
+selectedServer=UNDECIDED — requires physical target evidence
+targetTested=NO
