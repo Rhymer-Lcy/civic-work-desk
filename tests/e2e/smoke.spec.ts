@@ -212,9 +212,9 @@ test.describe('first run and core record flows', () => {
     const card = page.getByRole('article', { name: '将被删除的示范事项' });
     await card.getByRole('button', { name: '展开详情' }).click();
     /*
-    * `exact` matters now: the row summary is itself a button whose accessible name is the whole row,
-    * and this record's title contains 删除, so a substring match resolves to two elements.
-    */
+     * `exact` matters now: the row summary is itself a button whose accessible name is the whole row,
+     * and this record's title contains 删除, so a substring match resolves to two elements.
+     */
     await card.getByRole('button', { name: '删除', exact: true }).click();
 
     const confirm = page.getByRole('dialog', { name: '移入回收站？' });

@@ -99,8 +99,13 @@ export function WorkPage(): ReactNode {
             title="还没有工作记录"
             description="登记第一条事项后，这里会按时限与状态列出全部工作。"
             action={
+              /*
+               * Deliberately not labelled 新增记录: that is the shell's action, and two buttons with
+               * the same label on one screen is the "several equally prominent actions" problem in
+               * miniature. This one names the step instead, and matches the first-run page.
+               */
               <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>
-                新增记录
+                新增第一条记录
               </Button>
             }
           />
