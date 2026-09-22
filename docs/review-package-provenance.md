@@ -7,10 +7,21 @@ Phase 1.3.1 adds its own archive and deletes nothing. The Phase-1.3 deliverable
 audit) remains present and remains the artifact the Phase-1.3 review signed off; it is superseded as a
 _release_ by the newest `phase-1-3-1-…` archive, not withdrawn as evidence.
 
-| archive                          | gates      | note                                                                |
-| -------------------------------- | ---------- | ------------------------------------------------------------------- |
-| `...phase-1-3-…` (eight of them) | see below  | Phase-1.3 history, unchanged; the 214120 build is its deliverable   |
-| the newest `phase-1-3-1-…`       | all passed | **the Phase-1.3.1 deliverable**; it names itself in its own summary |
+| archive                                           | gates      | note                                                                |
+| ------------------------------------------------- | ---------- | ------------------------------------------------------------------- |
+| `...phase-1-3-…` (eight of them)                  | see below  | Phase-1.3 history, unchanged; the 214120 build is its deliverable   |
+| `...phase-1-3-1-20260921-225343-37ab449ec756.zip` | all passed | superseded; see below                                               |
+| the newest `phase-1-3-1-…`                        | all passed | **the Phase-1.3.1 deliverable**; it names itself in its own summary |
+
+The **225343** build passed all ten gates and 21/21 verification, and was superseded for one reason: the
+copy of `scripts/audit/package-consistency-audit.mjs` inside it still carried a check that counted ✓
+marks across the whole evidence document against a single suite's total. That was correct while the
+document held one captured listing and became meaningless when Phase 1.3.1 added a second — it read 32
+for a 17-case suite, which is how it was found. Anchoring each count to its own fenced block fixed it,
+and exposed a second bug in the same few lines (a fence regex missing the optional language tag, which
+paired one block's closing fence with the next one's opening fence). Both are described in that
+script's own header. The packaged evidence has to be the version that was actually run, so the package
+was rebuilt rather than annotated.
 
 ## What is in `_review_packages/` after Phase 1.3
 
