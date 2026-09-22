@@ -11,13 +11,21 @@ import styles from './WorkCard.module.css';
 /**
  * A work record in the list.
  *
- * Collapsed it shows title, status, urgency and two or three identifying facts. Expanded it adds
- * the full detail grid and the progress timeline. The legacy card put the whole action row
- * (进展 / 完成 / 长期 / 编辑 / 删除) on every collapsed card — five buttons per row, with delete
- * beside complete — so the densest thing on screen was the destructive control.
+ * ## Why this stopped being a card
  *
- * Here delete is an icon button *inside* the expanded card with an accessible name and a
- * confirmation, and the collapsed row carries only the disclosure.
+ * The Phase-1 card was ~115 px tall and stacked title, badges and metadata on three lines, so a
+ * 1920×1080 screen showed **six** of twenty-four records while roughly half of every row's width sat
+ * empty (audit W-1, the phase's only P0). Nothing was aligned, so deadlines could not be compared
+ * down a column (W-2), and the only expand affordance was a chevron ~1200 px from the title (W-3).
+ *
+ * Desktop now renders one **row** per record on a shared column template — status, title, category,
+ * counterpart, date, deadline — which fits ~20 records on the same screen and lets the eye run down
+ * a column instead of reading each line. Below 72rem the same component falls back to the stacked
+ * presentation, because six columns in 390 px is not density, it is a squeeze.
+ *
+ * The whole row is the disclosure control, so the pointer travel is zero and the target is 1300 px
+ * wide rather than 32 px. Edit and delete stay inside the expanded region: a destructive control on
+ * every collapsed row is what the Phase-1 rewrite removed on purpose.
  */
 
 export interface WorkCardProps {
@@ -55,76 +63,88 @@ export function WorkCard({
 
   return (
     <article
-      className={`${styles.card} ${verdict.level === 'overdue' ? styles.overdue : ''}`}
+      className={`${styles.row} ${verdict.level === 'overdue' ? styles.overdue : ''} ${
+        expanded ? styles.rowExpanded : ''
+      }`}
       aria-labelledby={`work-title-${record.id}`}
     >
-      <div className={styles.head}>
-        <div className={styles.headMain}>
-          <h3 className={styles.title} id={`work-title-${record.id}`}>
+      <button
+        type="button"
+        className={styles.summary}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        onClick={() => {
+          setExpanded((value) => !value);
+        }}
+      >
+        <span className={styles.colStatus}>
+          <StatusBadge status={record.status} />
+        </span>
+
+        <span className={styles.colTitle}>
+          <span className={styles.title} id={`work-title-${record.id}`}>
             {record.title}
-          </h3>
-          <div className={styles.badges}>
-            <StatusBadge status={record.status} />
-            {record.longTerm ? <LongTermBadge /> : null}
-            <UrgencyBadge level={verdict.level} text={describeVerdictWithSource(verdict)} />
-          </div>
-          <dl className={styles.meta}>
-            <MetaItem label="日期" value={formatDateValue(record.occurredOn, '未填')} />
-            {categoryName ? <MetaItem label="分类" value={categoryName} /> : null}
-            {record.counterpartUnit ? (
-              <MetaItem label="单位" value={record.counterpartUnit} />
-            ) : null}
-            {progressCount > 0 ? (
-              <div className={styles.metaItem}>
-                <dt className={styles.metaLabel}>进展</dt>
-                <dd className={styles.metaValue}>
-                  <CountBadge value={progressCount} label="进展条数" />
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-        </div>
-        <button
-          type="button"
-          className={styles.disclosure}
-          aria-expanded={expanded}
-          aria-controls={panelId}
-          onClick={() => {
-            setExpanded((value) => !value);
-          }}
-        >
+          </span>
+          {record.longTerm ? <LongTermBadge /> : null}
+          {progressCount > 0 ? <CountBadge value={progressCount} label="进展条数" /> : null}
+        </span>
+
+        <span className={styles.colCategory}>{categoryName ?? ''}</span>
+        <span className={styles.colUnit}>{record.counterpartUnit}</span>
+        <span className={styles.colDate}>{formatDateValue(record.occurredOn, '')}</span>
+
+        <span className={styles.colVerdict}>
+          <UrgencyBadge level={verdict.level} text={describeVerdictWithSource(verdict)} />
+        </span>
+
+        <span className={styles.colChevron}>
           <ChevronDown
             aria-hidden="true"
-            size={18}
+            size={16}
             className={expanded ? styles.chevronOpen : undefined}
           />
           <span className="visually-hidden">{expanded ? '收起详情' : '展开详情'}</span>
-        </button>
-      </div>
+        </span>
+      </button>
 
       <div className={styles.body} id={panelId} hidden={!expanded}>
-        <dl className={styles.detailGrid}>
-          <Detail label="完成要求" value={record.requirement} />
-          <Detail label="要求上报时限" value={formatDateValue(record.reportDeadline)} />
-          <Detail label="完成时限" value={formatDateValue(record.completionDeadline)} />
-          <Detail label="完成时间" value={formatDateValue(record.completedOn)} />
-          <Detail label="对接人" value={record.counterpartContact} />
-          <Detail label="联系方式" value={record.counterpartPhone} />
-          <Detail label="归属分组" value={groupName ?? ''} />
-          {record.statusLabel && record.statusLabel !== '' ? (
-            <Detail label="原始状态文字" value={record.statusLabel} />
-          ) : null}
-          <Detail label="备注" value={record.remark} wide />
+        {/*
+         * Grouped rather than flat. Eleven label/value pairs at one weight made the reader parse
+         * labels to find anything (audit R-1); three named groups let them land on a region first.
+         */}
+        <div className={styles.detailGroups}>
+          <DetailGroup title="时间节点">
+            <Detail label="要求上报时限" value={formatDateValue(record.reportDeadline)} />
+            <Detail label="完成时限" value={formatDateValue(record.completionDeadline)} />
+            <Detail label="完成时间" value={formatDateValue(record.completedOn)} />
+          </DetailGroup>
+          <DetailGroup title="对接信息">
+            <Detail label="对接单位" value={record.counterpartUnit} />
+            <Detail label="对接人" value={record.counterpartContact} />
+            <Detail label="联系方式" value={record.counterpartPhone} />
+          </DetailGroup>
+          <DetailGroup title="归属与分类">
+            <Detail label="业务分类" value={categoryName ?? ''} />
+            <Detail label="归属分组" value={groupName ?? ''} />
+            {record.statusLabel && record.statusLabel !== '' ? (
+              <Detail label="原始状态文字" value={record.statusLabel} />
+            ) : null}
+          </DetailGroup>
+        </div>
+
+        <div className={styles.notes}>
+          <Detail label="完成要求" value={record.requirement} block />
+          <Detail label="备注" value={record.remark} block />
           {record.legacyResidue ? (
             <Detail
               label="迁移保留字段"
-              wide
+              block
               value={Object.entries(record.legacyResidue)
                 .map(([key, value]) => `${key}=${value}`)
                 .join('；')}
             />
           ) : null}
-        </dl>
+        </div>
 
         <ProgressPanel
           recordId={record.id}
@@ -161,11 +181,17 @@ export function WorkCard({
   );
 }
 
-function MetaItem({ label, value }: { readonly label: string; readonly value: string }): ReactNode {
+function DetailGroup({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}): ReactNode {
   return (
-    <div className={styles.metaItem}>
-      <dt className={styles.metaLabel}>{label}</dt>
-      <dd className={styles.metaValue}>{value}</dd>
+    <div className={styles.detailGroup}>
+      <p className={styles.detailGroupTitle}>{title}</p>
+      <dl className={styles.detailList}>{children}</dl>
     </div>
   );
 }
@@ -173,15 +199,15 @@ function MetaItem({ label, value }: { readonly label: string; readonly value: st
 function Detail({
   label,
   value,
-  wide = false,
+  block = false,
 }: {
   readonly label: string;
   readonly value: string;
-  readonly wide?: boolean;
+  readonly block?: boolean;
 }): ReactNode {
   if (value.trim() === '') return null;
   return (
-    <div className={wide ? `${styles.detail} ${styles.detailWide}` : styles.detail}>
+    <div className={block ? styles.detailBlock : styles.detail}>
       <dt className={styles.detailLabel}>{label}</dt>
       <dd className={styles.detailValue}>{value}</dd>
     </div>

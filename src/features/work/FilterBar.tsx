@@ -1,6 +1,6 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Search, X } from 'lucide-react';
+import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 import { EMPTY_QUERY } from '@/domain/query';
 import type { RecordQuery, SortKey, StatusBucket } from '@/domain/query';
 import { STATUS_LABELS_ZH } from '@/domain/status';
@@ -50,6 +50,17 @@ export interface FilterBarProps {
   readonly years: readonly string[];
   /** Hide status/group controls where they do not apply (e.g. the honours view). */
   readonly showWorkFilters?: boolean;
+  /**
+   * Hide the category control.
+   *
+   * Separate from `showWorkFilters` because the honours view needs exactly this and nothing else:
+   * `matchesAssociations` rejects every non-work record when a category is selected, so on 荣誉 the
+   * control could only ever empty the list (audit H-1). A filter that cannot return a result is
+   * worse than a missing one.
+   */
+  readonly showCategoryFilter?: boolean;
+  /** What the counterpart column is called here: 对接单位 for work, 授予单位 for honours. */
+  readonly unitLabel?: string;
   readonly resultCount: number;
   readonly undatedCount: number;
 }
@@ -62,15 +73,29 @@ export function FilterBar({
   units,
   years,
   showWorkFilters = true,
+  showCategoryFilter = true,
+  unitLabel = '对接单位',
   resultCount,
   undatedCount,
 }: FilterBarProps): ReactNode {
   const searchId = useId();
+  const moreId = useId();
   const set = <K extends keyof RecordQuery>(key: K, value: RecordQuery[K]): void => {
     onChange({ ...query, [key]: value });
   };
 
   const chips = describeActiveFilters(query, categories, groups);
+
+  /*
+   * Secondary filters start collapsed, and open by themselves when one of them is in use.
+   *
+   * Eight always-expanded controls cost ~190 px of vertical space above every list (audit W-4) to
+   * present 年份, 月份 and 对接单位 at the same prominence as search — three controls that are reached
+   * far less often than the two above them. Collapsing them is only safe if an active one cannot
+   * hide: `hasSecondary` forces the panel open, so a filter can never be in force while invisible.
+   */
+  const [moreOpen, setMoreOpen] = useState(false);
+  const showMore = moreOpen || hasSecondaryFilter(query);
 
   return (
     <div className={`${styles.bar} filter-bar`}>
@@ -104,16 +129,47 @@ export function FilterBar({
         ) : null}
 
         <Select
-          label="业务分类"
-          value={query.categoryId ?? ''}
+          label="排序"
+          value={query.sort}
           onChange={(value) => {
-            set('categoryId', value === '' ? null : value);
+            set('sort', value as SortKey);
           }}
-          options={[
-            { value: '', label: '全部分类' },
-            ...categories.map((c) => ({ value: c.id, label: c.name })),
-          ]}
+          options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
         />
+
+        <button
+          type="button"
+          className={styles.more}
+          aria-expanded={showMore}
+          aria-controls={moreId}
+          onClick={() => {
+            setMoreOpen((value) => !value);
+          }}
+        >
+          <SlidersHorizontal aria-hidden="true" size={14} />
+          <span>更多筛选</span>
+          <ChevronDown
+            aria-hidden="true"
+            size={14}
+            className={showMore ? styles.moreOpen : undefined}
+          />
+        </button>
+      </div>
+
+      <div className={styles.secondary} id={moreId} hidden={!showMore}>
+        {showCategoryFilter ? (
+          <Select
+            label="业务分类"
+            value={query.categoryId ?? ''}
+            onChange={(value) => {
+              set('categoryId', value === '' ? null : value);
+            }}
+            options={[
+              { value: '', label: '全部分类' },
+              ...categories.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
+        ) : null}
 
         {showWorkFilters ? (
           <Select
@@ -130,7 +186,7 @@ export function FilterBar({
         ) : null}
 
         <Select
-          label="对接单位"
+          label={unitLabel}
           value={query.unit ?? ''}
           onChange={(value) => {
             set('unit', value === '' ? null : value);
@@ -163,15 +219,6 @@ export function FilterBar({
             { value: '', label: '全部月份' },
             ...MONTHS.map((m) => ({ value: m, label: `${Number(m)}月` })),
           ]}
-        />
-
-        <Select
-          label="排序"
-          value={query.sort}
-          onChange={(value) => {
-            set('sort', value as SortKey);
-          }}
-          options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
         />
       </div>
 
@@ -214,6 +261,17 @@ export function FilterBar({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** Is any collapsible filter in force? Extracted so the component stays inside its complexity budget. */
+function hasSecondaryFilter(query: RecordQuery): boolean {
+  return (
+    query.categoryId !== null ||
+    query.groupId !== null ||
+    query.unit !== null ||
+    query.year !== null ||
+    query.month !== null
   );
 }
 

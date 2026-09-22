@@ -1,3 +1,57 @@
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+  align-items: start;
+  min-width: 0;
+}
+
+.index {
+  display: none;
+}
+
+/*
+ * `scroll-margin-top` so an anchored section lands below the sticky application bar instead of
+ * underneath it — the classic in-page-anchor defect, and one that only shows up once the bar is
+ * sticky.
+ */
+.anchor {
+  scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+
+@media (min-width: 80rem) {
+  .layout {
+    grid-template-columns: 13rem minmax(0, 1fr);
+  }
+
+  .index {
+    display: block;
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-5));
+  }
+}
+
+.indexList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.indexLink {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--border-subtle);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.indexLink:hover {
+  border-left-color: var(--brand-600);
+  background: var(--surface-sunken);
+  color: var(--ink-900);
+}
+
 .sections {
   display: flex;
   flex-direction: column;

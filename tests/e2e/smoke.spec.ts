@@ -5,7 +5,14 @@ test.describe('first run and core record flows', () => {
   test('fresh install seeds itself and shows an honest empty state', async ({ page }) => {
     await gotoApp(page);
     await expect(page.getByRole('heading', { name: '概览', level: 1 })).toBeVisible();
-    await expect(page.getByText('近期没有逾期或临近到期的事项')).toBeVisible();
+    /*
+     * Phase 2: an empty database gets a first-run page rather than the ordinary dashboard full of
+     * zeroes, so the assertion moved from "no urgent work" to what a new user is actually shown —
+     * what the product is for, and the one action to take.
+     */
+    await expect(page.getByRole('heading', { name: '开始建立你的工作记录' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '新增第一条记录' })).toBeVisible();
+    await expect(page.getByText('数据只保存在本机浏览器')).toBeVisible();
 
     // A brand-new install has nothing to lose, so it must not nag about backups.
     await expect(page.getByText('尚未导出过 JSON 备份')).toHaveCount(0);
@@ -31,7 +38,12 @@ test.describe('first run and core record flows', () => {
     const card = page.getByRole('article', { name: '报送示范工作要点' });
     await expect(card).toBeVisible();
     await expect(card.getByText('待办')).toBeVisible();
-    await expect(card.getByText('示范单位甲')).toBeVisible();
+    /*
+     * The row summary states status, title, counterpart and date, so this asserts the summary rather
+     * than a bare string: the same text also exists in the collapsed detail panel, and an unscoped
+     * query now matches both.
+     */
+    await expect(card.getByRole('button', { name: /示范单位甲/ })).toBeVisible();
 
     // Edit it.
     await card.getByRole('button', { name: '展开详情' }).click();
@@ -147,7 +159,9 @@ test.describe('first run and core record flows', () => {
     await expect(page.getByRole('article', { name: '甲类示范事项' })).toBeVisible();
     await expect(page.getByRole('article', { name: '乙类示范事项' })).toHaveCount(0);
 
-    // Composing a second filter narrows rather than resetting the first.
+    // Composing a second filter narrows rather than resetting the first. 年份 is a secondary filter
+    // in Phase 2, so it lives behind 更多筛选 until it is in use.
+    await page.getByRole('button', { name: '更多筛选' }).click();
     await page.getByRole('combobox', { name: '年份', exact: true }).selectOption('2026');
     await expect(page.getByRole('article', { name: '甲类示范事项' })).toBeVisible();
 
@@ -197,7 +211,11 @@ test.describe('first run and core record flows', () => {
 
     const card = page.getByRole('article', { name: '将被删除的示范事项' });
     await card.getByRole('button', { name: '展开详情' }).click();
-    await card.getByRole('button', { name: '删除' }).click();
+    /*
+    * `exact` matters now: the row summary is itself a button whose accessible name is the whole row,
+    * and this record's title contains 删除, so a substring match resolves to two elements.
+    */
+    await card.getByRole('button', { name: '删除', exact: true }).click();
 
     const confirm = page.getByRole('dialog', { name: '移入回收站？' });
     await expect(confirm).toBeVisible();

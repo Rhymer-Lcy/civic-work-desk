@@ -3,11 +3,28 @@
  * entirely (`display: none`) and the card list takes over, rather than restyling table cells into
  * blocks while leaving their row/cell roles behind.
  */
+/*
+ * The wrapper is only a scroll container when it has to be.
+ *
+ * `overflow-x: auto` makes the wrapper the nearest scrolling ancestor, and a sticky `thead` then
+ * resolves its offset against *that* box rather than the viewport — so the header parked 48 px below
+ * the top of the table and the first data row slid above it, which is what the first Phase-2 capture
+ * showed. Above 80rem the fixed-layout table fits without scrolling, so the container is removed and
+ * the header sticks to the page as intended; below it, horizontal scrolling wins and the header
+ * scrolls with the table, which is the honest trade rather than a broken pin.
+ */
 .tableWrap {
   display: none;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
+}
+
+@media (max-width: 80rem) {
+  .tableWrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .cards {
@@ -26,16 +43,31 @@
   }
 }
 
+/*
+ * `table-layout: fixed` with a declared `<colgroup>`.
+ *
+ * Automatic layout sizes columns from their content, which at the Phase-1 baseline gave the
+ * two-character 类别 column so little room that 工作 wrapped to 工 / 作 on **every row**, while
+ * 业务分类 and 时限判定 wrapped on most (audit L-1). Row heights then alternated between one and two
+ * lines, which is fatal to a view whose whole purpose is scanning. Fixed layout means the widths are
+ * a decision rather than an emergent property of the longest string in the column.
+ */
 .table {
   width: 100%;
-  min-width: 68rem;
+  min-width: 72rem;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: var(--text-sm);
 }
 
+/*
+ * The header sticks to the bottom of the application bar, not to the top of the viewport: the bar is
+ * itself sticky, so `top: 0` parked the column names underneath it and they disappeared exactly when
+ * they became useful (audit L-3).
+ */
 .table th {
   position: sticky;
-  top: 0;
+  top: var(--header-height);
   z-index: 1;
   padding: var(--space-2) var(--space-3);
   background: var(--surface-sunken);
@@ -48,10 +80,37 @@
 }
 
 .table td {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--cell-pad-y) var(--cell-pad-x);
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: top;
-  line-height: var(--leading-normal);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+
+/* Zebra striping does the work a border would, at a fraction of the visual weight. */
+.table tbody tr:nth-child(even) {
+  background: var(--surface-sunken);
+}
+
+.table tbody tr:hover {
+  background: var(--brand-050);
+}
+
+/*
+ * Dates and the record identity read best on one line; everything else may wrap. Truncation is
+ * deliberately not used on the title — a ledger exists to be read, and an ellipsis would hide the
+ * one column nobody can reconstruct from context.
+ */
+.cellDate,
+.cellKind,
+.cellStatus {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellTitle {
+  font-weight: var(--weight-medium);
+  color: var(--ink-900);
 }
 
 .table tbody tr:last-child td {
@@ -150,4 +209,46 @@
   .table th {
     position: static;
   }
+}
+
+/*
+ * Column widths, declared once.
+ *
+ * Percentages rather than rems so the same table is proportionate at 1280 and at 1920, where it now
+ * has 1920 px to work with rather than the 1360 every view used to share (audit L-2).
+ */
+.colDate {
+  width: 8%;
+}
+
+.colKind {
+  width: 4%;
+}
+
+.colTitle {
+  width: 22%;
+}
+
+.colCategory {
+  width: 8%;
+}
+
+.colStatus {
+  width: 7%;
+}
+
+.colDeadline {
+  width: 8%;
+}
+
+.colVerdict {
+  width: 11%;
+}
+
+.colCounterpart {
+  width: 13%;
+}
+
+.colRemark {
+  width: 13%;
 }

@@ -11,22 +11,155 @@
   font-size: var(--text-sm);
 }
 
-.metrics {
+/*
+ * Attention band.
+ *
+ * Three counts, each a button into the work list. Sized by content rather than by a six-column grid:
+ * the numbers are the point, so the numeral is large and everything around it is small.
+ */
+.attention {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: var(--space-3);
 }
 
-@media (min-width: 48rem) {
-  .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.cell {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  text-align: left;
+  cursor: pointer;
 }
 
-@media (min-width: 72rem) {
-  .metrics {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
+.cell:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+}
+
+.cellValue {
+  grid-row: 1 / span 2;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink-900);
+}
+
+.cellLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-900);
+}
+
+.cellHint {
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+/*
+ * Tone is carried by the left rule *and* the numeral, never by a background wash: a filled amber
+ * card reads as an error at a glance even when its number is 0. The hint line says what the count
+ * means in words, so the colour is reinforcement rather than the signal.
+ */
+.cell-alert {
+  border-left-color: var(--status-overdue);
+}
+
+.cell-alert .cellValue {
+  color: var(--status-overdue);
+}
+
+.cell-warn {
+  border-left-color: var(--status-progress);
+}
+
+.cell-warn .cellValue {
+  color: var(--status-progress);
+}
+
+.cell-calm {
+  border-left-color: var(--border-strong);
+}
+
+.clear {
+  padding: var(--space-3) 0;
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
+.workload {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+/* ---- first run ---- */
+.firstRun {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 52rem;
+  padding: var(--space-8) 0 var(--space-4);
+}
+
+.firstRunTitle {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.01em;
+}
+
+.firstRunLead {
+  max-width: var(--measure-prose);
+  color: var(--ink-700);
+}
+
+.firstRunAction {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.firstRunHints {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.firstRunHint {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.firstRunHint strong {
+  display: block;
+  font-weight: var(--weight-semibold);
+}
+
+.firstRunHintText {
+  display: block;
+  margin-top: 0.125rem;
+  color: var(--ink-500);
+}
+
+.firstRunIcon {
+  flex: none;
+  margin-top: 0.125rem;
+  color: var(--brand-700);
+}
+
+.firstRunFoot {
+  margin-top: var(--space-2);
 }
 
 .followList {

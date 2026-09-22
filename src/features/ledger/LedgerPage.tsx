@@ -110,11 +110,28 @@ export function LedgerPage(): ReactNode {
             {data.settings.appTitle} · 工作台账 · 共 {results.length} 条 · 导出日期 {data.today}
           </p>
 
-          <div className={`${styles.tableWrap} scroll-x`}>
+          <div className={styles.tableWrap}>
             <table className={styles.table}>
               <caption className="visually-hidden">
                 工作与荣誉台账，共 {results.length} 条记录
               </caption>
+              {/*
+               * Declared widths, in percentages so the table still fills a 1920 viewport and a
+               * 1280 one. The title and the remark get the room; 类别 and the two deadline columns
+               * get exactly what their content needs and no more.
+               */}
+              <colgroup>
+                <col className={styles.colDate} />
+                <col className={styles.colKind} />
+                <col className={styles.colTitle} />
+                <col className={styles.colCategory} />
+                <col className={styles.colStatus} />
+                <col className={styles.colDeadline} />
+                <col className={styles.colDeadline} />
+                <col className={styles.colVerdict} />
+                <col className={styles.colCounterpart} />
+                <col className={styles.colRemark} />
+              </colgroup>
               <thead>
                 <tr>
                   <th scope="col">日期</th>
@@ -178,13 +195,13 @@ function LedgerRow({
   const cells = ledgerCells(record, today, categoryName);
   return (
     <tr>
-      <td className={styles.nowrap}>{cells.date}</td>
-      <td>{cells.kind}</td>
-      <td className={styles.title}>{record.title}</td>
+      <td className={styles.cellDate}>{cells.date}</td>
+      <td className={styles.cellKind}>{cells.kind}</td>
+      <td className={styles.cellTitle}>{record.title}</td>
       <td>{cells.category}</td>
-      <td className={styles.nowrap}>{cells.status}</td>
-      <td className={styles.nowrap}>{cells.reportDeadline}</td>
-      <td className={styles.nowrap}>{cells.completionDeadline}</td>
+      <td className={styles.cellStatus}>{cells.status}</td>
+      <td className={styles.cellDate}>{cells.reportDeadline}</td>
+      <td className={styles.cellDate}>{cells.completionDeadline}</td>
       <td>{cells.verdict}</td>
       <td>{cells.counterpart}</td>
       <td className={styles.remark}>{cells.remark}</td>

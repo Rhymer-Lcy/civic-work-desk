@@ -112,3 +112,47 @@
 .chip:hover {
   background: var(--brand-100);
 }
+
+/*
+ * Secondary filters.
+ *
+ * `hidden` needs to beat the grid rule, for the same specificity reason the work row's detail panel
+ * did: a class selector and the UA's `[hidden]` tie, and the author sheet wins.
+ */
+.secondary[hidden] {
+  display: none;
+}
+
+.secondary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+  padding-top: var(--space-3);
+  margin-top: var(--space-1);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-end;
+  height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--ink-700);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.more:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.moreOpen {
+  transform: rotate(180deg);
+}

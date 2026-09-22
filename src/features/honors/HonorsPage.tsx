@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Award, Link2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { usePrimaryAction } from '@/app/primary-action-context';
 import { useData } from '@/app/store/data-store';
 import { formatDateValue } from '@/domain/dates';
 import { EMPTY_QUERY, countUndated, distinctUnits, distinctYears, runQuery } from '@/domain/query';
@@ -58,10 +59,11 @@ export function HonorsPage(): ReactNode {
     return [...seen];
   }, [honorRecords]);
 
-  const openCreate = (): void => {
+  const openCreate = useCallback((): void => {
     setEditing(null);
     setDialogOpen(true);
-  };
+  }, []);
+  usePrimaryAction('新增荣誉', openCreate);
 
   const submit = async (draft: HonorDraft): Promise<void> => {
     await actions.saveHonor(draft, editing?.id ?? null);
@@ -72,11 +74,6 @@ export function HonorsPage(): ReactNode {
       <PageHeader
         title="荣誉"
         description="荣誉表彰档案：级别、文号、本人角色与佐证材料存放位置。"
-        actions={
-          <Button variant="honor" size="lg" icon={<Plus size={18} />} onClick={openCreate}>
-            新增荣誉
-          </Button>
-        }
       />
 
       <div className={styles.levelRow}>
@@ -112,6 +109,8 @@ export function HonorsPage(): ReactNode {
         units={units}
         years={years}
         showWorkFilters={false}
+        showCategoryFilter={false}
+        unitLabel="授予单位"
         resultCount={results.length}
         undatedCount={countUndated(honorRecords)}
       />

@@ -2,12 +2,17 @@
 declare const classes: {
   readonly "addInput": string;
   readonly "addRow": string;
+  readonly "anchor": string;
   readonly "danger": string;
   readonly "grid": string;
+  readonly "index": string;
+  readonly "indexLink": string;
+  readonly "indexList": string;
   readonly "item": string;
   readonly "itemActions": string;
   readonly "itemMeta": string;
   readonly "itemName": string;
+  readonly "layout": string;
   readonly "list": string;
   readonly "note": string;
   readonly "row": string;

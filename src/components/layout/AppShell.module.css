@@ -1,52 +1,88 @@
-.header {
+/*
+ * Shell layout.
+ *
+ * `--view-max` is set here, per route, and read by both the navigation bar and `main`. Keeping it on
+ * one ancestor is what guarantees the two stay aligned: a nav that measured 1440 while the ledger
+ * measured 1920 would put the table's first column 240 px left of the first nav item.
+ */
+.shell {
+  display: contents;
+}
+
+.viewReading {
+  --view-max: 1180px;
+}
+
+.viewStandard {
+  --view-max: 1560px;
+}
+
+/*
+ * The ledger. 1920 is the widest common desktop, so at that size the table is effectively full-bleed
+ * minus the page padding; above it the growth stops, because a 2400 px row is no longer scannable in
+ * one fixation.
+ */
+.viewWide {
+  --view-max: 1920px;
+}
+
+/* ---- one chrome band ---- */
+.bar {
   position: sticky;
   top: 0;
   z-index: var(--z-header);
-  background: var(--brand-800);
-  color: var(--ink-inverse);
-  border-bottom: 1px solid var(--brand-900);
+  background: var(--surface-card);
+  border-top: 3px solid var(--brand-700);
+  border-bottom: 1px solid var(--border-default);
 }
 
-.headerInner {
+.barInner {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  max-width: var(--content-max);
+  gap: var(--space-5);
+  max-width: var(--view-max);
   margin: 0 auto;
-  padding: var(--space-3) var(--space-4);
+  padding: 0 var(--view-pad);
   min-height: var(--header-height);
 }
 
 .brand {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
   min-width: 0;
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.headerAction {
+/* A small solid block, not a logo file: identity at 10 px, no asset to load, no colour to fight. */
+.brandMark {
+  width: 0.5rem;
+  height: 1.125rem;
+  border-radius: 1px;
+  background: var(--brand-700);
   flex: none;
+}
+
+.brandText {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.01em;
+  color: var(--ink-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14rem;
 }
 
 /* ---- navigation ---- */
 .nav {
-  position: sticky;
-  top: var(--header-height);
-  z-index: var(--z-sticky);
-  background: var(--surface-card);
-  border-bottom: 1px solid var(--border-default);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .navList {
   display: flex;
   gap: var(--space-1);
-  max-width: var(--content-max);
-  margin: 0 auto;
-  padding: 0 var(--space-2);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -56,16 +92,15 @@
 }
 
 .navItem {
-  flex: 1 0 auto;
+  flex: 0 0 auto;
 }
 
 .navLink {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: var(--space-2);
-  min-height: var(--control-touch);
-  padding: var(--space-2) var(--space-3);
+  height: var(--header-height);
+  padding: 0 var(--space-3);
   border-bottom: 2px solid transparent;
   color: var(--ink-500);
   font-size: var(--text-sm);
@@ -76,12 +111,17 @@
 
 .navLink:hover {
   color: var(--ink-900);
-  background: var(--surface-sunken);
+}
+
+.navIcon {
+  color: var(--ink-400);
+  flex: none;
 }
 
 /*
- * The current destination is marked by a border, a weight change AND `aria-current`, so it is
- * identifiable without relying on the accent colour.
+ * The current destination is marked three ways — colour, weight and a 2 px rule — plus `aria-current`.
+ * Any one of them alone would fail somebody: colour for a colour-blind user, weight for a low-density
+ * screen, the rule for a screen reader.
  */
 .navLinkCurrent {
   color: var(--brand-800);
@@ -89,19 +129,28 @@
   font-weight: var(--weight-semibold);
 }
 
+.navLinkCurrent .navIcon {
+  color: var(--brand-700);
+}
+
+.barAction {
+  flex: none;
+  margin-left: auto;
+}
+
 .banner {
-  max-width: var(--content-max);
+  max-width: var(--view-max);
   margin: var(--space-4) auto 0;
-  padding: 0 var(--space-4);
+  padding: 0 var(--view-pad);
 }
 
 .main {
-  max-width: var(--content-max);
+  max-width: var(--view-max);
   margin: 0 auto;
-  padding: var(--space-4);
+  padding: var(--space-5) var(--view-pad) var(--space-10);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 .main:focus {
@@ -113,21 +162,24 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
+  justify-content: space-between;
   gap: var(--space-3);
 }
 
 .pageHeaderText {
-  flex: 1 1 16rem;
+  flex: 1 1 20rem;
   min-width: 0;
 }
 
 .pageTitle {
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
+  letter-spacing: 0.01em;
 }
 
 .pageDescription {
   margin-top: var(--space-1);
+  max-width: var(--measure-prose);
   font-size: var(--text-sm);
   color: var(--ink-500);
 }
@@ -138,11 +190,52 @@
   gap: var(--space-2);
 }
 
+/* ---- sections ---- */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-2);
+}
+
+.sectionHeadText {
+  min-width: 0;
+}
+
+.sectionTitle {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-900);
+}
+
+.sectionDescription {
+  margin-top: 0.125rem;
+  max-width: var(--measure-prose);
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
+.sectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 /* ---- split layout ---- */
 .split {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--space-4);
+  gap: var(--space-5);
   align-items: start;
   min-width: 0;
 }
@@ -151,34 +244,52 @@
 .splitAside {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
   min-width: 0;
 }
 
-@media (min-width: 64rem) {
+@media (min-width: 80rem) {
   .split {
     grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
   }
 
   .splitAside {
     position: sticky;
-    top: calc(var(--header-height) + 3.5rem);
-  }
-
-  .navLink {
-    justify-content: flex-start;
-  }
-
-  .navItem {
-    flex: 0 0 auto;
+    top: calc(var(--header-height) + var(--space-5));
   }
 }
 
-/* Label-only navigation below 30rem keeps six destinations reachable without overflow. */
-@media (max-width: 30rem) {
+/*
+ * Below 60rem the chrome stacks: the wordmark and the action on one line, the six destinations on
+ * their own scrollable line. Six labels cannot share a phone's width with a title and a button, and
+ * abbreviating them to icons would be exactly the legacy defect this navigation replaced.
+ */
+@media (max-width: 60rem) {
+  .barInner {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+  }
+
+  .brand {
+    flex: 1 1 auto;
+  }
+
+  .barAction {
+    order: 2;
+  }
+
+  .nav {
+    order: 3;
+    flex: 1 0 100%;
+  }
+
+  .navList {
+    gap: 0;
+  }
+
   .navLink {
-    padding: var(--space-2);
-    gap: var(--space-1);
-    font-size: var(--text-xs);
+    height: 2.5rem;
+    padding: 0 var(--space-3);
   }
 }

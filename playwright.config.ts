@@ -68,6 +68,20 @@ export default defineConfig({
      * manual matrix in docs/qa-plan.md carries that, and a real-device PASS is never inferred
      * from this project.
      */
+    /*
+     * Review screenshots, not a gate.
+     *
+     * Its own project because it uses a different `testDir` and must never run inside the regular
+     * suites: it writes PNGs into `review/screenshots/`, drives one long session per file, and
+     * resizes the viewport repeatedly. Run it with `npm run screenshots`. Nothing here asserts
+     * against a golden image — see the file header for why a phase that changes the interface
+     * deliberately cannot have a pixel gate.
+     */
+    {
+      name: 'screenshots',
+      testDir: './tests/screenshots',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
     {
       name: 'firefox-desktop',
       use: { ...devices['Desktop Firefox'], viewport: { width: 1440, height: 900 } },

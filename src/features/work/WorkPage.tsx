@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Plus } from 'lucide-react';
+import { usePrimaryAction } from '@/app/primary-action-context';
 import { useData } from '@/app/store/data-store';
 import { EMPTY_QUERY, countUndated, distinctUnits, distinctYears, runQuery } from '@/domain/query';
 import type { RecordQuery } from '@/domain/query';
@@ -54,10 +55,21 @@ export function WorkPage(): ReactNode {
     return map;
   }, [data.progress]);
 
-  const openCreate = (): void => {
+  const openCreate = useCallback((): void => {
     setEditing(null);
     setDialogOpen(true);
-  };
+  }, []);
+  usePrimaryAction('新增记录', openCreate);
+
+  /*
+   * "Nothing matches" and "nothing exists" are different answers and need different offers (audit
+   * E-1). The live count is the discriminator: with records present, the useful action is to relax
+   * the filter, not to create another record.
+   */
+  const liveTotal = useMemo(
+    () => data.records.filter((record) => isWorkRecord(record) && record.deletedAt === null).length,
+    [data.records],
+  );
 
   const submit = async (draft: WorkDraft): Promise<void> => {
     await actions.saveWork(draft, editing?.id ?? null);
@@ -65,15 +77,7 @@ export function WorkPage(): ReactNode {
 
   return (
     <>
-      <PageHeader
-        title="工作"
-        description="日常工作记录：状态、时限、对接与进展。"
-        actions={
-          <Button variant="primary" size="lg" icon={<Plus size={18} />} onClick={openCreate}>
-            新增记录
-          </Button>
-        }
-      />
+      <PageHeader title="工作" description="日常工作记录：状态、时限、对接与进展。" />
 
       <FilterBar
         query={query}
@@ -90,17 +94,44 @@ export function WorkPage(): ReactNode {
       />
 
       {results.length === 0 ? (
-        <EmptyState
-          title="没有符合条件的工作记录"
-          description="调整筛选条件，或新增一条记录。"
-          action={
-            <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>
-              新增记录
-            </Button>
-          }
-        />
+        liveTotal === 0 ? (
+          <EmptyState
+            title="还没有工作记录"
+            description="登记第一条事项后，这里会按时限与状态列出全部工作。"
+            action={
+              <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>
+                新增记录
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="没有符合当前筛选条件的记录"
+            description={`本机共有 ${String(liveTotal)} 条工作记录，当前筛选条件将它们全部排除了。`}
+            action={
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setQuery({ ...EMPTY_QUERY, kind: 'work', sort: query.sort });
+                  setVisible(PAGE_SIZE);
+                }}
+              >
+                清除全部筛选
+              </Button>
+            }
+          />
+        )
       ) : (
         <>
+          <div className={styles.columns} aria-hidden="true">
+            <span>状态</span>
+            <span>事项</span>
+            <span>业务分类</span>
+            <span>对接单位</span>
+            <span>日期</span>
+            <span className={styles.columnsRight}>时限</span>
+            <span />
+          </div>
           <ul className={styles.list}>
             {results.slice(0, visible).map((record) => (
               <li key={record.id}>

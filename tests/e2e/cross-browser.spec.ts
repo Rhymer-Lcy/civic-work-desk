@@ -263,7 +263,7 @@ test.describe('critical flows on this engine', () => {
     await goToRoute(page, '工作');
     const card = page.getByRole('article', { name: '将被彻底删除的工作' });
     await card.getByRole('button', { name: '展开详情' }).click();
-    await card.getByRole('button', { name: '删除' }).click();
+    await card.getByRole('button', { name: '删除', exact: true }).click();
     const trashConfirm = page.getByRole('dialog', { name: '移入回收站？' });
     await expect(trashConfirm).toBeVisible();
     await trashConfirm.getByRole('button', { name: '移入回收站', exact: true }).click();

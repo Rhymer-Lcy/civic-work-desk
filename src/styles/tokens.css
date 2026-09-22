@@ -122,16 +122,50 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  /* ---- control sizing: >= 44px for primary touch targets (WCAG 2.5.8 / 2.5.5) ---- */
-  --control-sm: 32px;
-  --control-md: 40px;
-  --control-lg: 44px;
-  --control-touch: 44px;
+  /*
+   * ---- control sizing ----
+   *
+   * Desktop-first values. WCAG 2.5.8 asks for a 24×24 minimum target with spacing, which these clear
+   * comfortably; the 44 px AAA figure is restored wholesale for coarse pointers at the end of this
+   * file, where it is the right number and where vertical space is not the scarce resource.
+   */
+  --control-sm: 28px;
+  --control-md: 34px;
+  --control-lg: 40px;
+  --control-touch: 36px;
 
-  /* ---- layout ---- */
-  --content-max: 1360px;
-  --sidebar-width: 17.5rem;
-  --header-height: 3.5rem;
+  /* ---- layout ----
+   *
+   * One width for every view was the Phase-1 model, and at 1920 it left 591 px of the viewport
+   * unused while a ledger row wrapped to two lines inside the column (see docs/phase-2-ux-audit.md,
+   * C-1 and L-2). The replacement is not a bigger number: it is a **measure per view**, because a
+   * table and a form want opposite things from a wide screen.
+   *
+   *   --view-max      set per route on the shell; `main` and the navigation both honour it, so the
+   *                   left edge of the content always lines up with the left edge of the nav.
+   *   --measure-prose an explicit cap for running text, so nothing above grows a 200-character line.
+   *
+   * The per-route values live in `AppShell.module.css`, next to the class that applies them.
+   */
+  --view-max: 1440px;
+  --view-pad: clamp(1rem, 1.8vw, 2.25rem);
+  --measure-prose: 72ch;
+  --sidebar-width: 20rem;
+  --header-height: 3rem;
+
+  /* ---- density ----
+   *
+   * A desktop office tool. Rows are the unit of work here, so they get explicit heights rather than
+   * inheriting whatever padding produces: a list the user scans forty times a day is worth tuning to
+   * the line, and a fixed row height is what makes a column scannable at all.
+   *
+   * Touch targets are restored to 44 px under `pointer: coarse` at the bottom of this file, so the
+   * desktop default costs nothing on a tablet or phone.
+   */
+  --row-h: 2.5rem;
+  --row-pad-x: 0.75rem;
+  --cell-pad-y: 0.4375rem;
+  --cell-pad-x: 0.625rem;
 
   /* ---- z-index layers, declared once ---- */
   --z-base: 0;
@@ -145,6 +179,30 @@
   --duration-fast: 120ms;
   --duration-base: 180ms;
   --easing: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/*
+ * Coarse pointers — and narrow viewports — get the touch sizing back.
+ *
+ * The desktop density above is chosen for a mouse on a 1366–2560 px screen. A finger needs a bigger
+ * target, and a phone has vertical space to spare precisely because it shows fewer rows — so the
+ * trade-off reverses, and so do the numbers. One query, applied to the tokens, rather than a
+ * per-component mobile override that some future control will forget.
+ *
+ * The width clause is not redundant with `pointer: coarse`. A 360 px-wide *desktop* window reports a
+ * fine pointer, so the coarse query alone left the save button 34 px tall at phone width — caught by
+ * the Phase-1 responsive suite, which asserts ≥40 px there and was right to. Anything that narrow is
+ * a phone or a phone-shaped split view, whatever the pointer claims.
+ */
+@media (pointer: coarse), (max-width: 40rem) {
+  :root {
+    --control-sm: 36px;
+    --control-md: 44px;
+    --control-lg: 48px;
+    --control-touch: 44px;
+    --row-h: 3rem;
+    --cell-pad-y: 0.625rem;
+  }
 }
 
 /*

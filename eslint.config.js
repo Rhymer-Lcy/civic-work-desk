@@ -39,6 +39,12 @@ export default tseslint.config(
        * linting and typechecking of this tree.
        */
       'scripts/audit/**',
+      /*
+       * `scripts/fixtures/` generates the demo archive used by the screenshots and by review. It
+       * writes files as a side effect, runs under its own vitest config, and belongs to no tsconfig
+       * project here for the same reason the audit probes do.
+       */
+      'scripts/fixtures/**',
     ],
   },
   js.configs.recommended,

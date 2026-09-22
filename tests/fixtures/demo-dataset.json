@@ -1,0 +1,1287 @@
+{
+  "application": "civic-work-desk",
+  "backupFormatVersion": 3,
+  "schemaVersion": 1,
+  "exportedAt": "2026-09-22T04:00:00.000Z",
+  "counts": {
+    "records": 31,
+    "workRecords": 26,
+    "honorRecords": 5,
+    "progressEntries": 13,
+    "categories": 13,
+    "groups": 4
+  },
+  "completeness": "complete",
+  "omittedInvalidRowIds": [],
+  "dataRevision": 48,
+  "payload": {
+    "records": [
+      {
+        "id": "test-id-0003",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "中非经贸博览会配套活动方案报审",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-02"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "9 月 22 日前将配套活动方案报市外办审核，附经费预算与安保方案",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-22"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-10-20"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-africa-cooperation",
+        "groupId": "grp-fixed",
+        "longTerm": false,
+        "counterpartUnit": "市商务局对外贸易处",
+        "counterpartContact": "周敏华",
+        "counterpartPhone": "138-0013-8001",
+        "remark": "安保方案需与市公安局治安支队会签后一并报送。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0007",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "与圣保罗市友好城市结好二十周年纪念活动筹备",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-08-18"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "拟定纪念活动总体方案，报市政府分管领导审定",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-10"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-11-30"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-sister-cities",
+        "groupId": "grp-long-term",
+        "longTerm": true,
+        "counterpartUnit": "市友协秘书处",
+        "counterpartContact": "罗承宇",
+        "counterpartPhone": "138-0013-8002",
+        "remark": "对方市政府希望将青少年交流纳入纪念活动框架。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0010",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "省人大代表建议第 072 号办理答复",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-07-10"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "会同市发改委形成书面答复，报省人大常委会办公厅",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-08-05"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-joint-handling",
+        "groupId": "grp-supervised",
+        "longTerm": false,
+        "counterpartUnit": "省人大常委会办公厅联络处",
+        "counterpartContact": "陈志刚",
+        "counterpartPhone": "138-0013-8003",
+        "remark": "已两次延期，需在本月内定稿。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0012",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "重点外资项目走访服务台账更新",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-22"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "本周内完成 6 家重点外资企业走访并更新服务台账",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-22"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-09-26"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-hosting-visits",
+        "groupId": "grp-fixed",
+        "longTerm": false,
+        "counterpartUnit": "市投资促进局",
+        "counterpartContact": "黄雅琴",
+        "counterpartPhone": "138-0013-8004",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0013",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "外事礼品管理办法修订征求意见",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-16"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "9 月 25 日前反馈修订意见",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-25"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-documents-drafting",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市机关事务管理局",
+        "counterpartContact": "许文彬",
+        "counterpartPhone": "138-0013-8005",
+        "remark": "重点关注第十二条关于礼品登记时限的表述。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0014",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "第四季度外事接待计划编制",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-20"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "汇总各部门接待需求，形成季度计划",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-28"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-09-30"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-hosting-visits",
+        "groupId": "grp-fixed",
+        "longTerm": false,
+        "counterpartUnit": "市政府办公室秘书科",
+        "counterpartContact": "沈亦凡",
+        "counterpartPhone": "138-0013-8006",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0015",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "涉外突发事件应急预案桌面演练",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-10-12"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "组织一次桌面推演，覆盖领事通报与媒体应对流程",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-10-16"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "test-id-0001",
+        "groupId": "grp-fixed",
+        "longTerm": false,
+        "counterpartUnit": "市应急管理局指挥中心",
+        "counterpartContact": "方启元",
+        "counterpartPhone": "138-0013-8007",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0016",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "援外培训班学员接待与课程协调",
+        "occurredOn": {
+          "kind": "range",
+          "start": "2026-10-08",
+          "end": "2026-10-22"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "协调授课单位、住宿与参观路线",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-africa-cooperation",
+        "groupId": "test-id-0002",
+        "longTerm": false,
+        "counterpartUnit": "省国际交流服务中心",
+        "counterpartContact": "邓舒云",
+        "counterpartPhone": "138-0013-8008",
+        "remark": "培训周期跨两周，按区间日期登记。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0017",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "对口援建项目年度验收材料准备",
+        "occurredOn": {
+          "kind": "text",
+          "text": "待定（11 月前）"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "待上级明确验收时间后启动",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "test-id-0001",
+        "groupId": "test-id-0002",
+        "longTerm": false,
+        "counterpartUnit": "省援建工作办公室",
+        "counterpartContact": "尹博翰",
+        "counterpartPhone": "138-0013-8009",
+        "remark": "日期尚未确定，按文字日期登记，不参与年月筛选。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0018",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "外事干部涉外礼仪专题培训",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-11"
+        },
+        "status": "completed",
+        "statusLabel": "",
+        "requirement": "完成一期专题培训并归档签到表",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-09-18"
+        },
+        "completedOn": {
+          "kind": "plain",
+          "date": "2026-09-17"
+        },
+        "categoryId": "cat-training-study",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市委党校培训处",
+        "counterpartContact": "谷明莉",
+        "counterpartPhone": "138-0013-8010",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0020",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "上半年外事工作总结报告",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-07-02"
+        },
+        "status": "completed",
+        "statusLabel": "",
+        "requirement": "形成上半年工作总结，报市政府办公室",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-07-20"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "plain",
+          "date": "2026-07-18"
+        },
+        "categoryId": "cat-documents-drafting",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市政府办公室",
+        "counterpartContact": "韦嘉树",
+        "counterpartPhone": "138-0013-8011",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0022",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "国际友城青少年书画交流展布展",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-08-06"
+        },
+        "status": "completed",
+        "statusLabel": "",
+        "requirement": "完成展陈布置与开幕活动",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "plain",
+          "date": "2026-08-09"
+        },
+        "categoryId": "cat-meetings-events",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市文化旅游广电局",
+        "counterpartContact": "柳静怡",
+        "counterpartPhone": "138-0013-8012",
+        "remark": "共展出作品 64 幅，其中友城来稿 31 幅。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0023",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "涉外企业用工政策宣讲会",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-08"
+        },
+        "status": "completed",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "plain",
+          "date": "2026-09-08"
+        },
+        "categoryId": "cat-meetings-events",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市人力资源和社会保障局",
+        "counterpartContact": "祁云松",
+        "counterpartPhone": "138-0013-8013",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0024",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "外事系统安全保密自查",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-01"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "按季度开展自查并形成台账",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-09-30"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-party-legal",
+        "groupId": "grp-fixed",
+        "longTerm": true,
+        "counterpartUnit": "市保密局",
+        "counterpartContact": "乔慎行",
+        "counterpartPhone": "138-0013-8014",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0026",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "外事接待经费决算核对",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-14"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "与财务处核对三季度接待经费支出明细",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-10-10"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-finance-logistics",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市财政局行政政法处",
+        "counterpartContact": "闻人骥",
+        "counterpartPhone": "138-0013-8015",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0027",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "统战对象走访联系（涉外侨务口）",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-05"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "每季度走访联系不少于 10 人次",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-united-front",
+        "groupId": "grp-long-term",
+        "longTerm": true,
+        "counterpartUnit": "市侨联",
+        "counterpartContact": "慕容瑾",
+        "counterpartPhone": "138-0013-8016",
+        "remark": "长期推进事项，无固定时限。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0030",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "友城合作项目库年度维护",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-06-15"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "核对并更新项目库信息，剔除已终止项目",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-sister-cities",
+        "groupId": "grp-long-term",
+        "longTerm": true,
+        "counterpartUnit": "市友协秘书处",
+        "counterpartContact": "罗承宇",
+        "counterpartPhone": "138-0013-8002",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0031",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "涉外法律服务需求调研",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-05-20"
+        },
+        "status": "deferred",
+        "statusLabel": "暂缓（等待上级口径）",
+        "requirement": "形成调研报告并提出服务清单建议",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-06-30"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-party-legal",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市司法局",
+        "counterpartContact": "澹台舜",
+        "counterpartPhone": "138-0013-8017",
+        "remark": "等待省级统一口径后再推进。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0033",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "境外展会参展补贴申报（已取消）",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-04-11"
+        },
+        "status": "cancelled",
+        "statusLabel": "已取消（展会延期）",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-finance-logistics",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市商务局",
+        "counterpartContact": "周敏华",
+        "counterpartPhone": "138-0013-8001",
+        "remark": "主办方延期至次年，本年度申报取消。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0034",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "外事考核指标填报（三季度）",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-19"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "按新指标口径填报并附说明",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-10-08"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-appraisal-filing",
+        "groupId": "grp-supervised",
+        "longTerm": false,
+        "counterpartUnit": "市考核办",
+        "counterpartContact": "扶苏",
+        "counterpartPhone": "138-0013-8018",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0035",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "群众来信办理：涉外婚姻登记咨询答复",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-13"
+        },
+        "status": "completed",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-18"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "plain",
+          "date": "2026-09-16"
+        },
+        "categoryId": "cat-feedback",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市民政局婚姻登记处",
+        "counterpartContact": "公孙瑜",
+        "counterpartPhone": "138-0013-8019",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0036",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "涉外舆情监测与研判周报",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-21"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "每周一报送研判周报",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "test-id-0001",
+        "groupId": "grp-fixed",
+        "longTerm": true,
+        "counterpartUnit": "市委宣传部舆情中心",
+        "counterpartContact": "宗政衡",
+        "counterpartPhone": "138-0013-8020",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0037",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "外事车辆与会议室调度规则修订",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-08-28"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "修订调度规则，明确优先级与冲突处理",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-10-31"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-finance-logistics",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市机关事务管理局",
+        "counterpartContact": "许文彬",
+        "counterpartPhone": "138-0013-8005",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0038",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "涉非投资合作政策汇编（长期）",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-03-04"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "持续收集并汇编政策文件，季度更新一次",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-africa-cooperation",
+        "groupId": "grp-long-term",
+        "longTerm": true,
+        "counterpartUnit": "市商务局对外贸易处",
+        "counterpartContact": "周敏华",
+        "counterpartPhone": "138-0013-8001",
+        "remark": "长期事项，无到期日；季度更新。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0040",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": "2026-09-21T09:00:00.000Z",
+        "kind": "work",
+        "title": "已撤销的重复登记记录",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-03"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-meetings-events",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市文化旅游广电局",
+        "counterpartContact": "",
+        "counterpartPhone": "",
+        "remark": "与另一条记录重复，移入回收站。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0041",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": "2026-09-21T09:00:00.000Z",
+        "kind": "work",
+        "title": "误填的测试记录（待清理）",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-04"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": null,
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "",
+        "counterpartContact": "",
+        "counterpartPhone": "",
+        "remark": "录入测试遗留，移入回收站。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0042",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "honor",
+        "title": "中非经贸合作服务先进集体",
+        "awardedOn": {
+          "kind": "plain",
+          "date": "2026-06-20"
+        },
+        "honorType": "表彰（先进集体/个人）",
+        "level": "省级",
+        "issuingOrg": "省商务厅",
+        "documentNo": "湘商奖〔2026〕7 号",
+        "personalRole": "主要完成人",
+        "evidenceLocation": "档案室 2026-荣誉-03",
+        "relatedWorkId": "test-id-0003",
+        "remark": "表彰文件与奖牌照片已归档。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0043",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "honor",
+        "title": "友好城市工作突出贡献奖",
+        "awardedOn": {
+          "kind": "plain",
+          "date": "2026-05-12"
+        },
+        "honorType": "表彰（先进集体/个人）",
+        "level": "市级",
+        "issuingOrg": "市人民政府外事办公室",
+        "documentNo": "市外奖〔2026〕2 号",
+        "personalRole": "参与人",
+        "evidenceLocation": "档案室 2026-荣誉-01",
+        "relatedWorkId": "test-id-0007",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0044",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "honor",
+        "title": "全国援外培训优秀组织单位",
+        "awardedOn": {
+          "kind": "plain",
+          "date": "2025-12-08"
+        },
+        "honorType": "表彰（先进集体/个人）",
+        "level": "国家级",
+        "issuingOrg": "国家国际发展合作署",
+        "documentNo": "国合表〔2025〕19 号",
+        "personalRole": "主要完成人",
+        "evidenceLocation": "档案室 2025-荣誉-11",
+        "relatedWorkId": null,
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0045",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "honor",
+        "title": "机关文明单位（复评通过）",
+        "awardedOn": {
+          "kind": "plain",
+          "date": "2026-02-26"
+        },
+        "honorType": "荣誉称号",
+        "level": "市级",
+        "issuingOrg": "市文明办",
+        "documentNo": "市文明〔2026〕4 号",
+        "personalRole": "",
+        "evidenceLocation": "档案室 2026-荣誉-02",
+        "relatedWorkId": null,
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0046",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "honor",
+        "title": "外事系统岗位技能竞赛三等奖",
+        "awardedOn": {
+          "kind": "plain",
+          "date": "2026-04-18"
+        },
+        "honorType": "竞赛获奖",
+        "level": "县区级",
+        "issuingOrg": "市总工会",
+        "documentNo": "",
+        "personalRole": "个人",
+        "evidenceLocation": "",
+        "relatedWorkId": null,
+        "remark": "个人奖项，证书在本人处。",
+        "legacyResidue": null
+      }
+    ],
+    "progressEntries": [
+      {
+        "id": "test-id-0004",
+        "recordId": "test-id-0003",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-05"
+        },
+        "note": "已完成初稿，经费预算部分待财务处复核。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0005",
+        "recordId": "test-id-0003",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-15"
+        },
+        "note": "与安保部门第一次会商，确认场地出入口方案。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0006",
+        "recordId": "test-id-0003",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-19"
+        },
+        "note": "财务处复核意见已回，按意见调整预算表第 3 项。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0008",
+        "recordId": "test-id-0007",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-08-25"
+        },
+        "note": "与对方市外办视频沟通，初步确定 11 月中旬时间窗。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0009",
+        "recordId": "test-id-0007",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-12"
+        },
+        "note": "方案第二稿完成，青少年交流部分待教育局补充。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0011",
+        "recordId": "test-id-0010",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-08-01"
+        },
+        "note": "第一次延期申请获同意，新时限 8 月 5 日。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0019",
+        "recordId": "test-id-0018",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-17"
+        },
+        "note": "培训完成，28 人参加，签到表与讲义已归档。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0021",
+        "recordId": "test-id-0020",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-07-18"
+        },
+        "note": "定稿报送，办公室已签收。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0025",
+        "recordId": "test-id-0024",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-09"
+        },
+        "note": "完成涉密文件柜与终端排查，两项整改已落实。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0028",
+        "recordId": "test-id-0027",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-08-20"
+        },
+        "note": "第三季度已走访 6 人次。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0029",
+        "recordId": "test-id-0027",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-05"
+        },
+        "note": "补充走访 3 人次，累计 9 人次。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0032",
+        "recordId": "test-id-0031",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-06-28"
+        },
+        "note": "经请示暂缓，待省厅明确口径。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      },
+      {
+        "id": "test-id-0039",
+        "recordId": "test-id-0038",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-07-01"
+        },
+        "note": "第二季度更新完成，新增 11 份文件。",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z"
+      }
+    ],
+    "categories": [
+      {
+        "id": "cat-africa-cooperation",
+        "name": "对非合作",
+        "sortOrder": 0,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-sister-cities",
+        "name": "友城友协",
+        "sortOrder": 1,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-hosting-visits",
+        "name": "接待·出访",
+        "sortOrder": 2,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-joint-handling",
+        "name": "会办件·建议提案",
+        "sortOrder": 3,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-meetings-events",
+        "name": "会议·活动",
+        "sortOrder": 4,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-documents-drafting",
+        "name": "文稿·材料",
+        "sortOrder": 5,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-feedback",
+        "name": "意见反馈",
+        "sortOrder": 6,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-training-study",
+        "name": "培训·学习",
+        "sortOrder": 7,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-appraisal-filing",
+        "name": "考核·填报",
+        "sortOrder": 8,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-party-legal",
+        "name": "党建·纪检·法治",
+        "sortOrder": 9,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-united-front",
+        "name": "统战·双拥",
+        "sortOrder": 10,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "cat-finance-logistics",
+        "name": "财务·后勤·综合",
+        "sortOrder": 11,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "test-id-0001",
+        "name": "涉外应急与舆情",
+        "sortOrder": 12,
+        "builtIn": false,
+        "archived": false
+      }
+    ],
+    "groups": [
+      {
+        "id": "grp-fixed",
+        "name": "固定工作",
+        "sortOrder": 0,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "grp-long-term",
+        "name": "长期推进",
+        "sortOrder": 1,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "grp-supervised",
+        "name": "分管工作",
+        "sortOrder": 2,
+        "builtIn": true,
+        "archived": false
+      },
+      {
+        "id": "test-id-0002",
+        "name": "对口援建专班",
+        "sortOrder": 3,
+        "builtIn": false,
+        "archived": false
+      }
+    ],
+    "settings": {
+      "appTitle": "政务工作记录台",
+      "appSubtitle": "数据保存在本机浏览器，建议定期导出 JSON 备份",
+      "backupReminderDays": 7,
+      "options": {
+        "honorType": [
+          "感谢信",
+          "表扬信",
+          "表彰（先进集体/个人）",
+          "奖励（嘉奖/记功）",
+          "通报表扬",
+          "领导批示肯定",
+          "考核优秀",
+          "其他"
+        ],
+        "honorLevel": [
+          "国家级",
+          "省级",
+          "市级",
+          "县区级",
+          "单位内部",
+          "其他"
+        ],
+        "personalRole": [
+          "主要承办人",
+          "参与人",
+          "组织协调",
+          "集体荣誉"
+        ]
+      }
+    }
+  },
+  "checksum": {
+    "algorithm": "sha-256",
+    "scope": "envelope",
+    "value": "c63073038ad5069f519ee110ca97791fd9db0fa8f7d36519236c24dca77ff8e6"
+  }
+}

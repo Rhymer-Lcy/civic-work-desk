@@ -10,6 +10,7 @@ import { ReportsPage } from '@/features/reports/ReportsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { WorkPage } from '@/features/work/WorkPage';
 import { requestPersistentStorage } from '@/services/storage/persistence';
+import { PrimaryActionProvider } from './primary-action';
 import { registerServiceWorker } from './pwa/service-worker-bridge';
 import type { UpdateState } from './pwa/service-worker-bridge';
 import { useRoute } from './router';
@@ -21,7 +22,9 @@ export function App(): ReactNode {
   return (
     <ToastProvider>
       <DataProvider>
-        <AppRoot />
+        <PrimaryActionProvider>
+          <AppRoot />
+        </PrimaryActionProvider>
       </DataProvider>
     </ToastProvider>
   );

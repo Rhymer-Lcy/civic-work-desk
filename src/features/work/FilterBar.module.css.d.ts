@@ -4,10 +4,13 @@ declare const classes: {
   readonly "chip": string;
   readonly "chips": string;
   readonly "count": string;
+  readonly "more": string;
+  readonly "moreOpen": string;
   readonly "row": string;
   readonly "search": string;
   readonly "searchIcon": string;
   readonly "searchWrap": string;
+  readonly "secondary": string;
   readonly "select": string;
   readonly "selectLabel": string;
   readonly "selectWrap": string;

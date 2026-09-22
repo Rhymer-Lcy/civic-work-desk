@@ -31,7 +31,8 @@
     "scan:static": "node scripts/static-security-scan.mjs",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run scan:static && npm run build",
     "review:package": "node scripts/create-review-package.mjs",
-    "review:verify": "node scripts/verify-review-package.mjs"
+    "review:verify": "node scripts/verify-review-package.mjs",
+    "screenshots": "playwright test --project=screenshots"
   },
   "dependencies": {
     "date-fns": "4.4.0",

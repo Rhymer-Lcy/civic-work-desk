@@ -54,6 +54,13 @@ test.describe('narrow-screen presentation', () => {
       unit: '单位甲',
     });
     await navigate(page, '台账');
+    /*
+     * Wait for the destination before asserting anything about it. `toBeHidden()` passes for an
+     * element that does not exist, so on the previous view it succeeded vacuously and the next
+     * locator then matched a work row — a strict-mode violation, which throws immediately instead of
+     * retrying. Anchoring on the heading makes the assertions describe the page they name.
+     */
+    await expect(page.getByRole('heading', { name: '台账', level: 1 })).toBeVisible();
 
     // The table is removed from the accessibility tree entirely at this width, so a screen reader
     // is not told "row 3, column 5" over something rendered as a paragraph.
