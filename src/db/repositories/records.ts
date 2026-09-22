@@ -425,30 +425,17 @@ export async function progressCounts(): Promise<ReadonlyMap<string, number>> {
   return counts;
 }
 
-/** Used by replace-mode restore. Destroys all records and progress in one transaction. */
-export async function replaceAllRecords(
-  records: readonly AnyRecord[],
-  progress: readonly ProgressEntry[],
-): Promise<void> {
-  await withDatabase('replaceAllRecords', (db) =>
-    db.transaction('rw', [db.records, db.progressEntries], async () => {
-      await db.records.clear();
-      await db.progressEntries.clear();
-      if (records.length > 0) await db.records.bulkAdd(records);
-      if (progress.length > 0) await db.progressEntries.bulkAdd(progress);
-    }),
-  );
-}
-
-/** Used by merge-mode restore. Adds only the ids supplied; never overwrites an existing row. */
-export async function bulkAddRecords(
-  records: readonly AnyRecord[],
-  progress: readonly ProgressEntry[],
-): Promise<void> {
-  await withDatabase('bulkAddRecords', (db) =>
-    db.transaction('rw', [db.records, db.progressEntries], async () => {
-      if (records.length > 0) await db.records.bulkAdd(records);
-      if (progress.length > 0) await db.progressEntries.bulkAdd(progress);
-    }),
-  );
-}
+/*
+ * `replaceAllRecords()` and `bulkAddRecords()` were removed in Phase 1.3.1.
+ *
+ * Both were exported, both had no call site anywhere in the application or the tests, and both wrote
+ * records and progress through a bare `db.transaction` — outside `withMutation`, so they bumped no
+ * `dataRevision`, and outside `assertReferencesResolve`, so they could write a dangling reference.
+ * The import path they were once written for does its own clearing and writing inside a single
+ * transaction (`services/import/apply.ts`).
+ *
+ * They were not reachable from the UI, so they were never the Phase-1.3 defect. They were deleted
+ * because their existence contradicted the claim the phase makes — that every repository write
+ * preserves the live invariant — and because an exported helper that quietly violates it is exactly
+ * what a future caller reaches for.
+ */
