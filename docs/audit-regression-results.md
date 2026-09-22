@@ -152,7 +152,24 @@ archive carrying relational corruption is still refused rather than repaired.
 
 Test files are under `tests/integration/`.
 
-## 4. What is not claimed
+## 4. The package's own figures, checked from the outside in
+
+`scripts/audit/package-consistency-audit.mjs <path-to-zip>` re-derives every count printed in this
+package from `review/VERIFY_LOG.txt` — the one file in it that nobody writes by hand — and then
+requires the packaged prose to carry exactly that value, anchored on the whole clause rather than on
+the digits. It exists because the standard verifier asks a different question (is the archive well
+formed?) and because the failure this one is aimed at is invisible to the other direction: a figure
+quoted in two documents and stale in one of them.
+
+It reports 19 checks and can fail. Run against the superseded
+`...phase-1-3-20260921-211918-051619f1ee6d.zip` it reports four inconsistencies, three of which are
+the real defects that archive shipped with — a captured test listing showing sixteen cases where the
+run had seventeen, and a changelog count of 49 where the four suites hold 50. Run against the current
+package it reports none. (Auditing any superseded archive also fails the archive-directory checks by
+construction, because later archives exist; that is about the passage of time, not about the old
+package.)
+
+## 5. What is not claimed
 
 - No real Safari or iOS device was used. Playwright's WebKit is not Safari.
 - The WebKit offline **reload** case remains skipped, with the reason recorded in the test
