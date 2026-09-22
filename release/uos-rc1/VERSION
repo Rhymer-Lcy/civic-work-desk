@@ -1,10 +1,10 @@
 CivicWorkDesk UOS acceptance bundle
 bundleId=civic-work-desk-uos-rc1
 stage=RC1 (target acceptance candidate — NOT a release)
-applicationCommit=7da4c057b226f1c811d42be5189ddef62c4e8040
+applicationCommit=91911b7a38ced50061be279635bb3ba4c27907a4
 applicationPhase=Phase 2 build, unchanged
 canonicalOrigin=http://127.0.0.1:8765
-builtAt=2026-09-22T09:55:29Z
+builtAt=2026-09-22T10:03:09Z
 builtOn=development workstation, Node 24
 serverCandidates=busybox-httpd, python3-stdlib
 selectedServer=UNDECIDED — requires physical target evidence
