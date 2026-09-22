@@ -11,6 +11,7 @@
 | `...phase-1-3-20260921-153012-nogit.zip`        | **2 FAILED**, interrupted  | not a deliverable and names no commit; kept rather than deleted — see below                 |
 | `...phase-1-3-20260921-211918-051619f1ee6d.zip` | all passed, 21/21          | superseded; it carried that fix but its evidence doc still showed the pre-fix test listing  |
 | `...phase-1-3-20260921-212545-eafb8dd327a1.zip` | all passed, 21/21          | superseded by this row and the one above it                                                 |
+| `...phase-1-3-20260921-213415-c1229ce55cab.zip` | all passed, 21/21          | superseded; the outside-in consistency audit was added to the packaged evidence after it    |
 | the newest `phase-1-3-…` archive                | all passed                 | **the Phase-1.3 deliverable**; it names itself in its own `REVIEW_SUMMARY.md` and `.sha256` |
 
 Nothing was deleted or renamed during Phase 1.3 either. Every archive and `.sha256` listed in this
@@ -62,6 +63,13 @@ footnote. That listing and the changelog's test count were re-captured.
 
 The **212545** build is superseded only by this section: it was produced before the two archives above
 were described here.
+
+The **213415** build is superseded by the addition of
+`scripts/audit/package-consistency-audit.mjs`: the final report claims an independent consistency
+audit of this package, and §18 of the Phase-1.3 instructions requires such a claim to be
+reproducible from packaged material rather than merely asserted. That audit found nothing wrong with
+213415 — it passed all nineteen of its checks — so the rebuild adds evidence rather than fixing a
+defect.
 
 ## What was in `_review_packages/` after Phase 1.2
 
