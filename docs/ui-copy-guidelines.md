@@ -9,19 +9,19 @@ and most of them exist because breaking them once produced a real misunderstandi
 One term per concept. The left column is what the interface says; the right column is what it means
 and what it is **not** called.
 
-| Term | Meaning | Never |
-| --- | --- | --- |
-| **工作** | the record type, and the destination that lists it | 任务, 事务, 事项列表 |
-| **事项** | one work record's subject line (the field label) | 标题, 名称, 主题 |
-| **荣誉** | the honours archive and its record type | 奖项, 表彰记录 |
-| **台账** | the flat table of every record, for export and print | 列表, 清单, 总表 |
-| **进展** | a dated note attached to a record | 日志, 动态, 备注 |
-| **回收站** | soft-deleted records, restorable | 垃圾箱, 已删除 |
-| **JSON 备份** | the only format that can restore the database | 数据导出, 备份文件（模糊时） |
-| **完整还原** | replacing local data with a complete backup, exactly | 恢复, 导入（在还原语境中） |
-| **合并导入** | adding records that do not already exist | 导入（在合并语境中） |
-| **长期推进** | work with no fixed deadline, judged by status | 长期任务, 持续性工作 |
-| **历史遗留** | overdue by more than 30 days | 积压, 陈年旧账 |
+| Term          | Meaning                                              | Never                        |
+| ------------- | ---------------------------------------------------- | ---------------------------- |
+| **工作**      | the record type, and the destination that lists it   | 任务, 事务, 事项列表         |
+| **事项**      | one work record's subject line (the field label)     | 标题, 名称, 主题             |
+| **荣誉**      | the honours archive and its record type              | 奖项, 表彰记录               |
+| **台账**      | the flat table of every record, for export and print | 列表, 清单, 总表             |
+| **进展**      | a dated note attached to a record                    | 日志, 动态, 备注             |
+| **回收站**    | soft-deleted records, restorable                     | 垃圾箱, 已删除               |
+| **JSON 备份** | the only format that can restore the database        | 数据导出, 备份文件（模糊时） |
+| **完整还原**  | replacing local data with a complete backup, exactly | 恢复, 导入（在还原语境中）   |
+| **合并导入**  | adding records that do not already exist             | 导入（在合并语境中）         |
+| **长期推进**  | work with no fixed deadline, judged by status        | 长期任务, 持续性工作         |
+| **历史遗留**  | overdue by more than 30 days                         | 积压, 陈年旧账               |
 
 Status words are fixed by `STATUS_LABELS_ZH` and must match it exactly: **待办 / 进行中 / 已完成 /
 暂缓 / 已取消**. The interface never invents a synonym for a status, because the same word appears in
@@ -59,11 +59,11 @@ the ledger, the report and the XLSX export.
 
 "No data" and "no matches" are different sentences with different offers:
 
-| Situation | Says | Offers |
-| --- | --- | --- |
-| Nothing has ever been created | 还没有工作记录 | 新增记录 |
-| A filter excluded everything | 没有符合当前筛选条件的记录 + how many exist | 清除全部筛选 |
-| Nothing is urgent | 近期没有逾期或临近到期的事项 + the workload totals | nothing — this is good news |
+| Situation                     | Says                                               | Offers                      |
+| ----------------------------- | -------------------------------------------------- | --------------------------- |
+| Nothing has ever been created | 还没有工作记录                                     | 新增记录                    |
+| A filter excluded everything  | 没有符合当前筛选条件的记录 + how many exist        | 清除全部筛选                |
+| Nothing is urgent             | 近期没有逾期或临近到期的事项 + the workload totals | nothing — this is good news |
 
 A bare 暂无数据 is not acceptable anywhere: it answers neither "why" nor "what now".
 

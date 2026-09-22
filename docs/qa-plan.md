@@ -151,7 +151,19 @@ destructive-replace guard: an all-invalid legacy file cannot clear a populated d
 by the Phase-1.2 code still verifies, is judged complete, restores exactly, merges safely, and — when
 edited to carry a dangling reference — is still refused rather than repaired.
 
-### End-to-end — 83 Chromium + 21 cross-engine (1 skipped) + 14 accessibility
+`phase-2-ux.spec.ts` — **Phase 2, the product decisions.** Thirteen tests over what the redesign
+decided rather than how it looks, because a screenshot gate fails on every intended change and passes
+on a layout that has quietly stopped being usable. The shell is one band with exactly one primary
+action whose meaning follows the route and which disappears where creation has none; an empty database
+is explained rather than shown as zeroes; "no data" and "no matches" are different answers with
+different offers; a 1920 screen shows a working set of rows whose status cells all start at the same x
+(row height capped at 56 px, so a regression that re-inflates it fails here); the whole row is the
+disclosure control and spans >80% of its width; secondary filters collapse but never while one is in
+force; the honours view does not offer a filter that cannot return a result; the ledger's 类别 cells
+are one line and the ledger is wider than the dashboard which is wider than reports; and the settings
+index reaches the destructive block directly.
+
+### End-to-end — 96 Chromium + 21 cross-engine (1 skipped) + 14 accessibility
 
 **`smoke.spec.ts`** — first run and empty state; create/edit/complete; progress add and edit with
 the neighbouring entry verified untouched; long-term visibility and completion precedence; honour
@@ -199,6 +211,14 @@ file count it actually covered (166 in the run that produced the Phase-1.1 packa
 apply to our code; egress rules (remote script/link, telemetry hosts, absolute paths, legacy record
 ids) apply to the built bundle too. Exceptions are listed in the script with reasons.
 
+### Rebuild before running the E2E suites
+
+`npm run test:e2e` serves `dist/` through `vite preview` and does **not** build it. Running it after a
+source change silently tests the previous build: during Phase 2 this produced a route that reported the
+correct hash while rendering the previous view's layout class, and twenty minutes went into debugging
+the router before the cause turned out to be a stale `dist/`. `npm run review:package` builds first, so
+packaged evidence is never affected; ad-hoc runs are.
+
 ## Results
 
 Captured from the run that produced the review package; the raw output is in
@@ -212,12 +232,12 @@ Captured from the run that produced the review package; the raw output is in
 | Unit + integration             | `npm run test:unit`      | **PASS — 330/330** in 21 files (157 unit, 173 integration)       |
 | Production build               | `npm run build`          | PASS                                                             |
 | Static security scan           | `npm run scan:static`    | PASS — 0 findings                                                |
-| E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 83/83**                                                 |
+| E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 96/96**                                                 |
 | E2E, Firefox + WebKit          | `npm run test:e2e:cross` | **PASS — 21 passed, 1 skipped** (see the WebKit limitation)      |
 | Accessibility (axe)            | `npm run test:a11y`      | PASS — 14/14, 0 unexplained violations                           |
 | `npm audit --omit=dev`         | high/critical            | PASS — 0 at `high` or above (2 moderate accepted and documented) |
 
-The desktop-Chromium project runs every spec, so `accessibility.spec.ts` is counted both inside the 83
+The desktop-Chromium project runs every spec, so `accessibility.spec.ts` is counted both inside the 96
 and again in the dedicated `a11y` project, which re-runs it at 1280×900. That double count is
 deliberate and stated rather than netted off.
 

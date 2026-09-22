@@ -29,15 +29,15 @@ a development server, and has no supervision or start-up integration.
 
 Supplied by the customer; none of it has been verified by running anything on the machine.
 
-| | |
-| --- | --- |
-| Distribution | UnionTech UOS / 统信 UOS |
-| Kernel | `4.19.0-loongson-3-desktop` (vendor kernel) |
-| Architecture | `loongarch64` |
-| Processor | Loongson 3A6000 |
-| Memory | 16 GB |
-| Network | fully offline |
-| Users | single user, local workstation |
+|              |                                             |
+| ------------ | ------------------------------------------- |
+| Distribution | UnionTech UOS / 统信 UOS                    |
+| Kernel       | `4.19.0-loongson-3-desktop` (vendor kernel) |
+| Architecture | `loongarch64`                               |
+| Processor    | Loongson 3A6000                             |
+| Memory       | 16 GB                                       |
+| Network      | fully offline                               |
+| Users        | single user, local workstation              |
 
 Two consequences follow directly and constrain everything else:
 
@@ -67,18 +67,18 @@ which one depends entirely on what the machine already has.
 
 ### Probe first (nothing can be decided without these)
 
-| # | Question | How to answer it |
-| --- | --- | --- |
-| 1 | Exact UOS edition and release | `cat /etc/os-release`, `uname -a` |
-| 2 | Which browser is installed, and its engine version | launch it; `about:version` or equivalent |
-| 3 | Does that browser support `<dialog>`, `crypto.subtle`, IndexedDB in the intended origin? | a one-page capability probe served from the chosen origin — this is the single highest-value experiment in Phase 3 |
-| 4 | Is Python 3 present, and which version? | `python3 -V` |
-| 5 | Is BusyBox present (`busybox httpd`)? | `busybox --list \| grep httpd` |
-| 6 | Any system HTTP server already installed (nginx, lighttpd, darkhttpd)? | `which nginx lighttpd darkhttpd` |
-| 7 | Can the user bind a loopback port ≥ 1024, and is loopback traffic restricted by policy? | attempt a bind; check firewall rules |
-| 8 | Does the user have permission to install packages, or write outside `$HOME`? | `id`, `sudo -n true`, try a write |
-| 9 | How are desktop shortcuts and autostart handled in this desktop environment? | inspect `~/.local/share/applications`, `~/.config/autostart` |
-| 10 | Organisation policy on installing software, and on browser policy files | ask; do not infer from what is technically possible |
+| #   | Question                                                                                 | How to answer it                                                                                                   |
+| --- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1   | Exact UOS edition and release                                                            | `cat /etc/os-release`, `uname -a`                                                                                  |
+| 2   | Which browser is installed, and its engine version                                       | launch it; `about:version` or equivalent                                                                           |
+| 3   | Does that browser support `<dialog>`, `crypto.subtle`, IndexedDB in the intended origin? | a one-page capability probe served from the chosen origin — this is the single highest-value experiment in Phase 3 |
+| 4   | Is Python 3 present, and which version?                                                  | `python3 -V`                                                                                                       |
+| 5   | Is BusyBox present (`busybox httpd`)?                                                    | `busybox --list \| grep httpd`                                                                                     |
+| 6   | Any system HTTP server already installed (nginx, lighttpd, darkhttpd)?                   | `which nginx lighttpd darkhttpd`                                                                                   |
+| 7   | Can the user bind a loopback port ≥ 1024, and is loopback traffic restricted by policy?  | attempt a bind; check firewall rules                                                                               |
+| 8   | Does the user have permission to install packages, or write outside `$HOME`?             | `id`, `sudo -n true`, try a write                                                                                  |
+| 9   | How are desktop shortcuts and autostart handled in this desktop environment?             | inspect `~/.local/share/applications`, `~/.config/autostart`                                                       |
+| 10  | Organisation policy on installing software, and on browser policy files                  | ask; do not infer from what is technically possible                                                                |
 
 ### Only then, the options
 

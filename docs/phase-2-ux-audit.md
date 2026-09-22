@@ -23,7 +23,7 @@ invisible.
 Two things were caught by measuring instead of asserting, and both would have gone into this document
 as fact:
 
-- the wide-viewport margins *looked* brand-red in the first capture; sampling them returned
+- the wide-viewport margins _looked_ brand-red in the first capture; sampling them returned
   `#f7f5f2`, the ordinary page background. The red is the header band only.
 - the first capture ran with the clock pinned in the runner's timezone rather than the browser's, so
   every deadline state was one day out: the record designed to be "due today" rendered as "overdue by
@@ -31,12 +31,12 @@ as fact:
 
 ## Severity
 
-| | meaning |
-| --- | --- |
-| **P0** | usability blocker — a user cannot complete, or is actively misled |
+|        | meaning                                                                |
+| ------ | ---------------------------------------------------------------------- |
+| **P0** | usability blocker — a user cannot complete, or is actively misled      |
 | **P1** | major daily-use friction — costs time or attention on every repetition |
-| **P2** | meaningful polish — noticeably better, not blocking |
-| **P3** | optional enhancement |
+| **P2** | meaningful polish — noticeably better, not blocking                    |
+| **P3** | optional enhancement                                                   |
 
 ---
 
@@ -46,12 +46,12 @@ as fact:
 
 Measured from the captures (content column edge to edge, page background sampled either side):
 
-| viewport | content column | unused |
-| --- | --- | --- |
-| 1366×768 | 1329 px | 37 px (3%) |
-| 1440×900 | 1329 px | 111 px (8%) |
-| 1920×1080 | 1329 px | **591 px (31%)** |
-| 2560×1440 | 1329 px | **1231 px (48%)** |
+| viewport  | content column | unused            |
+| --------- | -------------- | ----------------- |
+| 1366×768  | 1329 px        | 37 px (3%)        |
+| 1440×900  | 1329 px        | 111 px (8%)       |
+| 1920×1080 | 1329 px        | **591 px (31%)**  |
+| 2560×1440 | 1329 px        | **1231 px (48%)** |
 
 At 1366 the layout is genuinely comfortable — this is not a "make everything wider" finding. The
 defect is that **every view stops growing at the same 1360 px**, so at 1920 a data-dense table and a
@@ -215,7 +215,7 @@ Scrolling past the first screen leaves ten unlabelled columns.
 Period selection, inclusion toggles, preview and export all sit at one level. What will be included is
 inferable but not stated as a step.
 
-### Rep-2 · P1 · Nothing distinguishes a *report* from a *backup*
+### Rep-2 · P1 · Nothing distinguishes a _report_ from a _backup_
 
 导出 XLSX (Ledger) and 导出 Word (Reports) sit in the same visual register as 导出 JSON 备份
 (Settings). Only prose distinguishes the one format that can restore the database from the two that

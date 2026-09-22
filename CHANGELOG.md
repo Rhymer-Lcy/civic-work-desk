@@ -3,6 +3,68 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project is internal and unversioned; entries are grouped by phase.
 
+## [Unreleased] — Phase 2 product & UX production readiness
+
+Turning a technically mature internal tool into something usable for a whole working day. **No data
+layer change**: schema, migrations, backup format v3, canonical restore, merge semantics, transaction
+boundaries, relational integrity, `dataRevision` freshness, CSP, offline behaviour and the zero-network
+guarantee are all untouched, and their tests are unchanged.
+
+The work was driven by an audit of the _running_ application against a 31-record demo dataset rather
+than an empty database — `docs/phase-2-ux-audit.md` records the findings with measurements, and
+`review/UX_BEFORE_AFTER.md` records what each change did.
+
+### Added
+
+- `scripts/fixtures/` — a deterministic, entirely fictional demo dataset (24 live work records, 2 in
+  the Trash, 5 honours, 13 progress entries), generated through the real repositories and sealed as a
+  v3 archive. Never seeded in production; first run stays empty.
+- `npm run screenshots` — deterministic review captures at 1366/1440/1920/2560/390 with the browser
+  clock pinned, imported through the application's own restore path.
+- `tests/e2e/phase-2-ux.spec.ts` — thirteen tests over the product decisions rather than the pixels.
+- `docs/browser-compatibility.md`, `docs/phase-3-uos-deployment-handoff.md`,
+  `docs/ui-copy-guidelines.md`.
+
+### Changed — layout and shell
+
+- **A measure per view** replaces one 1360 px column for everything. 概览/工作/荣誉/设置 grow to 1560,
+  台账 to 1920, 报告 stays at 1180. At 1920 the ledger table went from 1328 px to 1850 px.
+- **One chrome band** (48 px) replaces a 56 px red title bar plus a 45 px navigation strip, and carries
+  the current view's single primary action — 新增记录 on 概览/工作, 新增荣誉 on 荣誉, absent where
+  creation has no meaning. Brand red is now a 3 px rule, the wordmark and the active underline.
+- Desktop density tokens (rows, cells, controls), with 44 px touch targets restored under
+  `pointer: coarse` **or** ≤40rem — the width clause matters because a 360 px desktop window reports a
+  fine pointer, which would otherwise have shrunk the save button to 34 px.
+
+### Changed — views
+
+- **工作**: one row per record on a shared column template; 6 → 16 records visible at 1920×1080, the
+  whole row is the disclosure control, and expanded detail is grouped into 时间节点 / 对接信息 /
+  归属与分类. Below 72rem the stacked card presentation is unchanged.
+- **台账**: declared column widths (`table-layout: fixed` + `<colgroup>`), so 类别 no longer wraps its
+  two-character value on every row; zebra striping; a sticky header where the wrapper is not a scroll
+  container.
+- **概览**: three attention counts instead of six equal tiles, and a first-run page instead of six
+  zeroes.
+- **Empty states**: "nothing exists" and "your filter excluded everything" are now different sentences
+  with different offers.
+- **荣誉**: the 业务分类 filter — which could only ever return an empty list on this view — is gone; the
+  counterpart filter is named 授予单位.
+- **筛选**: secondary filters collapse behind 更多筛选 and re-open themselves whenever one is in force.
+- **设置**: a sticky section index at wide widths.
+
+### Performance
+
+Initial payload +3 327 bytes gzip (+1.7%): `index.js` +1 749, `index.css` +1 403, icons +167. No
+framework, component library or chart suite added; no new runtime dependency; the XLSX and DOCX
+writers are byte-identical and still lazily loaded.
+
+### Not done
+
+No dark mode, no internationalisation, no charts, no user-selectable density, no cross-tab
+synchronisation, and no UOS deployment mechanics — that is Phase 3, and the handoff document records
+what must be measured on the target before anything is decided.
+
 ## [Unreleased] — Phase 1.3.1 import concurrency closure
 
 One release-blocking fix: a confirmed import plan is re-checked against the current database inside the
