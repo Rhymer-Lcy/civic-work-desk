@@ -76,6 +76,14 @@ AssertionError: a refused import must not bump the revision: expected 4 to be 3
 - `scripts/audit/phase-1-3-stale-plan-probe.test.ts`, packaged with its captured before/after output in
   `review/AUDIT_REGRESSION_RESULTS.md`.
 
+### Changed — test robustness
+
+- Phase confirmations in the cross-engine suite go through `confirmWithPhrase()`
+  (`tests/e2e/helpers.ts`): real key events, then an assertion that the field holds the phrase and the
+  button became enabled, before clicking. One WebKit run in six left the button disabled after
+  `locator.fill()` while the text was in the field; the mechanism was not identified and is not
+  claimed, so this is a stricter interaction rather than a fix. See `docs/qa-plan.md`.
+
 ### Out of scope, unchanged
 
 No BroadcastChannel, no cross-tab live updates, no optimistic locking on ordinary edits, no

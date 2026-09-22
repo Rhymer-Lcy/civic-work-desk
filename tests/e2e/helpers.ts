@@ -110,6 +110,33 @@ export async function openSection(scope: Locator, label: string): Promise<void> 
 }
 
 /**
+ * Type a destructive-confirmation phrase and press the button it unlocks.
+ *
+ * `locator.fill()` sets the value and dispatches one synthetic `input` event. That is enough almost
+ * always, and on 2026-09-21 it was observed to leave the button disabled once in six WebKit runs of
+ * the linked-honour purge flow: the value was in the field, the React state behind
+ * `disabled={!phraseSatisfied}` was not, and the click retried until the 45 s timeout. **The mechanism
+ * was not identified** — this helper is not a diagnosis, only a more faithful interaction (real key
+ * events, as a user produces) plus an explicit wait on the state the phrase is supposed to change.
+ *
+ * It makes the failure message better as well as rarer: if the phrase gate ever genuinely breaks, the
+ * assertion below names it instead of reporting a click that timed out on a stable element.
+ */
+export async function confirmWithPhrase(
+  dialog: Locator,
+  phrase: string,
+  buttonName: string,
+): Promise<void> {
+  const input = dialog.getByRole('textbox');
+  await input.click();
+  await input.pressSequentially(phrase);
+  await expect(input).toHaveValue(phrase);
+  const button = dialog.getByRole('button', { name: buttonName });
+  await expect(button).toBeEnabled();
+  await button.click();
+}
+
+/**
  * Record every request that leaves the application's own origin.
  *
  * `about:`, `data:` and `blob:` are not network egress and are excluded. Anything else — an

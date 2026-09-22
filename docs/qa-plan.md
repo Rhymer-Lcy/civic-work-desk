@@ -377,6 +377,28 @@ checked by hand on 2026-09-21, Chromium 1440×900 and an emulated Pixel 7.
 
 ## Cross-engine verification, and the three defects it found
 
+### An intermittent WebKit failure, and what was and was not concluded
+
+On 2026-09-21, during Phase 1.3.1 packaging, the linked-honour purge flow failed once on WebKit out of
+six runs of identical code (five passes around it). The captured log is unambiguous about the symptom:
+after `locator.fill('清空')` the confirm button stayed `disabled`, so the click retried until the 45 s
+timeout. The phrase text was in the field; the React state behind `disabled={!phraseSatisfied}` was not.
+
+**The mechanism was not identified, and is not claimed.** Two candidate explanations were checked and
+rejected rather than assumed: the detach count in the confirmation is computed synchronously from
+props, so it cannot remount the dialog and clear the input; and `ConfirmDialog` is rendered
+unconditionally with an `open` prop, so a parent re-render does not reset its state either. What
+remains — a synthetic `input` event not reaching React on WebKit under some timing — is a hypothesis
+that these runs cannot distinguish from others.
+
+What was done is therefore a test-robustness change, not a fix: every phrase confirmation in the
+cross-engine suite now goes through `confirmWithPhrase()` in `tests/e2e/helpers.ts`, which types real
+key events, asserts the field holds the phrase, and asserts the button became enabled **before**
+clicking it. That is strictly stricter than `fill()` + click, and when the phrase gate does break the
+failure now names the gate instead of reporting a click that timed out on a stable element. Three
+consecutive cross-engine runs passed afterwards, which is not proof the flake is gone: six runs could
+not establish a rate, and neither can three.
+
 `npm run test:e2e:cross` runs `cross-browser.spec.ts` on Firefox and WebKit — critical flows only,
 chosen because their implementations differ most between engines rather than to maximise a count. The
 Chromium desktop project runs the same file, so all three engines are measured on identical assertions.

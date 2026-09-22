@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { confirmWithPhrase } from './helpers';
 
 /**
  * Focused cross-engine critical flows.
@@ -106,8 +107,7 @@ test.describe('critical flows on this engine', () => {
     await dialog.getByRole('button', { name: '完整还原' }).click();
 
     const confirm = page.getByRole('dialog', { name: '替换全部数据？' });
-    await confirm.getByRole('textbox').fill('替换');
-    await confirm.getByRole('button', { name: '确认替换' }).click();
+    await confirmWithPhrase(confirm, '替换', '确认替换');
     await expect(dialog).toBeHidden();
 
     await goToRoute(page, '工作');
@@ -275,8 +275,7 @@ test.describe('critical flows on this engine', () => {
     await expect(confirm).toBeVisible();
     // The consequence is stated before the user commits.
     await expect(confirm.getByText(/条荣誉记录关联到其中的工作事项/)).toBeVisible();
-    await confirm.getByRole('textbox').fill('清空');
-    await confirm.getByRole('button', { name: '确认清空' }).click();
+    await confirmWithPhrase(confirm, '清空', '确认清空');
     await expect(confirm).toBeHidden();
 
     // The honour is still there and still usable.
