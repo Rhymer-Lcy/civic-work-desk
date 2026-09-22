@@ -7,11 +7,23 @@ Phase 1.3.1 adds its own archive and deletes nothing. The Phase-1.3 deliverable
 audit) remains present and remains the artifact the Phase-1.3 review signed off; it is superseded as a
 _release_ by the newest `phase-1-3-1-…` archive, not withdrawn as evidence.
 
-| archive                                           | gates      | note                                                                |
-| ------------------------------------------------- | ---------- | ------------------------------------------------------------------- |
-| `...phase-1-3-…` (eight of them)                  | see below  | Phase-1.3 history, unchanged; the 214120 build is its deliverable   |
-| `...phase-1-3-1-20260921-225343-37ab449ec756.zip` | all passed | superseded; see below                                               |
-| the newest `phase-1-3-1-…`                        | all passed | **the Phase-1.3.1 deliverable**; it names itself in its own summary |
+| archive                                           | gates                | note                                                                      |
+| ------------------------------------------------- | -------------------- | ------------------------------------------------------------------------- |
+| `...phase-1-3-…` (eight of them)                  | see below            | Phase-1.3 history, unchanged; the 214120 build is its deliverable         |
+| `...phase-1-3-1-20260921-225343-37ab449ec756.zip` | all passed           | superseded; see below                                                     |
+| `...phase-1-3-1-20260921-230015-a7d4db67c162.zip` | all passed           | superseded; its provenance table did not yet list the 225343 build        |
+| `...phase-1-3-1-20260921-230419-3f0588d476bd.zip` | **1 FAILED** (cross) | one intermittent WebKit failure, described below and in `docs/qa-plan.md` |
+| the newest `phase-1-3-1-…`                        | all passed           | **the Phase-1.3.1 deliverable**; it names itself in its own summary       |
+
+The **230419** build is the only Phase-1.3.1 archive with a failing gate, and the failure is not a code
+defect that was then fixed. Its cross-engine gate hit a **single intermittent WebKit failure** in the
+linked-honour purge flow, on code identical to the two builds that passed immediately before it (the
+only change between them was one documentation paragraph). The symptom is captured in its own
+`VERIFY_LOG.txt`: after `locator.fill('清空')` the confirm button stayed disabled and the click retried
+to the timeout. Five further runs passed. **The mechanism was not identified**, two plausible causes
+were checked and ruled out, and no production code was changed on its account; what changed is that the
+cross-engine suite now types real key events and asserts the phrase gate opened before clicking through
+it. `docs/qa-plan.md` records exactly what that does and does not establish.
 
 The **225343** build passed all ten gates and 21/21 verification, and was superseded for one reason: the
 copy of `scripts/audit/package-consistency-audit.mjs` inside it still carried a check that counted ✓
