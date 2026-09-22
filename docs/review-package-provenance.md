@@ -1,5 +1,33 @@
 # Review packages in this directory — provenance
 
+## What is in `_review_packages/` after Phase 2
+
+Phase 2 deletes nothing. The Phase-1.3.1 deliverable
+(`...phase-1-3-1-20260921-232023-94c5744bf645.zip`) remains present and remains the artifact the
+data-layer sign-off was given against.
+
+| archive                                                                            | gates                  | note                                                                                      |
+| ---------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| `...phase-1-…`, `...phase-1-1-…`, `...phase-1-2-…`, `...phase-1-3-…`               | see the sections below | history, unchanged                                                                        |
+| `...phase-1-3-1-20260921-232023-94c5744bf645.zip`                                  | all passed, 21/21      | **the Phase-1.3.1 deliverable**                                                           |
+| `...phase-1-3-1-20260922-005341-1f500ecb85f0.zip`                                  | **skipped**            | not a deliverable — see below                                                             |
+| `...phase-1-3-1-20260921-233457-1f500ecb85f0.zip` and any other `--no-gates` build | **skipped**            | same                                                                                      |
+| the newest `phase-2-…`                                                             | all passed             | **the Phase-2 deliverable**; it names itself in its own `REVIEW_SUMMARY.md` and `.sha256` |
+
+### The gateless Phase-1.3.1 archive is a measurement artifact, not a release
+
+`...phase-1-3-1-20260922-005341-1f500ecb85f0.zip` was produced during Phase 2 by running the packaging
+script with `--no-gates`, to read the bundle sizes of the pre-redesign build for the before/after
+comparison. It says so itself: its `review/VERIFY_LOG.txt` contains a single line,
+`Gates were SKIPPED for this package (--no-gates).`, and its `REVIEW_SUMMARY.md` still carries the
+Phase-1.3.1 heading because the phase constant had not yet been bumped.
+
+Using the packaging script to take a measurement was a poor choice — a build script that writes into
+the deliverables directory should not be used as a ruler, and `dist/` could have been measured
+directly. It is kept rather than deleted, because this directory's rule is that archives are never
+removed, and it is described here so that a reviewer who finds a gateless archive with a stale phase
+label does not have to guess what it is. **It is not a release and must not be reviewed as one.**
+
 ## What is in `_review_packages/` after Phase 1.3.1
 
 Phase 1.3.1 adds its own archive and deletes nothing. The Phase-1.3 deliverable
