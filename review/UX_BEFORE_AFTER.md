@@ -24,11 +24,11 @@ reading view does not.
 **Result**, `main` width in px:
 
 | viewport | before (all views) | after: 概览/工作/荣誉/设置 | after: 台账 | after: 报告 |
-| --- | --- | --- | --- | --- |
-| 1366 | 1360 | 1366 | 1366 | 1180 |
-| 1440 | 1360 | 1440 | 1440 | 1180 |
-| 1920 | 1360 | 1560 | **1920** | 1180 |
-| 2560 | 1360 | 1560 | **1920** | 1180 |
+| -------- | ------------------ | -------------------------- | ----------- | ----------- |
+| 1366     | 1360               | 1366                       | 1366        | 1180        |
+| 1440     | 1360               | 1440                       | 1440        | 1180        |
+| 1920     | 1360               | 1560                       | **1920**    | 1180        |
+| 2560     | 1360               | 1560                       | **1920**    | 1180        |
 
 Growth above 1920 is deliberately capped: a 2400 px ledger row is not scannable in one fixation, and
 a settings form at 2560 would be a 200-character line. Evidence: `ledger-1920.png`,
@@ -183,7 +183,7 @@ destructive block without scrolling past everything`.
 the line. Touch sizing (44/48 px, 48 px rows) is restored by `@media (pointer: coarse), (max-width:
 40rem)`.
 
-**Why the width clause is there, and it is not redundant.** A 360 px-wide *desktop* window reports a
+**Why the width clause is there, and it is not redundant.** A 360 px-wide _desktop_ window reports a
 fine pointer, so the coarse query alone left the save button 34 px tall at phone width — caught by the
 Phase-1 responsive suite, which asserts ≥40 px there and was right to. No user-selectable "compact
 mode" was added: there is one default, and it is tuned.
@@ -194,13 +194,13 @@ mode" was added: there is one default, and it is tuned.
 
 Initial payload, approximate gzip, from the built `dist/assets`:
 
-| | Phase 1.3.1 | Phase 2 | delta |
-| --- | --- | --- | --- |
-| `index-*.js` | 54 802 | 56 551 | +1 749 (+3.2%) |
-| `index-*.css` | 8 589 | 9 992 | +1 403 (+16.3%) |
-| `vendor-icons-*.js` | 7 241 | 7 408 | +167 |
-| `vendor-react` / `vendor-db` / `vendor-schema` | 121 451 | 121 459 | +8 |
-| **initial total** | **192 083** | **195 410** | **+3 327 (+1.7%)** |
+|                                                | Phase 1.3.1 | Phase 2     | delta              |
+| ---------------------------------------------- | ----------- | ----------- | ------------------ |
+| `index-*.js`                                   | 54 802      | 56 551      | +1 749 (+3.2%)     |
+| `index-*.css`                                  | 8 589       | 9 992       | +1 403 (+16.3%)    |
+| `vendor-icons-*.js`                            | 7 241       | 7 408       | +167               |
+| `vendor-react` / `vendor-db` / `vendor-schema` | 121 451     | 121 459     | +8                 |
+| **initial total**                              | **192 083** | **195 410** | **+3 327 (+1.7%)** |
 
 No framework, component library or chart suite was added; no new runtime dependency of any kind. The
 JavaScript increase is the shell's primary-action context, the first-run page, the collapsible filter
