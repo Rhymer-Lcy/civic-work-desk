@@ -286,7 +286,7 @@ the digits. It exists because the standard verifier asks a different question (i
 formed?) and because the failure this one is aimed at is invisible to the other direction: a figure
 quoted in two documents and stale in one of them.
 
-It reports 19 checks and can fail. Run against the superseded
+It reports 20 checks and can fail. Run against the superseded
 `...phase-1-3-20260921-211918-051619f1ee6d.zip` it reports four inconsistencies, three of which are
 the real defects that archive shipped with — a captured test listing showing sixteen cases where the
 run had seventeen, and a changelog count of 49 where the four suites hold 50. Run against the current

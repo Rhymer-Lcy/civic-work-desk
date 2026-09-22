@@ -22,6 +22,15 @@
  * seventeen, and a changelog count of 49 where it was 50). Run against the current package it
  * reports none.
  *
+ * It also caught a defect in **itself** during Phase 1.3.1, which is worth recording because it is the
+ * failure mode this whole file exists to prevent. The listing check counted ✓ marks across the entire
+ * evidence document against one suite's total; that was correct while the document held one captured
+ * listing and became meaningless the moment a second phase added another (it read 32 for a 17-case
+ * suite). Anchoring each count to its own fenced block fixed it — and exposed a second bug in the same
+ * few lines, a fence regex without the optional language tag, which paired one block's closing fence
+ * with the next block's opening one and made every extracted count nonsense while still *looking* like
+ * a working check.
+ *
  * One expected caveat when auditing a **historical** package: the archive-directory checks compare
  * that package's provenance document against the directory as it stands now, so any superseded
  * archive will fail them simply because later archives exist. That failure is about the passage of
@@ -200,17 +209,31 @@ check(
   String(mandatedTotal),
 );
 
-const liveIntegrity = perFile.get('tests/integration/live-integrity.test.ts') ?? 0;
-check(
-  'the evidence doc captured HEAD block matches the run',
-  evidence.includes(`Tests  ${liveIntegrity} passed (${liveIntegrity})`),
-  `live-integrity = ${liveIntegrity}`,
+/*
+ * Each captured "passing suite" listing in the evidence document is pinned to the suite it claims to
+ * show — by its summary line *and* by the number of cases actually listed under it. Counting ticks
+ * across the whole document instead would conflate two listings the moment a second phase adds one,
+ * which is exactly what happened: the document-wide count read 32 for a 17-case suite. The unit of
+ * comparison has to be the block, not the file.
+ */
+// The optional language tag matters: without it the lazy match pairs one block's closing fence with
+// the next block's opening one, and every count read out of the result is meaningless.
+const fencedBlocks = [...evidence.matchAll(/```[a-z]*\r?\n([\s\S]*?)```/g)].map(
+  (match) => match[1],
 );
-check(
-  'the evidence doc lists exactly that many passing cases',
-  (evidence.match(/\n {3}✓ /g) ?? []).length === liveIntegrity,
-  `${(evidence.match(/\n {3}✓ /g) ?? []).length} listed`,
-);
+for (const suite of ['live-integrity', 'import-concurrency']) {
+  const expected = perFile.get(`tests/integration/${suite}.test.ts`) ?? 0;
+  const matching = fencedBlocks.filter(
+    (block) =>
+      block.includes(`Tests  ${expected} passed (${expected})`) &&
+      (block.match(/\n {3}✓ /g) ?? []).length === expected,
+  );
+  check(
+    `the evidence doc's captured ${suite} listing matches the run`,
+    expected > 0 && matching.length === 1,
+    `${expected} cases, ${matching.length} matching block(s)`,
+  );
+}
 
 for (const [command, label] of [
   ['npm run test:e2e', 'Chromium E2E'],
