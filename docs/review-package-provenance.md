@@ -1,5 +1,17 @@
 # Review packages in this directory — provenance
 
+## What is in `_review_packages/` after Phase 1.3.1
+
+Phase 1.3.1 adds its own archive and deletes nothing. The Phase-1.3 deliverable
+(`...phase-1-3-20260921-214120-e9547922ea70.zip`, all gates passed, 21/21 verified, 19/19 consistency
+audit) remains present and remains the artifact the Phase-1.3 review signed off; it is superseded as a
+_release_ by the newest `phase-1-3-1-…` archive, not withdrawn as evidence.
+
+| archive                          | gates      | note                                                                |
+| -------------------------------- | ---------- | ------------------------------------------------------------------- |
+| `...phase-1-3-…` (eight of them) | see below  | Phase-1.3 history, unchanged; the 214120 build is its deliverable   |
+| the newest `phase-1-3-1-…`       | all passed | **the Phase-1.3.1 deliverable**; it names itself in its own summary |
+
 ## What is in `_review_packages/` after Phase 1.3
 
 | archive                                         | gates                      | note                                                                                        |

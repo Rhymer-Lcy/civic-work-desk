@@ -46,7 +46,22 @@ morning.
 The two new files each keep the **defective** Phase-1 implementation beside the corrected one, so an
 assertion states what actually regressed rather than testing current code against itself.
 
-### Integration — 158 tests in 12 files
+### Integration — 173 tests in 13 files
+
+`import-concurrency.test.ts` — **Phase 1.3.1, the import time-of-check / time-of-use gap.** Each test
+builds a plan that is genuinely valid, changes the destination through the real repository or import
+APIs, and then applies the plan from before the change without rebuilding it — rebuilding would avoid
+the defect instead of reproducing it. The stale cases: the note's target record purged; a category and
+a group that resolved only through the destination deleted; a legacy replace whose retained taxonomy
+changed; and the same confirmed plan applied twice, which is the honest way to make an id collide.
+Each must refuse atomically, and one test compares records, progress, taxonomy, settings **and**
+`dataRevision` across the refusal. Then the cases that must **not** refuse: a plan whose file supplies
+the deleted category (the merge re-adds it), an ordinary unchanged-destination merge, and a canonical
+exact restore after drift of every kind — because `restore(D, B(S)) = S` holds for arbitrary `D`.
+Then the remedy: rebuilding after the refusal yields a different and correct preview that applies.
+Finally the two properties the patch rests on: that exactly one transaction is opened and the preflight
+reads inside it with all six stores in scope, and that a merge into an already-corrupt destination is
+refused with a reason naming the local data rather than the file.
 
 `database.test.ts` — seeding idempotence, CRUD, schema rejection on write, invalid-row reporting on
 read, soft delete and restore, purge with progress, trash emptying, progress entries addressed by
@@ -194,7 +209,7 @@ Captured from the run that produced the review package; the raw output is in
 | Format                         | `npm run format:check`   | PASS                                                             |
 | Lint (`--max-warnings=0`)      | `npm run lint`           | PASS                                                             |
 | Typecheck (both projects)      | `npm run typecheck`      | PASS                                                             |
-| Unit + integration             | `npm run test:unit`      | **PASS — 315/315** in 20 files (157 unit, 158 integration)       |
+| Unit + integration             | `npm run test:unit`      | **PASS — 330/330** in 21 files (157 unit, 173 integration)       |
 | Production build               | `npm run build`          | PASS                                                             |
 | Static security scan           | `npm run scan:static`    | PASS — 0 findings                                                |
 | E2E, Chromium desktop + mobile | `npm run test:e2e`       | **PASS — 83/83**                                                 |

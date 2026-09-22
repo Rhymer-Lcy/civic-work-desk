@@ -3,6 +3,85 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project is internal and unversioned; entries are grouped by phase.
 
+## [Unreleased] — Phase 1.3.1 import concurrency closure
+
+One release-blocking fix: a confirmed import plan is re-checked against the current database inside the
+transaction that writes it. No product change, no UX redesign, no backup-format change, no new runtime
+dependency.
+
+### The defect
+
+**A preview was treated as an eternal write authorization.** `buildImportPlan` projects the final state
+from the destination as it was when the preview was built; `applyImportPlan` then wrote that plan.
+Between the two the user is looking at a dialog, and this application is single-user but not
+single-tab — another tab can mutate the same IndexedDB database in the meantime. The plan was safe when
+it was checked and unsafe when it was used.
+
+Demonstrated against `e9547922ea701276ec37d316dba0761e5bf64f1f` with a probe written for that API
+(`scripts/audit/phase-1-3-stale-plan-probe.test.ts`). A work record is purged after the preview that
+carries a new note for it; confirming the stale preview then wrote the note as an orphan:
+
+```
+AssertionError: applying a stale plan must be refused: expected false to be true
+AssertionError: the orphan note must not be written: expected [ { id: 'incoming-progress-1', …(5) } ] to deeply equal []
+AssertionError: the live store must remain relationally valid: expected [ { kind: 'orphan-progress', …(2) } ] to deeply equal []
+AssertionError: a refused import must not bump the revision: expected 4 to be 3
+```
+
+### Fixed — the write transaction re-checks the preview
+
+- **Same transaction, before any mutation.** `applyImportPlan` calls a preflight
+  (`src/services/import/preflight.ts`) inside the same Dexie transaction, scoped over all six stores.
+  Revalidating in one transaction and writing in another would reproduce the identical bug over a
+  shorter interval, so the check and the write share one — asserted by a test that counts the
+  transactions opened and inspects the scope the preflight reads in.
+- **One definition of validity.** The projection is handed to the existing `@/domain/integrity`
+  validator; nothing about relational validity is restated in the import layer.
+- **Merge** re-checks non-overwrite against the ids _physically present_ now — a schema-corrupt row
+  still occupies its key — and validates `destination + acceptedChanges` with taxonomy additions
+  modelled under the documented local-wins rule, so the state checked is the state written. A plan
+  whose file supplies the missing taxonomy is therefore still applied; refusing it would be a false
+  positive.
+- **Legacy replace** validates the incoming records against the taxonomy that exists **at commit
+  time**, because a legacy file carries none of its own and the local taxonomy is retained.
+- **Canonical restore** is deliberately unaffected by destination drift: `restore(D, B(S)) = S` holds
+  for arbitrary `D`, and only the archive itself can refuse the restore.
+- **A stale plan is refused, never repaired.** `StaleImportPlanError` says the local data changed, that
+  nothing was written, and that a fresh preview is needed; it carries no storage-layer vocabulary. The
+  import dialog discards the expired preview rather than inviting a second identical refusal.
+- **`bulkAdd` stays the structural non-overwrite guard** — never `bulkPut`. What changed is that a key
+  collision is reported as a stale plan instead of surfacing a raw `ConstraintError`.
+
+### Changed
+
+- A schema-corrupt destination row is no longer mistaken for _relational_ damage. The relational rules
+  are defined over typed rows, so the preflight partitions raw rows with `partitionRows` — the helper
+  `readStoreSnapshot()` already uses — and validates relations over the rows that parse, while checking
+  key occupancy over every row physically present. Corrupt rows remain Diagnostics' business.
+
+### Removed
+
+- `replaceAllRecords()` and `bulkAddRecords()` from `src/db/repositories/records.ts`. Both were
+  exported, both had no call site anywhere in the application or its tests, and both wrote outside
+  `withMutation` and outside the reference checks — bumping no `dataRevision` and able to write a
+  dangling reference. Unreachable from the UI, so never the Phase-1.3 defect; deleted because an
+  exported helper that violates the central invariant is what a future caller reaches for.
+
+### Added
+
+- `tests/integration/import-concurrency.test.ts` — 15 tests: the stale-plan cases for merge, legacy
+  replace and collisions; whole-store rollback; revision untouched; the rebuilt preview being correct;
+  the ordinary merge and the canonical restore still succeeding; the transaction-sharing property; and
+  a merge into an already-corrupt destination being refused with an accurate reason.
+- `scripts/audit/phase-1-3-stale-plan-probe.test.ts`, packaged with its captured before/after output in
+  `review/AUDIT_REGRESSION_RESULTS.md`.
+
+### Out of scope, unchanged
+
+No BroadcastChannel, no cross-tab live updates, no optimistic locking on ordinary edits, no
+conflict-resolution UI. Multi-tab UI coherence remains uncharacterised and ordinary last-write-wins
+editing is unchanged.
+
 ## [Unreleased] — Phase 1.3 live-state integrity closure
 
 Making the live database, merges, backups and restores agree on one definition of a valid state. No new

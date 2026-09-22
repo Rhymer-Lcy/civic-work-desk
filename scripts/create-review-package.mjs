@@ -36,7 +36,7 @@ const OUT_DIR = join(ROOT, '_review_packages');
  * after one phase while its summary claims another. Bump it deliberately when a phase closes; earlier
  * archives keep the label they were built with, which is what makes a directory of them readable.
  */
-const PHASE = '1.3';
+const PHASE = '1.3.1';
 const PHASE_SLUG = `phase-${PHASE.replace(/\./g, '-')}`;
 
 /* ------------------------------------------------------------------ packaging allow-list */
@@ -763,6 +763,55 @@ A local-first, installable PWA for keeping public-sector work records and an hon
 It replaces a single 3,590-line HTML file that used \`localStorage\` as its database, embedded ~180
 real personal records in source, and loaded third-party analytics while describing itself as
 offline. \`docs/legacy-audit.md\` documents that prototype finding by finding, with line numbers.
+
+## What changed in Phase 1.3.1
+
+A single release-blocking concurrency fix on top of Phase 1.3, and nothing else. No product change, no
+UX redesign, no backup-format change, no new runtime dependency.
+
+**The defect.** An import preview is a statement about the destination *at the moment it was built*.
+Phase 1.3 made the planner judge every reference against \`destination + acceptedChanges\`, but it
+computed that projection once, from a destination read before the dialog opened. This application is
+single-user, not single-tab: another tab can mutate the same IndexedDB database while the dialog waits
+for a click. Confirming afterwards wrote a plan that had been checked against a destination that no
+longer existed — a time-of-check / time-of-use gap. Against
+\`e9547922ea701276ec37d316dba0761e5bf64f1f\` the packaged probe shows it concretely: the orphan note
+was written, the live store ended relationally invalid, and \`dataRevision\` advanced.
+
+**The fix.** \`applyImportPlan\` now re-evaluates the confirmed plan against the **current** store
+contents in the **same Dexie transaction** that performs the writes, over all six stores
+(\`src/services/import/preflight.ts\`). Revalidating in one transaction and writing in another would
+reproduce the identical bug over a shorter interval, so the check and the write share one — asserted by
+a test that counts the transactions opened and inspects the scope the preflight reads in. The rules
+themselves are not restated: the projection goes through the existing \`@/domain/integrity\`
+validator.
+
+- **Merge** — accepted record and progress ids must still be unoccupied, and
+  \`destination + acceptedChanges\` (with taxonomy additions modelled under the documented
+  local-wins rule) must satisfy the shared validator. \`bulkAdd\` remains the structural
+  non-overwrite guard; what changed is that a collision is now explained rather than surfacing a raw
+  \`ConstraintError\`.
+- **Legacy replace** — the imported records are validated against the taxonomy that exists **at commit
+  time**, since a legacy file carries none of its own and the local taxonomy is retained.
+- **Canonical restore** — destination drift is deliberately *not* a blocker. \`restore(D, B(S)) = S\`
+  holds for an arbitrary \`D\` and the archive replaces every restoreable store, so only the archive
+  itself can refuse it. Phase-1.3 exact-restore semantics are unchanged.
+
+**A stale plan is refused, never repaired.** \`StaleImportPlanError\` states that the local data
+changed, that nothing was written, and that a fresh preview is needed; the dialog discards the expired
+preview so the same one cannot be confirmed twice. No reference is nulled, no taxonomy is invented, no
+accepted set is re-derived behind the user's back. The refusal is atomic: records, progress, taxonomy,
+settings and \`dataRevision\` roll back together.
+
+**Also removed:** the exported \`replaceAllRecords()\` and \`bulkAddRecords()\` repository
+helpers. Both had no call site anywhere, and both wrote outside \`withMutation\` and outside the
+reference checks — so they bumped no \`dataRevision\` and could write a dangling reference,
+contradicting the invariant Phase 1.3 makes structurally.
+
+**Out of scope, and unchanged:** no BroadcastChannel, no cross-tab live updates, no optimistic locking
+on ordinary form edits, no conflict-resolution UI. Multi-tab UI coherence remains uncharacterised and
+ordinary last-write-wins editing is unchanged. The narrow property closed here is that a stale import
+preview can never violate relational integrity or silently overwrite a destination row.
 
 ## What changed in Phase 1.3
 

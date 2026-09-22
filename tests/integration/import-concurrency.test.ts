@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Dexie from 'dexie';
+import type { Transaction } from 'dexie';
 import { createDatabase, setDatabase } from '@/db/client';
 import type { CivicWorkDeskDatabase } from '@/db/schema';
 import { ensureSeedData } from '@/db/migrations';
@@ -703,13 +704,21 @@ describe('the check and the write share one transaction', () => {
     }) as typeof db.transaction;
 
     let scopeAtPreflightRead: string[] | null = null;
+    let observed = false;
     const readRecords = db.records.toArray.bind(db.records);
-    db.records.toArray = (() => {
-      scopeAtPreflightRead ??= Dexie.currentTransaction
-        ? [...Dexie.currentTransaction.storeNames].sort()
-        : null;
+    db.records.toArray = () => {
+      if (!observed) {
+        observed = true;
+        /*
+         * `Dexie.currentTransaction` is typed as always present but is null outside a transaction, so
+         * the runtime value is the evidence here and the type is not. Read through `unknown` to say
+         * that deliberately rather than trusting the declaration.
+         */
+        const active: unknown = Dexie.currentTransaction;
+        scopeAtPreflightRead = active ? [...(active as Transaction).storeNames].sort() : null;
+      }
       return readRecords();
-    }) as typeof db.records.toArray;
+    };
 
     try {
       await applyImportPlan(plan);

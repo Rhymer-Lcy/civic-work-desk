@@ -260,6 +260,39 @@ The destination's progress, category and group ids are **required** inputs to `b
 were optional in Phase 1.2, and an omitted list silently meant "the destination has none" — turning a
 missing argument into skipped rows, or into a raw `ConstraintError` at write time.
 
+### The preview is re-checked at commit time, in the write transaction
+
+Everything above describes the destination **as it was when the preview was built**. That is not the
+destination the write lands on: the application is single-user but not single-tab, and another tab can
+mutate the same IndexedDB database while the dialog waits for a click. Phase 1.3.1 closed the gap by
+re-evaluating the confirmed plan inside the same Dexie transaction that performs the writes, over all
+six stores, before anything is mutated (`src/services/import/preflight.ts`). Revalidating in one
+transaction and writing in another would reproduce the same defect over a shorter interval, so there is
+exactly one transaction.
+
+What the preflight asks depends on what the strategy actually replaces:
+
+| strategy            | the state it validates                           | destination drift matters? |
+| ------------------- | ------------------------------------------------ | -------------------------- |
+| `merge`             | current destination + accepted changes           | **yes** — it survives      |
+| `legacy-replace`    | accepted records/progress + **current** taxonomy | taxonomy only              |
+| `canonical-restore` | the archive itself, exactly                      | **no** — it replaces all   |
+
+Three details matter for reading the behaviour correctly:
+
+- **Non-overwrite is re-checked against the ids physically present now**, not against the parsed rows.
+  A schema-corrupt row still occupies its primary key, so a merge must not try to add that id.
+- **Taxonomy additions are modelled under the local-wins rule**, so the state checked is the state
+  written. A plan whose _file_ supplies a category the destination has since deleted is therefore still
+  applied — the merge re-adds it, and refusing would be a false positive.
+- **A corrupt destination row is not treated as a dangling reference.** The relational rules are defined
+  over rows that pass their schema, so the preflight partitions raw rows first and leaves corruption to
+  Diagnostics, which is the mechanism that repairs it.
+
+A plan that no longer holds is **refused, not repaired** (`StaleImportPlanError`): nothing is written,
+`dataRevision` is untouched, and the user is told the local data changed and to take a fresh preview.
+Re-deriving the accepted set against the new destination would write something the user never previewed.
+
 ### A destructive replace must have something to write
 
 A legacy file whose every row is unimportable contributes no records, so proceeding would clear the

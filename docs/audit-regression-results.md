@@ -1,11 +1,112 @@
-# Phase-1.3 audit regression evidence
+# Phase-1.3 / 1.3.1 audit regression evidence
 
 Every claim in this file can be reproduced from material inside the review package. Phase 1.2's final
 report cited supplementary verification that was not packaged; the probes, the fixture generator and
 the captured output below are all included here so an independent reviewer can re-run or at least
-inspect them.
+inspect them. Sections 0 and 0.1 cover Phase 1.3.1; the rest is Phase 1.3, retained unchanged.
 
-## 1. The primary blocker, demonstrated against Phase 1.2
+## 0. The Phase-1.3.1 blocker, demonstrated against Phase 1.3
+
+**Claim.** An import preview stayed valid as a write authorization after the destination it described
+had changed. Confirming it wrote an orphan progress entry into the live store and advanced
+`dataRevision`.
+
+**Probe.** `scripts/audit/phase-1-3-stale-plan-probe.test.ts` — written against the Phase-1.3 API, so it
+runs unchanged on that commit. It deliberately does not rebuild the plan after the intervening
+mutation: rebuilding would avoid the defect rather than reproduce it. Uses `expect.soft` so one run
+reports every way the old behaviour differs.
+
+**How to reproduce.**
+
+```bash
+git worktree add ../p13 e9547922ea701276ec37d316dba0761e5bf64f1f
+cd ../p13 && npm ci
+cp <package>/scripts/audit/phase-1-3-stale-plan-probe.test.ts tests/integration/zz-probe.test.ts
+npx vitest run tests/integration/zz-probe.test.ts
+```
+
+**Captured output, commit `e9547922ea701276ec37d316dba0761e5bf64f1f`, 2026-09-21:**
+
+```
+ × a merge whose target record was purged after the preview must be refused, not written
+
+AssertionError: applying a stale plan must be refused:
+  expected false to be true
+AssertionError: the orphan note must not be written:
+  expected [ { id: 'incoming-progress-1', …(5) } ] to deeply equal []
+AssertionError: the live store must remain relationally valid:
+  expected [ { kind: 'orphan-progress', …(2) } ] to deeply equal []
+AssertionError: a refused import must not bump the revision:
+  expected 4 to be 3
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+```
+
+The third failure is the one that matters: the live database was left in a state whose own canonical
+backup could not restore it — the Phase-1.3 blocker, reachable again through the import path.
+
+**At Phase-1.3.1 HEAD the same file passes**, copied into `tests/integration/` unchanged:
+`Test Files 1 passed (1) / Tests 1 passed (1)`. Prettier reformatted the probe after the first capture
+above; it was re-run against the Phase-1.3 worktree afterwards and reproduced the same four failures.
+
+## 0.1 The maintained regression suite, and what it depends on
+
+`tests/integration/import-concurrency.test.ts`, 15 tests, all passing at HEAD:
+
+```
+ ✓ a stale merge plan cannot orphan a progress entry
+   ✓ PRIMARY: the target record is purged after the preview, so the note is refused
+   ✓ the refusal names the cause and tells the user what to do
+ ✓ a stale merge plan cannot dangle a taxonomy reference
+   ✓ a category that resolved through the destination is deleted after the preview
+   ✓ a group that resolved through the destination is deleted after the preview
+   ✓ a taxonomy row the FILE carries is re-added, so that plan is not stale
+ ✓ a stale legacy-replace plan cannot write against taxonomy that is gone
+   ✓ the retained taxonomy changes between preview and confirmation
+ ✓ a stale plan cannot overwrite a destination entity
+   ✓ an accepted record id appears in the destination after the preview
+   ✓ an accepted progress id appears in the destination after the preview
+ ✓ a refused import leaves every store exactly as it was
+   ✓ records, progress, taxonomy, settings and meta all roll back together
+ ✓ the honest remedy still works
+   ✓ rebuilding the plan against the new destination gives the correct new preview
+   ✓ an ordinary merge into an unchanged destination still succeeds
+   ✓ a canonical exact restore succeeds even though the destination changed after the preview
+   ✓ a committed merge and legacy replace both leave a state the shared validator accepts
+ ✓ the check and the write share one transaction
+   ✓ the preflight reads inside the write transaction, and only one is opened
+ ✓ a destination that is already corrupt is not a place to add more data
+   ✓ a merge is refused, and says the local data is the problem
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+```
+
+**Mutation test — the suite genuinely depends on the fix.** Replacing the single preflight call in
+`applyImportPlan` with a no-op leaves **9 of the 15 failing**:
+
+```
+ × PRIMARY: the target record is purged after the preview, so the note is refused
+ × the refusal names the cause and tells the user what to do
+ × a category that resolved through the destination is deleted after the preview
+ × a group that resolved through the destination is deleted after the preview
+ × the retained taxonomy changes between preview and confirmation
+ × records, progress, taxonomy, settings and meta all roll back together
+ × rebuilding the plan against the new destination gives the correct new preview
+ × the preflight reads inside the write transaction, and only one is opened
+ × a merge is refused, and says the local data is the problem
+      Tests  9 failed | 6 passed (15)
+```
+
+The six survivors are the ones that should survive, and the list is worth reading rather than
+counting. Four assert correct **non**-refusal (the file-supplied taxonomy case, the ordinary merge, the
+canonical restore, the shared-validator check) and must pass either way. The remaining two are the id
+collisions, which are protected independently by `bulkAdd` — the structural guard the preflight does not
+replace — so they still refuse without it. That is defence in depth, not redundant coverage: without
+the preflight the user gets the guard's refusal without an explanation.
+
+## 1. The Phase-1.3 primary blocker, demonstrated against Phase 1.2
 
 **Claim.** A normal user workflow left Phase 1.2 in a state where the application produced a canonical
 backup it labelled **complete**, recorded it as a successful backup, and then **refused to restore**
@@ -126,6 +227,30 @@ pointing at the work record. All content is synthetic — placeholder names, a g
 archive carrying relational corruption is still refused rather than repaired.
 
 ## 3. Where each mandated regression lives
+
+### Phase 1.3.1
+
+All in `tests/integration/import-concurrency.test.ts`.
+
+| #   | Requirement                                                | Test                                                            |
+| --- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| 1   | destination work purged after preview -> progress refused  | PRIMARY: the target record is purged after the preview          |
+| 2   | required category/group disappears -> record refused       | a category / a group that resolved through the destination…     |
+| 3   | stale legacy-replace, retained taxonomy changed            | the retained taxonomy changes between preview and confirmation  |
+| 4   | accepted record id appears in destination -> no overwrite  | an accepted record id appears in the destination…               |
+| 5   | accepted progress id appears -> no overwrite               | an accepted progress id appears in the destination…             |
+| 6   | rollback covers every store the transaction touched        | records, progress, taxonomy, settings and meta all roll back…   |
+| 7   | a refused import does not increment `dataRevision`         | same test, plus the revision assertion in #1, #2 and #3         |
+| 8   | rebuilding against the new destination previews correctly  | rebuilding the plan against the new destination…                |
+| 9   | unchanged-destination merge still succeeds                 | an ordinary merge into an unchanged destination still succeeds  |
+| 10  | canonical exact restore survives destination drift         | a canonical exact restore succeeds even though the destination… |
+| 11  | the committed state passes the shared relational validator | a committed merge and legacy replace both leave a state…        |
+
+Two properties beyond the mandated list are asserted because the patch rests on them: that the
+preflight and the writes share exactly one transaction covering all six stores, and that a merge into
+an already-corrupt destination is refused with a reason naming the local data rather than the file.
+
+### Phase 1.3
 
 | #   | Requirement                                                      | Test                                                                             |
 | --- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------- |

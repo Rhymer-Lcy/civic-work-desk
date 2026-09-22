@@ -85,7 +85,11 @@ async function reseal(envelope) {
   delete rest['checksum'];
   return {
     ...rest,
-    checksum: { algorithm: 'sha-256', scope: 'envelope', value: await sha256Hex(canonicalJson(rest)) },
+    checksum: {
+      algorithm: 'sha-256',
+      scope: 'envelope',
+      value: await sha256Hex(canonicalJson(rest)),
+    },
   };
 }
 
