@@ -8,7 +8,9 @@
 | `...phase-1-3-20260921-150025-4f69c8b286b2.zip` | all passed, 21/21          | superseded; its `REVIEW_SUMMARY.md` stated gate results but not the counts                  |
 | `...phase-1-3-20260921-151003-7d59b82221b0.zip` | all passed, 21/21          | superseded by this section being added to the packaged docs                                 |
 | `...phase-1-3-20260921-151747-1167c0131e9b.zip` | all passed, 21/21          | superseded by the taxonomy-disclosure fix found while defending the invariants              |
+| `...phase-1-3-20260921-153012-nogit.zip`        | **2 FAILED**, interrupted  | not a deliverable and names no commit; kept rather than deleted — see below                 |
 | `...phase-1-3-20260921-211918-051619f1ee6d.zip` | all passed, 21/21          | superseded; it carried that fix but its evidence doc still showed the pre-fix test listing  |
+| `...phase-1-3-20260921-212545-eafb8dd327a1.zip` | all passed, 21/21          | superseded by this row and the one above it                                                 |
 | the newest `phase-1-3-…` archive                | all passed                 | **the Phase-1.3 deliverable**; it names itself in its own `REVIEW_SUMMARY.md` and `.sha256` |
 
 Nothing was deleted or renamed during Phase 1.3 either. Every archive and `.sha256` listed in this
@@ -42,10 +44,24 @@ why, and deleting a group detached trashed members with no confirmation at all. 
 risk and no invariant was broken; what was broken was the disclosure the hard-delete policy requires.
 Fixed in `src/features/settings/taxonomy-copy.ts` and pinned by a test.
 
+The **153012-nogit** archive is the odd one, and it is recorded here precisely because an unexplained
+archive carrying FAIL lines is what a sign-off review should not have to guess about. Its own metadata
+says what it is: `git` was unavailable to the packaging script, so it names **no commit and no branch**
+and its working-tree line reads "not clean" for want of an answer; its log shows the accessibility run
+stopping after two failures at 24 ms and 0 ms with four later tests never started, and `npm audit`
+exiting `3221225794` (`0xC0000142`, a Windows "application failed to initialize"). That is the
+signature of a run whose environment went away underneath it, not of a repository in a bad state — the
+same gates pass on either side of it, and it was built during an interrupted packaging invocation. It
+is not a deliverable, it describes no commit, and nothing in it should be read as evidence about the
+code. It was kept because this directory's rule is that archives are never deleted.
+
 The **211918** build carried that fix, and every gate and count in it is accurate — but the captured
 test listing in `docs/audit-regression-results.md` was still the sixteen-test run from before it, and
 a captured block that no longer matches the run it claims to show is worth a rebuild rather than a
-footnote. That listing and the changelog's test count were re-captured, which is the only difference.
+footnote. That listing and the changelog's test count were re-captured.
+
+The **212545** build is superseded only by this section: it was produced before the two archives above
+were described here.
 
 ## What was in `_review_packages/` after Phase 1.2
 
