@@ -3,8 +3,8 @@
   "releaseChannel": "uos-rc1",
   "releaseId": "uos-rc1",
   "canonicalOrigin": "http://127.0.0.1:8765",
-  "applicationCommit": "c514563614878b955366133ecf3bd6a124c6260f",
-  "builtAt": "2026-09-22T09:48:18Z",
+  "applicationCommit": "7da4c057b226f1c811d42be5189ddef62c4e8040",
+  "builtAt": "2026-09-22T09:55:29Z",
   "entry": { "js": "assets/index-BF8bN2uI.js", "css": "assets/index-M0_bv4y2.css" },
   "note": "Deployment health probe. Contains no personal data and no secrets. The launcher fetches this to confirm the server at the canonical origin is serving the expected release before opening the browser."
 }

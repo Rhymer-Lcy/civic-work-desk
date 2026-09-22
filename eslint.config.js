@@ -23,6 +23,11 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      /*
+       * The UOS bundle's `app/` is a copy of `dist/` — build output, staged for delivery. Linting it
+       * is as meaningless as linting `dist/`, and it parses as neither source nor a tsconfig project.
+       */
+      'release/*/app/**',
       'coverage/**',
       'playwright-report/**',
       'test-results/**',

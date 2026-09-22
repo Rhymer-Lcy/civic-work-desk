@@ -123,16 +123,16 @@ mkdir -p .runtime
 
 **逐条核对并填表**：
 
-| 检查项 | 合格标准 |
-| --- | --- |
-| `/` 与 `/index.html` | `Content-Type` 是 `text/html` |
-| `/assets/*.js` | `Content-Type` 是 `text/javascript` 或 `application/javascript`（**不能**是 `text/plain`、`application/octet-stream`） |
-| `/assets/*.css` | `Content-Type` 是 `text/css` |
-| `/sw.js` | JavaScript 类型（同上）——这条不合格，Service Worker 无法注册 |
-| `/manifest.webmanifest` | 有返回即可；类型最好是 `application/manifest+json` 或 `application/json` |
-| `/deployment-health.json` | `application/json` |
-| 目录遍历 | 404 或 403，**不能**返回 `SHA256SUMS.txt` 的内容 |
-| 目录列表 | 404 或 403，**不能**列出文件名 |
+| 检查项                    | 合格标准                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `/` 与 `/index.html`      | `Content-Type` 是 `text/html`                                                                                          |
+| `/assets/*.js`            | `Content-Type` 是 `text/javascript` 或 `application/javascript`（**不能**是 `text/plain`、`application/octet-stream`） |
+| `/assets/*.css`           | `Content-Type` 是 `text/css`                                                                                           |
+| `/sw.js`                  | JavaScript 类型（同上）——这条不合格，Service Worker 无法注册                                                           |
+| `/manifest.webmanifest`   | 有返回即可；类型最好是 `application/manifest+json` 或 `application/json`                                               |
+| `/deployment-health.json` | `application/json`                                                                                                     |
+| 目录遍历                  | 404 或 403，**不能**返回 `SHA256SUMS.txt` 的内容                                                                       |
+| 目录列表                  | 404 或 403，**不能**列出文件名                                                                                         |
 
 `.js` 的类型是最关键的一条：Chromium 会拒绝以非 JavaScript 类型返回的模块脚本，表现是
 **白屏加控制台报错**，而不是服务器报错。
@@ -164,13 +164,13 @@ xdg-open http://127.0.0.1:8765/
 
 ## 第 8 步 · 应用启动验收
 
-| 检查项 | 合格标准 |
-| --- | --- |
-| 首屏 | 不是白屏；能看到「政务工作记录台」和顶部导航 |
-| 控制台 | 没有红色报错（按 F12 打开开发者工具 → Console） |
-| 中文 | 字形正常，无方块、无乱码 |
-| 导航 | 概览 / 工作 / 荣誉 / 台账 / 报告 / 设置 六项都能点开 |
-| 布局 | 在这台机器的实际分辨率下排版正常，不重叠、不溢出 |
+| 检查项 | 合格标准                                             |
+| ------ | ---------------------------------------------------- |
+| 首屏   | 不是白屏；能看到「政务工作记录台」和顶部导航         |
+| 控制台 | 没有红色报错（按 F12 打开开发者工具 → Console）      |
+| 中文   | 字形正常，无方块、无乱码                             |
+| 导航   | 概览 / 工作 / 荣誉 / 台账 / 报告 / 设置 六项都能点开 |
+| 布局   | 在这台机器的实际分辨率下排版正常，不重叠、不溢出     |
 
 在「设置 → 存储与诊断」里，把页面上显示的存储与诊断信息记录到结果表。
 
@@ -182,13 +182,21 @@ xdg-open http://127.0.0.1:8765/
 
 ```js
 // 1. IndexedDB
-indexedDB.databases ? indexedDB.databases().then(d => console.log('DB:', d)) : console.log('DB: databases() 不可用（不影响使用）');
+indexedDB.databases
+  ? indexedDB.databases().then((d) => console.log('DB:', d))
+  : console.log('DB: databases() 不可用（不影响使用）');
 
 // 2. Service Worker
-navigator.serviceWorker.getRegistrations().then(r => console.log('SW 注册数:', r.length, r.map(x => x.scope)));
+navigator.serviceWorker.getRegistrations().then((r) =>
+  console.log(
+    'SW 注册数:',
+    r.length,
+    r.map((x) => x.scope),
+  ),
+);
 
 // 3. Cache Storage
-caches.keys().then(k => console.log('Cache:', k));
+caches.keys().then((k) => console.log('Cache:', k));
 
 // 4. crypto.subtle（备份校验和依赖它）
 console.log('crypto.subtle:', typeof crypto.subtle, '| randomUUID:', typeof crypto.randomUUID);
@@ -220,12 +228,12 @@ Service Worker 注册数为 0 不一定是失败——首次加载可能还没�
 
 ## 第 11 步 · 持久化
 
-| 步骤 | 期望 |
-| --- | --- |
-| 刷新页面（F5） | 数据还在 |
-| 完全关闭浏览器再打开，访问规范地址 | 数据还在 |
+| 步骤                                                          | 期望     |
+| ------------------------------------------------------------- | -------- |
+| 刷新页面（F5）                                                | 数据还在 |
+| 完全关闭浏览器再打开，访问规范地址                            | 数据还在 |
 | 停止服务（`sh candidate/busybox/stop-test.sh`），再启动，刷新 | 数据还在 |
-| 如果条件允许：重启工作站，重新启动服务并打开 | 数据还在 |
+| 如果条件允许：重启工作站，重新启动服务并打开                  | 数据还在 |
 
 **任何一步数据消失，都要立刻记录当时的地址栏内容**——最常见的原因是地址变成了
 `localhost:8765` 或别的端口，那是另一个存储空间，不是数据丢失。
