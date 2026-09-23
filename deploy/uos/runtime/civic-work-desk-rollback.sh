@@ -75,20 +75,25 @@ fi
 
 # Swap the two pointers, so a rollback can itself be rolled forward.
 #
-# `-n` is load-bearing: without it, and with `mv` in place of it, the write silently lands *inside*
-# the directory the old symlink pointed at and the pointer never moves — see the note in install.sh.
-# Each pointer is read back, because the failure mode is a command that reports success.
-set_pointer() {
-  pointer="$1"
-  release="$2"
-  ln -sfn "releases/$release" "$pointer"
-  actual="$(readlink "$pointer" 2>/dev/null || true)"
-  [ "$actual" = "releases/$release" ] \
-    || civic_die "切换失败：$pointer 实际指向「${actual:-（无）}」，期望「releases/$release」。"
-}
+# Both go through civic_set_pointer, which is the one verified activation mechanism shared with the
+# installer: an atomic rename where the platform supports it, a non-atomic fallback where it does not,
+# and a read-back either way. Two implementations of this would be two chances to reintroduce the
+# symlink-dereference bug.
+RESULT="$(civic_set_pointer "$CIVIC_PREVIOUS" "$CURRENT_ID" || true)"
+case "$RESULT" in
+  ok:*) ;;
+  *) civic_die "切换失败：无法记录上一版本（$RESULT）。未做任何更改。" ;;
+esac
 
-set_pointer "$CIVIC_PREVIOUS" "$CURRENT_ID"
-set_pointer "$CIVIC_CURRENT" "$PREVIOUS_ID"
+RESULT="$(civic_set_pointer "$CIVIC_CURRENT" "$PREVIOUS_ID" || true)"
+case "$RESULT" in
+  ok:*) ;;
+  *)
+    # previous now names the release we are still running. Put it back so the pair stays coherent.
+    civic_set_pointer "$CIVIC_PREVIOUS" "$PREVIOUS_ID" >/dev/null 2>&1 || true
+    civic_die "切换失败：$CIVIC_CURRENT 未能指向 releases/$PREVIOUS_ID（$RESULT）。当前版本未改变。"
+    ;;
+esac
 
 civic_log "rolled back from $CURRENT_ID to $PREVIOUS_ID"
 printf '已切换到 %s。\n' "$PREVIOUS_ID"
