@@ -239,6 +239,31 @@ byte-identical, one addition (`deployment-health.json`, a deployment artifact wr
 so the build itself stays untouched). Verified twice — once by `build-release.sh` before packaging, and
 once by `archive-tests.mjs` over the delivered bytes.
 
+### B.8 Rehearsal of the delivered artifact
+
+Everything in B.3 used synthetic four-file bundles. This installs the **real tarball** — real checksum
+sidecar, real tar metadata, real 24-file production payload, real inner manifest — in a sandboxed
+`HOME` on the POSIX host, and walks the operator's path end to end. **30 checks, 30 pass:**
+
+- `sha256sum -c` on both delivered archives; `install.sh` still executable after extraction;
+- install with no `sudo` anywhere in its output, self-check passed, `current` pointing at the release;
+- **response types from the real payload**: `/` → `text/html`, the real entry JS → `text/javascript`,
+  the real entry CSS → `text/css`, `/sw.js` → `text/javascript`, `/manifest.webmanifest` →
+  `application/manifest+json`, `/deployment-health.json` → `application/json`, `/assets/` → 404 with
+  no listing. This corroborates A.1 on a different build and on the actual shipped files rather than
+  on stand-ins;
+- launch opens exactly `http://127.0.0.1:8765/` and nothing else; `status` exits 0 and reports the
+  health check passed, naming the release it is serving and the HTTP client it selected;
+- the acceptance kit's own `port-conflict-test.sh`, run verbatim: **8 of 8**, including "the process
+  holding the port is still alive" and "no browser was opened";
+- `collect-results.sh` produces a file that carries the release identity and **does not** contain a
+  planted browser cookie value or the contents of a planted backup in `~/Downloads`;
+- stop clears the PID file; uninstall removes the program files while the planted backup, the planted
+  360 profile and the warning about browser-resident data all survive.
+
+Still class B: same BusyBox applet version as the target, different architecture and build. What it
+establishes is that the delivered bytes install, serve and uninstall correctly somewhere real.
+
 ---
 
 ## C. Final installed-form physical-target evidence

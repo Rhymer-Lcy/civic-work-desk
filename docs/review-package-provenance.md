@@ -310,3 +310,39 @@ own `npm run build` replaced `dist/`, and `npm run test:uos:archive` — which c
 files byte-identical afterwards. So the two builds agree byte for byte, and the release artifact did
 not need rebuilding. Stated as the measurement it is: two builds of one commit on one machine, not a
 general determinism claim.
+
+### The clean Stage-B run
+
+`civic-work-desk-phase-2-20260923-002800-792c604125a2.zip`
+
+digest `d10c8b4c0c43ee03c68d72a6b73960e49312c5281b95eff93cf03a0aeba68b2f`
+
+All ten gates passed. `verify-review-package.mjs` reports 21/21 and the consistency audit passes, with
+30 archives and 30 checksums present in `_review_packages/`.
+
+### Four archives from this session, and why each exists
+
+Kept in full, because a gate archive that failed is evidence about the run, not litter.
+
+| archive (time) | outcome                       | why                                                                      |
+| -------------- | ----------------------------- | ------------------------------------------------------------------------ |
+| `…-234541-…`   | FAIL format, lint, scan       | unformatted files, an unused eslint-disable, a dev path in a comment     |
+| `…-001335-…`   | FAIL e2e, cross               | **contaminated** — two gate runs overlapped, see below                   |
+| `…-001756-…`   | FAIL e2e, cross, a11y in 0.6s | **contaminated** — the same overlap, failing instantly on the bound port |
+| `…-002025-…`   | FAIL e2e (136s)               | a real run whose e2e failure did not reproduce, see below                |
+| `…-002800-…`   | PASS, all ten                 | the clean run of record                                                  |
+
+**Two of those failures are mine, not the code's.** I launched a second `review:package` while the
+first was still running. Playwright's preview server binds 127.0.0.1:4173 with
+`reuseExistingServer: false` — set in Phase 1.1 precisely so a stale server cannot be silently reused —
+so the second run's three browser gates died in under a second rather than testing the wrong build.
+That is the configuration working as intended; the lesson is about sequencing gate runs, not about the
+suite. Neither archive's e2e result means anything and neither should be cited.
+
+**The `…-002025-…` e2e failure is unexplained and did not reproduce.** It ran 136 s, so tests really
+executed. Between that run and the next, `npm run test:e2e` standalone passed **96/96** on the same
+`dist/`, and the immediately following `review:package` passed all ten gates including e2e at 126 s.
+The packager truncates captured gate output, so the log does not name the failing test — meaning the
+cause is not established, and calling it "flaky" is a description of the observation, not a diagnosis.
+Recorded rather than dismissed: if e2e fails again inside the packager, the first thing to fix is the
+output truncation, so the next occurrence names itself.
