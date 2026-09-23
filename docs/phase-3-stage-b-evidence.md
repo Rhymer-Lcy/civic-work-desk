@@ -191,7 +191,24 @@ Two things about how these were found are worth keeping:
   branch and never selects it. A third environment — no curl, nothing named `wget` — was added, and
   both mutants are now caught.
 
-### B.5 Two defects this work found in its own checks
+### B.5 A defect found only by looking at the generated file
+
+The desktop-entry template carried its rationale as comments, and those comments named the two
+placeholders they were explaining. `sed` substituted them, so the **installed** entry read
+`# /home/<user>/.local/bin and /home/<user>/.local/share/civic-work-desk are substituted by
+install.sh` — a self-contradictory sentence, in a file that lands in the user's menu directory, with
+the install path embedded twice more than necessary.
+
+Every structural check passed throughout: Exec absolute, Terminal false, no surviving placeholder,
+icon present, target executable. They were all asking about the keys. Nothing was asking what the
+file _said_. It was found by installing into a sandbox and reading the result, which is the same
+technique that caught a wrong photograph behind a passing review page on another project: render the
+artifact and look at it, rather than parsing it.
+
+The rationale now lives in `install.sh` section 7, which is where the substitution happens and the
+only place that cannot be rewritten by it.
+
+### B.6 Two defects this work found in its own checks
 
 Recorded because both were invisible while every command reported success.
 
@@ -215,7 +232,7 @@ ownership rule — dropping the install-prefix condition from `civic_pid_is_ours
 every assertion then present, because a foreign server's PID never reaches our PID file on its own.
 The suite now plants it there, which is the realistic PID-reuse case, and that mutant is caught.
 
-### B.6 Application payload unchanged
+### B.7 Application payload unchanged
 
 The archive's `app/` is compared file-by-file, **from inside the tar**, against `dist/`: 23 files
 byte-identical, one addition (`deployment-health.json`, a deployment artifact written beside the build
@@ -228,15 +245,22 @@ once by `archive-tests.mjs` over the delivered bytes.
 
 **NOT YET COLLECTED. Phase 3 cannot be signed off until it is.**
 
-**The candidate is release `2026.09.23-2`.** Its SHA-256 and the exact commands are in
+**The candidate is release `2026.09.23-3`.** Its SHA-256 and the exact commands are in
 `docs/uos-final-acceptance.md`, which is the single place the digest is written — bound to the actual
 archive by a check in `archive-tests.mjs`, so it cannot go stale unnoticed. No digest is copied into
 this document for that reason.
 
-`2026.09.23-1` also exists in the repository and was **never delivered**. It was superseded before
-handover by the `busybox wget -T` fix in §B.4, which changed the runtime payload. Both artifacts and
-both checksum sidecars are kept; the id was bumped rather than reused precisely so that returned
-evidence can never be matched against the wrong one.
+Two earlier ids exist in the repository and **neither was delivered**. Each was superseded by a real
+change to the runtime payload, found by reviewing the artifact rather than the plan:
+
+| id             | superseded because                                                                  |
+| -------------- | ----------------------------------------------------------------------------------- |
+| `2026.09.23-1` | the `busybox wget -T` segfault fix (§B.4) changed the runtime                       |
+| `2026.09.23-2` | the desktop template had its own explanatory comment placeholder-substituted (§B.5) |
+
+Every artifact and every checksum sidecar is kept. The id was bumped rather than reused each time,
+so returned evidence can never be matched against the wrong build — three ids in one day is untidy,
+and far cheaper than one ambiguous id.
 
 What must come back:
 

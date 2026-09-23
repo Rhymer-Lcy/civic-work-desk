@@ -10,23 +10,23 @@
 
 | 文件                                                           | 用途           |
 | -------------------------------------------------------------- | -------------- |
-| `civic-work-desk-uos20-loongarch64-2026.09.23-2.tar.gz`        | 安装包         |
-| `civic-work-desk-uos20-loongarch64-2026.09.23-2.tar.gz.sha256` | 校验值         |
-| `civic-work-desk-uos20-final-acceptance-2026.09.23-2.tar.gz`   | 验收工具与表格 |
+| `civic-work-desk-uos20-loongarch64-2026.09.23-3.tar.gz`        | 安装包         |
+| `civic-work-desk-uos20-loongarch64-2026.09.23-3.tar.gz.sha256` | 校验值         |
+| `civic-work-desk-uos20-final-acceptance-2026.09.23-3.tar.gz`   | 验收工具与表格 |
 
 安装包 SHA-256：
 
 ```
-2f361aee19df64ff4931548cae5c31d93217f768a2723ee1b4cb888e50345ac0
+682e1f1df5fc328612e7e21d967f16e77e0654cfe2e47896dad691d5de953b2a
 ```
 
 ## 二、最少要敲的命令
 
 ```sh
-sha256sum -c civic-work-desk-uos20-loongarch64-2026.09.23-2.tar.gz.sha256
-tar -xzf civic-work-desk-uos20-loongarch64-2026.09.23-2.tar.gz
-tar -xzf civic-work-desk-uos20-final-acceptance-2026.09.23-2.tar.gz
-cd civic-work-desk-uos20-loongarch64-2026.09.23-2
+sha256sum -c civic-work-desk-uos20-loongarch64-2026.09.23-3.tar.gz.sha256
+tar -xzf civic-work-desk-uos20-loongarch64-2026.09.23-3.tar.gz
+tar -xzf civic-work-desk-uos20-final-acceptance-2026.09.23-3.tar.gz
+cd civic-work-desk-uos20-loongarch64-2026.09.23-3
 sh install.sh
 ```
 
@@ -35,7 +35,7 @@ sh install.sh
 然后按验收手册逐项做：
 
 ```sh
-cd ../civic-work-desk-uos20-final-acceptance-2026.09.23-2
+cd ../civic-work-desk-uos20-final-acceptance-2026.09.23-3
 cat FINAL_ACCEPTANCE.md
 ```
 
