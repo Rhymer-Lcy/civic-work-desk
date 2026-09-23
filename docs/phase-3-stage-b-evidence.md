@@ -264,27 +264,123 @@ sidecar, real tar metadata, real 24-file production payload, real inner manifest
 Still class B: same BusyBox applet version as the target, different architecture and build. What it
 establishes is that the delivered bytes install, serve and uninstall correctly somewhere real.
 
+### B.9 Stage-B.1 — what an independent artifact audit found
+
+An independent audit of the delivered `2026.09.23-3` pair confirmed the things that were already
+right (outer checksums, normalized tar ownership, 35/35 and 5/5 inner manifests, all 23 Phase-2 files
+byte-identical, isolated smoke and an 8/8 port-conflict rehearsal) and then found six defects that
+those checks could not see. Each is a property of a _sequence_ or a _window_, which is why structural
+verification passed over all of them.
+
+| #   | Finding                                                                                                                                                                                              | Disposition                                                                                                                                                                                                                                                                                 |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | The acceptance manual ran `collect-results.sh` **after** uninstall, so the strongest automated evidence of the installed form would have been collected from a machine that no longer had one        | Manual and result template reordered: collect while installed, uninstall last, plus a separate post-uninstall checker that writes its own file. A static ordering rule now enforces it, and the rule is checked against the **shipped** manual inside the kit archive as well as the source |
+| 2   | `port-conflict-test.sh` left CivicWorkDesk stopped, making the later stop test vacuous                                                                                                               | The script now removes its decoy, restarts the service with `--no-browser`, health-checks it and says so                                                                                                                                                                                    |
+| 3   | The installer stopped the server before staging, and `--force` deleted the installed release before the replacement existed — so its own promise that "the previous release keeps running" was false | Rewritten: verify → stage in an owned temporary directory → verify the copy → short activation phase → restart last. `--force` removed entirely                                                                                                                                             |
+| 4   | `ln -sfn` activation had given up atomic replacement                                                                                                                                                 | `mv -T` on a same-directory temporary symlink, with `ln -sfn` as fallback and read-back either way                                                                                                                                                                                          |
+| 5   | `civic_server_stop` validated ownership once, then sent SIGKILL to the same number ten seconds later — a PID-reuse window                                                                            | Ownership re-proved immediately before every destructive signal, with a start-time identity token; refusal to escalate is reported distinctly rather than escalated                                                                                                                         |
+| 6   | README said 「本包只在下列环境上验证」 while VERSION said `targetTested=NO`                                                                                                                          | Split into the two facts: RC1.1 validated the application being served; this installer lifecycle has not been validated on the target. New `installedFormTargetValidated` and `genericPlatformSupportClaimed` fields, asserted by the archive tests                                         |
+
+Two further requirements from the same pass: both delivered archives must be verified before either
+is trusted (the kit's own correctness underwrites every result it produces), and the manual must use
+absolute `$HOME/.local/bin/...` paths, because `~/.local/bin` is not necessarily on PATH and
+"command not found" would read as a product failure.
+
+#### Installer staging and recovery
+
+Failure before activation costs nothing: the active release and the running service are untouched,
+because neither is written to until the staged copy has been verified. Failure _during_ activation
+has a defined recovery: the release directory is in place but unactivated, and re-running the same
+installer detects that, re-verifies the directory and finishes the job without copying again. Failure
+_after_ activation — only the desktop entry and the restart can fail there — is reported with the
+release already usable, and the same re-run repairs it.
+
+There is no destructive same-release path. A same-id run either resumes an interrupted activation or
+refuses and names the directory, because the alternative is deleting the only working copy in order to
+replace it.
+
+#### Stop safety
+
+Four facts must hold before a PID is treated as ours: it exists, its command line is a BusyBox httpd
+on the canonical host:port, its document root is inside our prefix, and its `/proc/<pid>/stat` start
+time equals the value recorded when we started it. The fourth is what makes it identity rather than
+resemblance. It is re-checked immediately before SIGKILL; when it fails, the library clears its own
+state and returns a distinct status instead of signalling, and both the stop command and the installer
+surface that specifically rather than as a generic failure.
+
+Measured here: start time is stable across reads, distinguishes processes started one second apart,
+and parses correctly for a process whose name contains a space and a close parenthesis — the case that
+breaks the naive left-to-right field split.
+
+#### Launcher lock
+
+The lock is now a symlink whose target is the holder's PID. `mkdir` plus a separate pid file had a
+window in which the lock existed with no holder; a grace period would have narrowed it, but a single
+atomic operation that carries the holder removes it — the pid-less shape cannot occur. Breaking an
+abandoned lock re-reads the holder immediately before removal and requires it to be unchanged, which
+is safe rather than merely unlikely: replacing the lock requires removing it first, and any new holder
+is a live process whose PID cannot equal the dead one being acted on.
+
+#### Totals after this pass
+
+`npm run test:uos` → **114 assertions**, including fault injection for bundle corruption, staging
+failure, staged-verification failure, activation-pointer failure, resume, same-release, `--force`
+rejection and desktop-entry failure; PID-reuse before force-kill; and five launcher-lock shapes.
+`npm run test:uos:archive` → **51 checks**, now covering both delivered archives. Six mutants — each
+fix reintroduced — are caught by the assertion written for it.
+
+#### Rehearsal of the delivered `-4` archives: 53 checks
+
+Run against the real bytes in a sandboxed `HOME`, and this time the upgrade is real: the delivered
+`-3` archive is installed first, then upgraded to `-4`, rolled back, and rolled forward. Covered:
+both outer sidecars and both inner manifests · clean install · repeated launch with every open at
+exactly the canonical origin · a corrupt bundle refused with the running server still serving ·
+the real `-3`→`-4` upgrade with both pointers read back · same-release refusal and `--force`
+rejection destroying nothing · rollback and roll-forward · stale PID · an identity change before stop
+leaving the process unsignalled · an abandoned lock recovered and two simultaneous launches leaving
+one server · the kit's own port-conflict script at **10/10 including the service restoration** ·
+status/stop/restart · evidence collected before uninstall and containing the release id and a passing
+health check, with no planted cookie value or backup content · uninstall preserving the planted
+backup and profile · the post-uninstall checker passing and leaving the earlier evidence file
+byte-identical.
+
+Two defects in the new post-uninstall checker were found by **reading** that output rather than its
+verdict, which was PASS throughout:
+
+- it reported 「0 个文件」 for a downloads directory that demonstrably held a planted backup, because
+  `xdg-user-dir DOWNLOAD` falls back to `$HOME` on a machine with no user-dirs configuration, and the
+  code only rejected a *missing* directory, not that one. It was counting the top level of the home
+  directory and calling it Downloads;
+- the count itself printed as `（0` and stopped, because `grep -c ''` exits non-zero on no match, so
+  `|| echo 0` appended a second line and the variable held two.
+
+Both were cosmetic in the sense that nothing was destroyed, and both would have misled the person
+reading the returned evidence — which is the only thing that artifact is for.
+
 ---
 
 ## C. Final installed-form physical-target evidence
 
 **NOT YET COLLECTED. Phase 3 cannot be signed off until it is.**
 
-**The candidate is release `2026.09.23-3`.** Its SHA-256 and the exact commands are in
-`docs/uos-final-acceptance.md`, which is the single place the digest is written — bound to the actual
-archive by a check in `archive-tests.mjs`, so it cannot go stale unnoticed. No digest is copied into
-this document for that reason.
+**The candidate is release `2026.09.23-4`**, together with its acceptance kit. Both SHA-256
+values and the exact commands are in
+`docs/uos-final-acceptance.md`, which is the single place the digests are written — each bound to its
+actual archive by a check in `archive-tests.mjs`, so neither can go stale unnoticed, and a digest from
+a superseded build appearing there is itself a failure. No digest is copied into this document for
+that reason.
 
-Two earlier ids exist in the repository and **neither was delivered**. Each was superseded by a real
-change to the runtime payload, found by reviewing the artifact rather than the plan:
+Three earlier ids exist in the repository and **none was delivered**. Each was superseded by a real
+change, every one of them found by examining the artifact rather than the plan:
 
 | id             | superseded because                                                                  |
 | -------------- | ----------------------------------------------------------------------------------- |
 | `2026.09.23-1` | the `busybox wget -T` segfault fix (§B.4) changed the runtime                       |
 | `2026.09.23-2` | the desktop template had its own explanatory comment placeholder-substituted (§B.5) |
+| `2026.09.23-3` | the six defects an independent artifact audit found (§B.9)                          |
 
 Every artifact and every checksum sidecar is kept. The id was bumped rather than reused each time,
-so returned evidence can never be matched against the wrong build — three ids in one day is untidy,
+so returned evidence can never be matched against the wrong build — four ids in one day is untidy,
 and far cheaper than one ambiguous id.
 
 What must come back:
