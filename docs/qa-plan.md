@@ -385,7 +385,7 @@ gates of its own, run together by `npm run verify:uos`:
 | Gate                       | What it checks                                                                      |
 | -------------------------- | ----------------------------------------------------------------------------------- |
 | `npm run lint:uos`         | the deployment invariants: one canonical origin, no sudo, no kill-by-port, POSIX sh |
-| `npm run test:uos`         | 59 assertions against real BusyBox / `/proc` / signals on a POSIX host              |
+| `npm run test:uos`         | 69 assertions against real BusyBox / `/proc` / signals on a POSIX host              |
 | `npm run test:uos:archive` | 30 checks over the delivered tar's bytes                                            |
 
 Three things about them are worth knowing before relying on them:

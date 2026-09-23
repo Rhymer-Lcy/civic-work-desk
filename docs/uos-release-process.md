@@ -102,7 +102,9 @@ npm run verify:uos        # = lint:uos + test:uos + test:uos:archive
   这不是整洁问题：`release/uos-rc1` 并不包含 `release/uos-rc1-1`，RC1.1 就因此有 12 个文件一直
   在扫描范围之外，而闸门照样报 PASS；
 - `test:uos`：在 POSIX 主机（本机用 WSL2）上跑真实的 BusyBox、真实的 `/proc`、真实的信号，
-  59 条断言覆盖安装、幂等启动、进程归属、陈旧 PID、端口冲突、健康不一致、升级、回退、卸载保留。
+  69 条断言覆盖安装、幂等启动、进程归属、陈旧 PID、端口冲突、健康不一致、升级、回退、卸载保留，
+  以及三种「最简环境」（无 setsid、逐一只留一种 HTTP 客户端）。数字以套件自己的输出为准，
+  不以本文为准。
   **没有 POSIX 主机时它报错退出，不静默跳过**；确实要跳过得显式写 `CIVIC_UOS_TESTS=skip`；
 - `test:uos:archive`：上一节那 30 项。
 

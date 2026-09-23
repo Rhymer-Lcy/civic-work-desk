@@ -69,7 +69,7 @@ assertions, never from log silence.
 The RC1.1 manual's step-6 wording ("日志里**必须**能看到…原始路径") was stricter than the server's
 behaviour and could have induced a false FAIL. **Corrected in Stage B**: the final acceptance manual
 now states that an empty `httpd.log` is the expected and desired outcome, and explains why
-(§B.3 below). No RC1.2 was cut; the wording was fixed in the artifact that supersedes it.
+(§B.1, item 4). No RC1.2 was cut; the wording was fixed in the artifact that supersedes it.
 
 ---
 
@@ -140,17 +140,58 @@ operators not to clear browser data — on this origin that is where the records
 `npm run test:uos` → `scripts/uos/deployment-tests.sh`, run in WSL2 against real BusyBox, real
 `/proc`, real signals, real symlinks, in a sandboxed `HOME`.
 
-**59 assertions, 59 pass.** The suite asserts its own assertion count, so a block that fails to run
-is a failure rather than a silently shorter pass. Coverage: install · desktop entry · launch and
-health gate · repeated launch idempotence · owned-process detection · port conflict · stale PID and
-PID reuse · upgrade · health mismatch after a release switch · rollback · stop · a second upgrade with
-both pointers already present · uninstall preservation.
+**69 assertions, 69 pass.** The count here is a copy; the suite's own output is the authority. The
+suite asserts its own assertion count, so a block that fails to run is a failure rather than a
+silently shorter pass. Coverage: install · desktop entry · launch and health gate · repeated launch
+idempotence · owned-process detection · port conflict · stale PID and PID reuse · upgrade · health
+mismatch after a release switch · rollback · stop · three minimal environments (no `setsid`, and one
+HTTP client at a time) · a second upgrade with both pointers already present · uninstall preservation.
 
 `npm run test:uos:archive` → **27 checks, 27 pass**, parsing the delivered tar's bytes.
 
 `npm run lint:uos` → **62 files, PASS**.
 
-### B.4 Two defects this work found in its own checks
+### B.4 Two production defects the minimal-environment tests found
+
+Both would have shipped, and both would have presented to the operator as "the application will not
+open" with a perfectly healthy server behind it.
+
+1. **`busybox wget -q -T 5 -O - <url>` segfaults.** Measured on BusyBox 1.30.1: exit 139,
+   `Segmentation fault (core dumped)`, no output; the identical command without `-T` returns the body.
+   The health gate used a per-client timeout flag, so on any machine without GNU curl and without GNU
+   wget it would have killed its own probe, reported `no-response`, and refused to open the browser.
+   This deployment exists precisely because BusyBox is what the target has, so that is not a remote
+   case. **Both** wget branches were affected, because `command -v wget` resolves to BusyBox's wget on
+   a BusyBox-centric system. Fixed by removing `-T` and applying `timeout(1)` from outside — one
+   implementation for every client instead of four different flags. When `timeout` is absent there is
+   no bound, which is the lesser evil: a launcher that waits is recoverable, one that segfaults its
+   own health check is not.
+2. **An unenumerated dependency on `head`.** `civic_json_field` pipes sed into `head -n 1`. In an
+   environment without it the launcher printed `head: not found` and then
+   「服务返回的版本信息无法解析」 — a health-gate failure whose stated cause pointed at the _server_.
+   `head` is POSIX and present in both coreutils and BusyBox, so the dependency is acceptable; not
+   knowing about it was not. The suite now builds its PATH from an explicit dependency list and
+   additionally asserts that no run emitted `not found`, so the next missing command is named rather
+   than inferred from an exit code.
+
+Two things about how these were found are worth keeping:
+
+- **The bug was in a branch every earlier test had skipped.** 59 assertions passed against the full
+  development PATH — curl present, GNU wget present, `setsid` present — none of which the target is
+  known to have. Coverage of the happy environment is not coverage.
+- **The first attempt to build a minimal environment did not work, and said so.** Masking `setsid` by
+  putting a curated directory first on PATH cannot work (`command -v` searches on), and building the
+  directory out of BusyBox symlinks cannot work either, because BusyBox's shell exposes every applet
+  — including `setsid` — with no PATH lookup at all. Measured: `busybox sh -c 'command -v setsid'`
+  answers, `dash` does not. The environment therefore uses the real `/bin/sh` and symlinks to real
+  binaries. Had the assertion been written as "we removed setsid" rather than "setsid is absent", the
+  section would have tested nothing and passed.
+- **Mutation testing found the gap in the fix's own test.** Reintroducing `-T` in the `busybox-wget`
+  case passed all 67 assertions, because an environment that provides a `wget` name takes the generic
+  branch and never selects it. A third environment — no curl, nothing named `wget` — was added, and
+  both mutants are now caught.
+
+### B.5 Two defects this work found in its own checks
 
 Recorded because both were invisible while every command reported success.
 
@@ -171,10 +212,10 @@ Recorded because both were invisible while every command reported success.
 
 Both fixes were mutation-tested: reintroducing each defect makes a named assertion fail. So was the
 ownership rule — dropping the install-prefix condition from `civic_pid_is_ours` initially passed all
-59 assertions, because a foreign server's PID never reaches our PID file on its own. The suite now
-plants it there, which is the realistic PID-reuse case, and that mutant is caught.
+every assertion then present, because a foreign server's PID never reaches our PID file on its own.
+The suite now plants it there, which is the realistic PID-reuse case, and that mutant is caught.
 
-### B.5 Application payload unchanged
+### B.6 Application payload unchanged
 
 The archive's `app/` is compared file-by-file, **from inside the tar**, against `dist/`: 23 files
 byte-identical, one addition (`deployment-health.json`, a deployment artifact written beside the build
@@ -187,8 +228,17 @@ once by `archive-tests.mjs` over the delivered bytes.
 
 **NOT YET COLLECTED. Phase 3 cannot be signed off until it is.**
 
-The artifact to test and the exact commands are in `docs/uos-final-acceptance.md`. What must come
-back:
+**The candidate is release `2026.09.23-2`.** Its SHA-256 and the exact commands are in
+`docs/uos-final-acceptance.md`, which is the single place the digest is written — bound to the actual
+archive by a check in `archive-tests.mjs`, so it cannot go stale unnoticed. No digest is copied into
+this document for that reason.
+
+`2026.09.23-1` also exists in the repository and was **never delivered**. It was superseded before
+handover by the `busybox wget -T` fix in §B.4, which changed the runtime payload. Both artifacts and
+both checksum sidecars are kept; the id was bumped rather than reused precisely so that returned
+evidence can never be matched against the wrong one.
+
+What must come back:
 
 1. the completed `RESULT_TEMPLATE.md`;
 2. `civic-work-desk-final-results-<time>.txt` from `collect-results.sh`;
@@ -205,7 +255,7 @@ Neither blocks Stage-B implementation; both block sign-off.
 | Gap                                                                      | Status                           | Closes when                                                            |
 | ------------------------------------------------------------------------ | -------------------------------- | ---------------------------------------------------------------------- |
 | Full workstation reboot: persistence and launcher behaviour              | **N/A** — not performed in RC1.1 | physically tested, or argued non-blocking under the final architecture |
-| Browser-platform evidence: service-worker registration and Cache Storage | **not measured**                 | the JSON in C.3 is returned                                            |
+| Browser-platform evidence: service-worker registration and Cache Storage | **not measured**                 | the browser-platform JSON (item 3 of the list above) is returned       |
 
 Recording these as N/A rather than as passes is the point. No application code was added to expose
 those values; they are read once, by hand, in the browser console, and that is stated in the manual.
