@@ -1,0 +1,11 @@
+{
+  "application": "civic-work-desk",
+  "releaseChannel": "uos20-loongarch64",
+  "releaseId": "2026.09.23-1",
+  "appVersion": "0.1.0",
+  "canonicalOrigin": "http://127.0.0.1:8765",
+  "applicationCommit": "4630ea93bf4f4b74516d128d57ad4a47b82b2541",
+  "builtAt": "2026-09-23T03:43:17Z",
+  "entry": { "js": "assets/index-BF8bN2uI.js", "css": "assets/index-M0_bv4y2.css" },
+  "note": "Deployment health probe. Contains no personal data and no secrets. The launcher fetches this to confirm the server at the canonical origin is serving the expected release before opening the browser."
+}
