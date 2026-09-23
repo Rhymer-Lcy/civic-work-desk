@@ -352,7 +352,183 @@ assert(
   `only ${textMembers.length} matched — the member filter is probably wrong`,
 );
 
-group('7. the documented checksum is not stale');
+group('7. what the release must NOT contain, and what it must still declare');
+/* Phase-3 constraints asserted against the delivered bytes rather than against the source tree: no
+ * language runtime is required, BusyBox is still the selected server, Python is not a dependency, and
+ * the artifact still declares that its installed form is unvalidated. */
+const scriptMembers = files.filter((e) => /\.(sh|conf|desktop)$/.test(e.name));
+const runtimeInvocations = [];
+for (const entry of scriptMembers) {
+  const code = entry.data
+    .toString('utf8')
+    .split('\n')
+    .map((l) => l.replace(/(^|\s)#.*$/, '$1'))
+    .join('\n');
+  for (const bad of [
+    /\bpython3?\b/,
+    /\bnode\b/,
+    /\bnpm\b/,
+    /\bnpx\b/,
+    /\belectron\b/,
+    /\btauri\b/,
+  ]) {
+    if (bad.test(code)) runtimeInvocations.push(`${entry.name}: ${String(bad)}`);
+  }
+}
+assert(
+  runtimeInvocations.length === 0,
+  'no shipped script invokes python, node, npm, electron or tauri',
+  runtimeInvocations.slice(0, 4).join(', '),
+);
+assert(
+  [...names].every((n) => !/\.py$/.test(n)),
+  'the release ships no Python file at all',
+  [...names].filter((n) => /\.py$/.test(n)).join(', '),
+);
+assert(
+  /^server=busybox-httpd$/m.test(versionText),
+  'VERSION still declares BusyBox as the selected server',
+);
+assert(/^pythonRequired=NO$/m.test(versionText), 'VERSION declares pythonRequired=NO');
+assert(/^sudoRequired=NO$/m.test(versionText), 'VERSION declares sudoRequired=NO');
+assert(
+  /^installedFormTargetValidated=NO/m.test(versionText),
+  'VERSION states the installed form is NOT yet validated on the target',
+);
+assert(
+  /^genericPlatformSupportClaimed=NO/m.test(versionText),
+  'VERSION states no generic UOS/Linux/LoongArch support is claimed',
+);
+/* The README has to distinguish the two facts: RC1.1 validated the application being served; this
+ * installer lifecycle has not been validated there. A single "validated on" sentence reads as a
+ * compatibility claim. */
+const readmeText =
+  files.find((e) => e.name === `${rootName}/README.md`)?.data.toString('utf8') ?? '';
+assert(
+  readmeText.includes('尚未在目标工作站上实测的'),
+  'README names what has NOT been tested on the target',
+);
+assert(
+  readmeText.includes('installedFormTargetValidated=NO'),
+  'README points at the VERSION field that records it',
+);
+
+group('8. the acceptance kit archive');
+/* §12: both delivered archives are verified, not just the application one. The kit is what the tester
+ * runs, so a corrupt kit would invalidate every result it produced. */
+const kitPath = join(
+  RELEASE_DIR,
+  `civic-work-desk-uos20-final-acceptance-${versionRelease}.tar.gz`,
+);
+let kitDigest = null;
+if (!existsSync(kitPath)) {
+  nok('the matching acceptance kit exists', kitPath);
+} else {
+  const kitGz = readFileSync(kitPath);
+  kitDigest = createHash('sha256').update(kitGz).digest('hex');
+  const kitEntries = readTar(gunzipSync(kitGz));
+  const kitFiles = kitEntries.filter((e) => e.typeflag === '0');
+  const kitRoots = new Set(kitEntries.map((e) => e.name.split('/')[0]));
+  const kitRoot = [...kitRoots][0];
+
+  assert(kitRoots.size === 1, 'kit has exactly one top-level directory', [...kitRoots].join(', '));
+  assert(
+    kitEntries.every((e) => e.uid === 0 && e.gid === 0 && e.uname === '' && e.gname === ''),
+    'kit ownership metadata is normalized to 0/0 with no account name',
+  );
+  const unsafe = kitEntries
+    .concat(entries)
+    .filter((e) => e.name.startsWith('/') || e.name.split('/').includes('..'));
+  assert(
+    unsafe.length === 0,
+    'neither archive contains an absolute or parent-traversing member path',
+    unsafe
+      .slice(0, 3)
+      .map((e) => e.name)
+      .join(', '),
+  );
+
+  const kitNames = new Set(kitFiles.map((e) => e.name.slice(kitRoot.length + 1)));
+  const kitRequired = [
+    'FINAL_ACCEPTANCE.md',
+    'RESULT_TEMPLATE.md',
+    'VERSION',
+    'SHA256SUMS.txt',
+    'scripts/collect-results.sh',
+    'scripts/port-conflict-test.sh',
+    'scripts/post-uninstall-check.sh',
+  ];
+  const kitMissing = kitRequired.filter((n) => !kitNames.has(n));
+  assert(
+    kitMissing.length === 0,
+    `kit holds all ${kitRequired.length} required members`,
+    kitMissing.join(', '),
+  );
+
+  const kitManifest = kitFiles.find((e) => e.name === `${kitRoot}/SHA256SUMS.txt`);
+  const kitRows = new Map();
+  for (const row of (kitManifest?.data.toString('utf8') ?? '').split('\n')) {
+    const m = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(row);
+    if (m) kitRows.set(m[2], m[1]);
+  }
+  let kitBad = 0;
+  for (const entry of kitFiles) {
+    const rel = entry.name.slice(kitRoot.length + 1);
+    if (rel === 'SHA256SUMS.txt') continue;
+    if (kitRows.get(rel) !== createHash('sha256').update(entry.data).digest('hex')) kitBad += 1;
+  }
+  assert(
+    kitRows.size === kitFiles.length - 1,
+    'kit manifest covers every file except itself',
+    `manifest ${kitRows.size}, files ${kitFiles.length - 1}`,
+  );
+  assert(kitBad === 0, 'every kit file matches its manifest digest', `${kitBad} mismatched`);
+
+  const kitSidecar = `${kitPath}.sha256`;
+  if (!existsSync(kitSidecar)) {
+    nok('kit sidecar exists', kitSidecar);
+  } else {
+    assert(
+      readFileSync(kitSidecar, 'utf8').trim().startsWith(kitDigest),
+      'kit sidecar digest matches the kit archive',
+    );
+  }
+
+  /* The ordering property, asserted on the DELIVERED manual rather than on the source. Uninstall
+   * deletes exactly what the collector gathers, so a kit that instructs the tester to uninstall first
+   * throws away the installed-form evidence — silently, because the collector still exits 0. */
+  const manual =
+    kitFiles.find((e) => e.name === `${kitRoot}/FINAL_ACCEPTANCE.md`)?.data.toString('utf8') ?? '';
+  const collectAt = manual.indexOf('scripts/collect-results.sh');
+  const uninstallAt = manual.indexOf('civic-work-desk-uninstall');
+  assert(collectAt >= 0 && uninstallAt >= 0, 'the shipped manual mentions both steps');
+  assert(
+    collectAt >= 0 && uninstallAt >= 0 && collectAt < uninstallAt,
+    'the shipped manual collects evidence BEFORE uninstall',
+    `collect at ${collectAt}, uninstall at ${uninstallAt}`,
+  );
+
+  /* §9: the manual must not tell the tester to run bare command names — ~/.local/bin is not
+   * necessarily on PATH, and "command not found" would read as a product failure. */
+  const bareInvocations = manual
+    .split('\n')
+    .map((line, index) => ({ line, index: index + 1 }))
+    .filter(({ line }) => /^\s*civic-work-desk(-[a-z]+)?\s*$/.test(line));
+  assert(
+    bareInvocations.length === 0,
+    'the shipped manual invokes the commands by absolute path, never bare',
+    bareInvocations
+      .slice(0, 3)
+      .map((b) => `line ${b.index}: ${b.line.trim()}`)
+      .join(', '),
+  );
+  assert(
+    manual.includes('$HOME/.local/bin/civic-work-desk-status'),
+    'the shipped manual uses the absolute path form',
+  );
+}
+
+group('9. the documented checksums are not stale');
 /* A hash written into a document is a copy, and copies go stale the moment the artifact is rebuilt.
  * The tester verifies against the sidecar, so a wrong hash in the manual does not endanger the
  * install — it endangers the audit, because returned evidence is matched against the documented
@@ -363,10 +539,19 @@ if (!existsSync(acceptanceDoc)) {
 } else {
   const docText = readFileSync(acceptanceDoc, 'utf8');
   const archiveDigest = createHash('sha256').update(gz).digest('hex');
+  /* Both delivered archives now have to be verified by the tester, so both digests have to be in the
+   * document — and nothing else, or a leftover from a superseded build is there to be matched against
+   * by mistake. */
+  const expected = kitDigest ? [archiveDigest, kitDigest] : [archiveDigest];
   assert(
     docText.includes(archiveDigest),
-    'the acceptance document quotes this archive digest',
-    `expected ${archiveDigest} to appear in docs/uos-final-acceptance.md`,
+    'the acceptance document quotes the release digest',
+    `expected ${archiveDigest}`,
+  );
+  assert(
+    kitDigest !== null && docText.includes(kitDigest),
+    'the acceptance document quotes the acceptance-kit digest',
+    kitDigest ? `expected ${kitDigest}` : 'no kit archive was found to compare against',
   );
   assert(
     docText.includes(rootName),
@@ -375,15 +560,15 @@ if (!existsSync(acceptanceDoc)) {
   );
   const strayDigests = [...docText.matchAll(/\b[0-9a-f]{64}\b/g)]
     .map((m) => m[0])
-    .filter((d) => d !== archiveDigest);
+    .filter((d) => !expected.includes(d));
   assert(
     strayDigests.length === 0,
-    'the acceptance document quotes no other digest',
+    'the acceptance document quotes no digest from a superseded build',
     strayDigests.join(', '),
   );
 }
 
-group('8. outer checksum sidecar');
+group('10. outer checksum sidecar');
 const sidecarPath = `${archivePath}.sha256`;
 if (!existsSync(sidecarPath)) {
   nok('sidecar .sha256 exists', sidecarPath);

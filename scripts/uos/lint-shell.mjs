@@ -215,6 +215,60 @@ for (const file of files) {
   }
 }
 
+/* ---- acceptance-document ordering ----
+ *
+ * The main evidence collector gathers exactly what uninstall deletes: the installed program files, the
+ * desktop entry, the runtime state and the deployment logs. So an acceptance manual that tells the
+ * tester to uninstall first produces a file full of "not installed" and throws away the strongest
+ * automated evidence of the installed form — silently, because the collector still exits 0.
+ *
+ * That is an ordering property of a document, which no per-line rule can see. It is asserted here so
+ * a later edit cannot reorder the sections unnoticed. Mutation-tested by swapping the two sections.
+ */
+const ORDERING = [
+  {
+    file: 'deploy/uos/acceptance/FINAL_ACCEPTANCE.md',
+    earlier: { pattern: /scripts\/collect-results\.sh/, name: 'collect-results.sh' },
+    later: { pattern: /civic-work-desk-uninstall/, name: 'the uninstall command' },
+  },
+  {
+    file: 'deploy/uos/acceptance/RESULT_TEMPLATE.md',
+    earlier: { pattern: /^## \d+\. 收集证据/m, name: 'the evidence-collection section' },
+    later: { pattern: /^## \d+\. 卸载/m, name: 'the uninstall section' },
+  },
+];
+
+for (const rule of ORDERING) {
+  const full = join(ROOT, rule.file);
+  let text;
+  try {
+    text = readFileSync(full, 'utf8');
+  } catch {
+    fail(rule.file, 0, 'ordering', 'file missing, so its ordering cannot be checked');
+    continue;
+  }
+  const earlierAt = text.search(rule.earlier.pattern);
+  const laterAt = text.search(rule.later.pattern);
+  if (earlierAt < 0) {
+    fail(rule.file, 0, 'ordering', `${rule.earlier.name} is not mentioned at all`);
+    continue;
+  }
+  if (laterAt < 0) {
+    fail(rule.file, 0, 'ordering', `${rule.later.name} is not mentioned at all`);
+    continue;
+  }
+  if (earlierAt > laterAt) {
+    const line = text.slice(0, earlierAt).split('\n').length;
+    fail(
+      rule.file,
+      line,
+      'ordering',
+      `${rule.earlier.name} must come BEFORE ${rule.later.name} — uninstall deletes what the ` +
+        'collector gathers, so collecting afterwards yields a "not installed" report',
+    );
+  }
+}
+
 /* The canonical origin must appear somewhere, or the check above is vacuous. */
 const mentions = files.filter((file) => readFileSync(file, 'utf8').includes(CANONICAL)).length;
 if (mentions === 0) {
