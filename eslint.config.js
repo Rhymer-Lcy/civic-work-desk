@@ -28,6 +28,8 @@ export default tseslint.config(
        * is as meaningless as linting `dist/`, and it parses as neither source nor a tsconfig project.
        */
       'release/*/app/**',
+      // The final release stages one level deeper: release/uos20/<release-name>/app/.
+      'release/*/*/app/**',
       'coverage/**',
       'playwright-report/**',
       'test-results/**',

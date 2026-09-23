@@ -15,5 +15,11 @@ public/icons/
 
 # The UOS release bundle's `app/` is a copy of `dist/`: build output, not source. The bundle's
 # scripts and documents are still formatted — only the staged build is excluded.
+#
+# Two depths, because the two bundle generations nest differently: the RC bundles stage at
+# release/<bundle>/app/, while the final release stages at release/uos20/<release-name>/app/ so that
+# the archive unpacks into a directory named after the release.
 release/*/app/
 release/*/SHA256SUMS.txt
+release/*/*/app/
+release/*/*/SHA256SUMS.txt
