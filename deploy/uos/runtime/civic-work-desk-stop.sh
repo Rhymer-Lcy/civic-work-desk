@@ -33,13 +33,29 @@ if [ -z "$PID" ]; then
 fi
 
 printf '正在停止本地服务（PID %s）…\n' "$PID"
-STOPPED="$(civic_server_stop || true)"
 
-if [ -n "$STOPPED" ]; then
-  printf '已停止。\n'
-  printf '\n提示：业务数据保存在浏览器中，停止服务不会影响任何数据。\n'
-  exit 0
-fi
+# Three outcomes, and the third must not be reported as a generic failure: it means the library
+# deliberately declined to force-kill a PID that had stopped being ours, and it has already explained
+# why on stderr. Collapsing that into 「未能停止服务」 would hide the one thing worth knowing.
+set +e
+STOPPED="$(civic_server_stop)"
+STOP_RC=$?
+set -e
 
-printf '错误：未能停止服务。请运行 civic-work-desk-status 查看当前状态。\n' >&2
-exit 1
+case "$STOP_RC" in
+  0)
+    printf '已停止（PID %s）。\n' "${STOPPED:-$PID}"
+    printf '\n提示：业务数据保存在浏览器中，停止服务不会影响任何数据。\n'
+    exit 0
+    ;;
+  2)
+    printf '\n已按安全规则中止：没有对那个进程发送强制结束信号（原因见上方）。\n' >&2
+    printf '本程序的运行状态已清理。如需确认端口 %s 现在被什么占用：\n' "$CIVIC_PORT" >&2
+    printf '    ss -ltnp | grep %s\n' "$CIVIC_PORT" >&2
+    exit 1
+    ;;
+  *)
+    printf '错误：未能停止服务。请运行 civic-work-desk-status 查看当前状态。\n' >&2
+    exit 1
+    ;;
+esac
