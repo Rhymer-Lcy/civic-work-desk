@@ -29,11 +29,24 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { commandOf } from './origin-scan.mjs';
 
 const ROOT = process.cwd();
 // Only the UOS deployment surface. `docs/security.md` legitimately discusses a different origin —
 // the Playwright preview server — and scanning it here would be measuring the wrong subsystem.
-const ROOTS = ['scripts/uos', 'release/uos-rc1'];
+//
+// Every bundle directory is named explicitly rather than matched by prefix. That is not tidiness: it
+// is the fix for a real coverage gap. `release/uos-rc1` does not contain `release/uos-rc1-1`, so when
+// RC1.1 was cut, its twelve files silently fell outside the lint while the run kept reporting PASS —
+// a check that had stopped looking at the thing it was supposed to guard. Adding a bundle here is now
+// part of cutting one; the count printed at the end is the thing to watch.
+const ROOTS = [
+  'scripts/uos',
+  'deploy/uos',
+  'release/uos-rc1',
+  'release/uos-rc1-1',
+  'release/uos20',
+];
 const DOC_PATTERN = /^docs\/uos-[\w-]+\.md$/;
 const CANONICAL = 'http://127.0.0.1:8765';
 
@@ -48,18 +61,15 @@ const CANONICAL = 'http://127.0.0.1:8765';
  * that looks like success.)
  *
  * So: prose is checked only where it carries a command; code is checked with comments stripped.
+ *
+ * The decision itself lives in origin-scan.mjs (imported above), shared with the check that runs over
+ * the delivered archive. Two scanners answering the same question differently is how the archive
+ * check came to flag the README's own warning about localhost.
  */
-const COMMAND_START =
-  /^\s*(?:\$\s*)?(sh|bash|sudo|python3?|curl|wget|xdg-open|xdg-settings|xdg-mime|busybox|ss|netstat|cd|cp|mv|rm|kill|pkill|killall|exec|nohup)\b/;
 
 const problems = [];
 function fail(file, line, rule, detail) {
   problems.push({ file, line, rule, detail });
-}
-
-/** A Markdown line that is a command, or the empty string if it is prose. */
-function commandOf(line) {
-  return COMMAND_START.test(line) ? line : '';
 }
 
 /** Python source with docstrings and comments removed, so naming a construct is not using it. */
@@ -83,7 +93,7 @@ function collect(dir, out = []) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
       collect(full, out);
-    } else if (/\.(sh|md|desktop|json|py)$/.test(entry)) {
+    } else if (/\.(sh|md|desktop|json|py|conf)$/.test(entry)) {
       out.push(full);
     }
   }
@@ -148,16 +158,29 @@ for (const file of files) {
     if (!exempt && /\brm\s+(-[a-zA-Z]+\s+)*\$[A-Za-z_{]/.test(line)) {
       fail(rel, number, 'rm-var', 'deletion of an unquoted variable path');
     }
-    if (!exempt && /\b(kill|pkill|killall)\b/.test(line) && /fuser|lsof|ss\s|netstat/.test(line)) {
+    // Word boundaries on the discovery tools, not bare substrings. `ss\s` without them matches the
+    // "ss " inside "process holding the port" — which is how this rule first fired on a test's own
+    // description string. A needle short enough to hide inside an English word will.
+    if (
+      !exempt &&
+      /\b(kill|pkill|killall)\b/.test(line) &&
+      /\bfuser\b|\blsof\b|\bss\b|\bnetstat\b/.test(line)
+    ) {
       fail(rel, number, 'kill-by-port', 'never kill a process discovered only by port');
     }
 
     /* ---- POSIX shell ---- */
     if (isShell && !exempt) {
-      if (/\[\[/.test(line)) fail(rel, number, 'bashism', '[[ is not POSIX');
+      // `[[` is a bashism; `[[:space:]]` is a POSIX character class and appears in every sed
+      // expression here. The colon is what separates them, so the test excludes it rather than
+      // whitelisting the scripts that parse JSON with sed.
+      if (/\[\[(?!:)/.test(line)) fail(rel, number, 'bashism', '[[ is not POSIX');
       if (/\bfunction\s+\w+\s*\(/.test(line)) fail(rel, number, 'bashism', 'function keyword');
       if (/\w+=\(/.test(line)) fail(rel, number, 'bashism', 'array assignment');
-      if (/(^|\s)source\s/.test(line)) fail(rel, number, 'bashism', 'source; use .');
+      // Only `source` in command position. The bare word also occurs in prose that these scripts
+      // print ("if one source file is not UTF-8"), and a shell string is not stripped the way a
+      // comment is, so position is the only thing that distinguishes the builtin from the noun.
+      if (/(?:^|[;&|]\s*)\s*source\s/.test(line)) fail(rel, number, 'bashism', 'source; use .');
       if (/&>/.test(line)) fail(rel, number, 'bashism', '&> redirection');
       if (/\$\{[A-Za-z_][A-Za-z0-9_]*\[[@*]\]/.test(line))
         fail(rel, number, 'bashism', 'array expansion');
