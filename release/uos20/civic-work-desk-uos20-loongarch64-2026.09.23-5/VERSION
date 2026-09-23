@@ -1,0 +1,17 @@
+CivicWorkDesk UOS release candidate
+releaseId=2026.09.23-5
+appVersion=0.1.0
+applicationCommit=ad65e8f6e186912ae97200264f05ab26181f34e1
+applicationPhase=Phase 2 build, unchanged
+phase3Stage=Stage B.1 (final installed form — target validation pending)
+canonicalOrigin=http://127.0.0.1:8765
+server=busybox-httpd
+serverSelectedBy=RC1.1 physical-target evidence (MIME, traversal, directory listing, app behaviour)
+pythonRequired=NO
+sudoRequired=NO
+builtAt=2026-09-23T07:14:04Z
+builtOn=development workstation, Node 24
+rc11ApplicationServingValidatedOn=UOS Desktop 20 Professional / loongarch64 / Loongson 3A6000 / kernel 4.19.0-loongson-3-desktop / 360 Browser 13.4.1140.83 / Chromium 126.0.6478.251
+installedFormTargetValidated=NO — the installer, launcher, upgrade, rollback and uninstall lifecycle in this artifact has not yet run on the physical workstation
+genericPlatformSupportClaimed=NO — no claim is made for Linux, UOS or LoongArch in general
+targetTested=NO — final installed form not yet validated on the physical workstation
