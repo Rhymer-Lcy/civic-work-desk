@@ -137,22 +137,45 @@ civic_http_client() {
 #
 # Writes only to stdout; callers assert on the content. The `nc` variants speak HTTP/1.0 and strip
 # everything up to the first blank line, which is the header/body separator.
+#
+# ## Why no `-T` is passed to wget
+#
+# `busybox wget -q -T 5 -O - <url>` **segfaults** — measured on BusyBox 1.30.1, exit 139, no output;
+# the same command without `-T` returns the body correctly. That matters far more than it looks:
+# `command -v wget` resolves to BusyBox's wget on a BusyBox-centric system, so a per-client timeout
+# flag would have taken down the health gate on exactly the machines this deployment targets, and the
+# symptom would have been "the application will not open" while the server was serving perfectly.
+#
+# So the timeout is applied from outside, with `timeout(1)`, which is one implementation for every
+# client instead of four different flags. When `timeout` is absent the requests simply have none:
+# worse than a bounded wait, but a launcher that waits is recoverable, and a launcher that segfaults
+# its own health check is not.
+civic_timeout_prefix() {
+  if command -v timeout >/dev/null 2>&1; then
+    printf 'timeout 8'
+  else
+    printf ''
+  fi
+}
+
 civic_http_get() {
   path="$1"
   url="http://$CIVIC_HOST:$CIVIC_PORT$path"
+  tmo="$(civic_timeout_prefix)"
+  # shellcheck disable=SC2086 # tmo is a deliberate two-token expansion, empty when unavailable
   case "$(civic_http_client)" in
-    curl) curl -fsS --max-time 5 "$url" 2>/dev/null ;;
-    wget) wget -q -T 5 -O - "$url" 2>/dev/null ;;
-    busybox-wget) busybox wget -q -T 5 -O - "$url" 2>/dev/null ;;
+    curl) $tmo curl -fsS --max-time 5 "$url" 2>/dev/null ;;
+    wget) $tmo wget -q -O - "$url" 2>/dev/null ;;
+    busybox-wget) $tmo busybox wget -q -O - "$url" 2>/dev/null ;;
     nc)
       printf 'GET %s HTTP/1.0\r\nHost: %s:%s\r\nConnection: close\r\n\r\n' \
         "$path" "$CIVIC_HOST" "$CIVIC_PORT" \
-        | nc "$CIVIC_HOST" "$CIVIC_PORT" 2>/dev/null | tr -d '\r' | sed -e '1,/^$/d'
+        | $tmo nc "$CIVIC_HOST" "$CIVIC_PORT" 2>/dev/null | tr -d '\r' | sed -e '1,/^$/d'
       ;;
     busybox-nc)
       printf 'GET %s HTTP/1.0\r\nHost: %s:%s\r\nConnection: close\r\n\r\n' \
         "$path" "$CIVIC_HOST" "$CIVIC_PORT" \
-        | busybox nc "$CIVIC_HOST" "$CIVIC_PORT" 2>/dev/null | tr -d '\r' | sed -e '1,/^$/d'
+        | $tmo busybox nc "$CIVIC_HOST" "$CIVIC_PORT" 2>/dev/null | tr -d '\r' | sed -e '1,/^$/d'
       ;;
     *) return 1 ;;
   esac
