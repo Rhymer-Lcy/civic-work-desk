@@ -1,0 +1,23 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=政务工作记录台
+GenericName=工作记录与荣誉档案
+Comment=本机离线使用的工作记录、进展与荣誉档案管理
+Exec=@@BIN@@/civic-work-desk
+Icon=@@PREFIX@@/current/app/icons/icon-512.png
+Terminal=false
+StartupNotify=false
+Categories=Office;ProjectManagement;
+Keywords=工作记录;台账;荣誉;报表;CivicWorkDesk;
+# @@BIN@@ and @@PREFIX@@ are substituted by install.sh with absolute paths. The installer refuses to
+# finish if any placeholder survives, because a desktop entry with an unresolved Exec fails silently
+# from the menu — the user clicks and nothing happens at all.
+#
+# Exec is an absolute path on purpose: a desktop session does not necessarily have ~/.local/bin on
+# PATH, and there is no working directory to depend on.
+#
+# The browser is not named here. The launcher goes through xdg-open, i.e. the desktop's own default
+# association, which on the tested target is com.360.browser-stable.desktop. Naming the 360 binary
+# directly would risk starting it with a different profile, and the business data belongs to a
+# profile, so that would look like an empty application.
