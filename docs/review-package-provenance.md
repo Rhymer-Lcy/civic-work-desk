@@ -271,3 +271,42 @@ why the discrepancy shipped unnoticed.
 
 The Phase-1 archive is left exactly as its own tooling produced it. It is the historical artifact;
 correcting it would misrepresent what Phase 1 was.
+
+## Stage-B gate runs (2026-09-23, UTC+8)
+
+Two archives were produced while implementing Phase 3 Stage B. Both are kept. Neither is the final
+engineering review deliverable — that is cut only after the installed form passes physical-target
+acceptance.
+
+### `civic-work-desk-phase-2-20260922-234541-4630ea93bf4f.zip`
+
+digest `1b0c0a61aa1cf8b10ad66a04fcbd343b21cb59c05da2e042a9a9fa1d91650e5b`
+
+**Three gates failed in this run: format, lint, scan.** It is retained precisely because it failed,
+and because each failure is worth keeping on the record rather than tidying away:
+
+- `format` — four files written earlier in the session had not been through Prettier;
+- `lint` — an `eslint-disable` for `no-bitwise` in `archive-tests.mjs` that the configured rule set
+  does not need, reported as an unused directive under `--max-warnings=0`;
+- `scan` — `absolute-local-path` on a hard-coded developer path inside a **comment** in
+  `run-deployment-tests.mjs`. The rule is blunt on purpose and was right to fire: a scan that made an
+  exception for comments would stop catching the real thing. The comment was rewritten without a
+  concrete path.
+
+All three were fixed and re-verified individually before the next run. The filename carries commit
+`4630ea93bf4f` because that was HEAD at build time; the Stage-B work was not yet committed.
+
+### The clean Stage-B run
+
+Recorded in the section appended below once produced. The gate archive is a record of a gate run over
+a tree, so its own provenance entry is necessarily written after it exists — the archive does not
+contain the paragraph describing it. That has been true of every entry in this file.
+
+### An incidental result worth keeping: the build is reproducible
+
+The end-user release archive was staged from the `dist/` present before the gate run. The gate run's
+own `npm run build` replaced `dist/`, and `npm run test:uos:archive` — which compares the archive's
+`app/` members against `dist/` by digest, from inside the tar — still reported all 23 application
+files byte-identical afterwards. So the two builds agree byte for byte, and the release artifact did
+not need rebuilding. Stated as the measurement it is: two builds of one commit on one machine, not a
+general determinism claim.

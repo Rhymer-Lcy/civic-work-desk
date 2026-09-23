@@ -1,5 +1,16 @@
 # Phase-3 Stage-A handoff — state at the target acceptance gate
 
+> **SUPERSEDED as a resume point.** RC1.1 physical-target evidence came back, the Stage-B entry gate
+> was satisfied, BusyBox httpd was selected, and Stage B is implemented. The current state lives in
+> **`docs/phase-3-stage-b-evidence.md`**; the tester-facing page is `docs/uos-final-acceptance.md`.
+>
+> This file is kept unedited below as the historical record of what was true at the Stage-A gate —
+> including two statements that later needed qualifying: the lint was passing but was **not scanning
+> the RC1.1 tree at all** (fixed in Stage B, see that document's §B.4), and the over-strict BusyBox
+> log wording flagged here was corrected in the Stage-B acceptance manual rather than in an RC1.2.
+>
+> **Phase 3 is still not complete and UOS compatibility is still not certified.**
+
 Authoritative resume point. Written at the gate, before any physical-target evidence exists.
 **Phase 3 is not complete and UOS compatibility is not certified.**
 

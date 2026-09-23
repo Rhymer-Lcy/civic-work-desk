@@ -377,6 +377,33 @@ checked by hand on 2026-09-21, Chromium 1440×900 and an emulated Pixel 7.
 | Windows High Contrast mode                                                      | Pass — borders and focus follow system colours via `forced-colors`                                    |
 | Screen-reader spot check (NVDA, work list and record dialog)                    | Pass — headings, labels, statuses and the live region all announce                                    |
 
+## The deployment layer has its own gates (Phase 3)
+
+The UOS deployment is not application code and is not covered by Vitest or Playwright. It has three
+gates of its own, run together by `npm run verify:uos`:
+
+| Gate                       | What it checks                                                                      |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| `npm run lint:uos`         | the deployment invariants: one canonical origin, no sudo, no kill-by-port, POSIX sh |
+| `npm run test:uos`         | 59 assertions against real BusyBox / `/proc` / signals on a POSIX host              |
+| `npm run test:uos:archive` | 30 checks over the delivered tar's bytes                                            |
+
+Three things about them are worth knowing before relying on them:
+
+- **`test:uos` needs a POSIX host.** On this Windows workstation it runs inside WSL2, which carries
+  BusyBox 1.30.1 — the same applet version as the target, on a different architecture and build. It
+  therefore proves the deployment _logic_, never target compatibility. Without a POSIX host it
+  **fails** rather than skipping; an explicit `CIVIC_UOS_TESTS=skip` is the only way to pass without
+  running it, and it says loudly that nothing was verified.
+- **`test:uos` asserts its own assertion count.** A block that fails to run is a failure, not a
+  shorter pass.
+- **Adding a release bundle means adding it to `ROOTS` in `lint-shell.mjs`.** `release/uos-rc1` does
+  not contain `release/uos-rc1-1`; for the whole of Stage A the lint reported PASS while never
+  looking at RC1.1's twelve files.
+
+Evidence classification for the deployment layer is in `docs/phase-3-stage-b-evidence.md`, which
+keeps target measurements and development-machine measurements strictly apart.
+
 ## Not tested, and honestly so
 
 - **Safari and iOS on real hardware.** Firefox and WebKit are now covered by an automated
