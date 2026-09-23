@@ -195,7 +195,7 @@ civic_json_field() {
 #   1. /deployment-health.json is served and names a release;
 #   2. that release equals the release `current` points at — so a server still serving the previous
 #      release after an upgrade is detected rather than silently used (BusyBox resolves its document
-#      root once, at startup: measured, see docs/phase-3-stage-b-evidence.md);
+#      root once, at startup; measured during development, not assumed);
 #   3. the index.html being served references the entry asset that the health file names. This is a
 #      cross-check rather than a tautology: it fails if the server is serving some other directory's
 #      index.html, or BusyBox's own 404 page, both of which would otherwise look like a pass.
