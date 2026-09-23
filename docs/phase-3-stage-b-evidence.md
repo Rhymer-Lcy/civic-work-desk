@@ -357,6 +357,92 @@ verdict, which was PASS throughout:
 Both were cosmetic in the sense that nothing was destroyed, and both would have misled the person
 reading the returned evidence — which is the only thing that artifact is for.
 
+### B.10 Stage-B.2 — two installer state-machine defects, independently reproduced
+
+An independent audit of the delivered `2026.09.23-4` bytes confirmed the Stage-B.1 work (both
+checksums, normalized ownership, both inner manifests, clean install, atomic pointer, launch/health,
+repeated launch, status, port conflict 10/10 with restoration, evidence before uninstall, uninstall,
+post-uninstall check) and reproduced two defects in the installer's state machine. Both are properties
+of a _sequence_, which is why every structural check passed over them.
+
+**1. Two concurrent installers both reported success.** On a clean `HOME`, two installers both saw
+`$TARGET` absent, both staged, and the second one's `mv "$STAGE" "$TARGET"` moved its staging
+directory **inside** the first one's release — because the destination was by then a directory. Both
+exited 0, and `[ -d "$TARGET/app" ]` was still true, so both reported successful activation. The
+release tree held `releases/<id>/<id>.<pid>/app/`.
+
+The same `mv` trap as the original pointer bug, one level up: I fixed the pointers with `mv -T` in
+Stage-B.1 and left the directory rename on plain `mv`. Fixing a defect in one place is not fixing the
+class.
+
+Two independent guards now, because §2 of the brief asked not to rely on the lock alone:
+
+- an **installer lock** — the same primitive as the launcher lock, a symlink whose target is the
+  holder PID, so it cannot exist without a holder; a live installer is waited for, anything else is
+  abandoned and broken after re-reading the holder;
+- a **destination-safe rename** — `mv -T`, which refuses an existing non-empty destination
+  ("Directory not empty"), merges nothing and leaves the stage intact. When the destination does
+  appear, it is re-inspected and verified against the package manifest: if it is exactly this release
+  the run continues as a resume, otherwise it fails without touching it. Never a silent merge.
+- and a **shape assertion** — a release directory holds exactly `app`, `runtime`, `VERSION`,
+  `SHA256SUMS.txt`. The nested directory is invisible to a manifest check, because every listed file
+  is still correct; it is visible to this.
+
+Measured rather than assumed: plain `mv` reproduces the nesting and exits 0; `mv -T` fails with
+"Directory not empty" and preserves the stage; BusyBox `mv` rejects `-T` outright, so the fallback
+claims the name with `mkdir` (atomic) and moves entries into an empty directory where nothing can nest.
+
+**2. A same-release rerun exited 0 and repaired nothing.** With `current` already naming the release,
+the installer printed "already this version" and exited before touching anything — while its own
+failure message promised that re-running would restore a missing menu entry. Delete the desktop entry,
+re-run the same package, and it stayed deleted.
+
+A same-release run is now a **repair**: verify the installed release against _this package's_
+manifest, then reinstate only the deployment integration — shared library, five commands, desktop
+entry, directories. It never re-copies or deletes the app tree, never changes the origin, never
+touches browser data. It returns 0 only after an integration check confirms the library, all five
+commands, the menu entry with the right `Exec`, and the pointer. If the installed release does _not_
+match the package, it refuses rather than overwriting in place, and offers three recovery routes that
+exist: a new release id, rollback, or an explicit manual deletion of the directory it names.
+
+**3. Recovery instructions pointed at a file the operator did not have.** `install.sh` told the user
+to read `docs/uos-upgrade-recovery.md` — a repository path, in no delivered archive. The one message
+printed when something had already gone wrong named a file that was not there. The repair procedure
+now lives in the shipped `README.md`, and an archive test rejects any `docs/` path in shipped text and
+requires every markdown file named by a shipped file to be delivered in one of the two archives. That
+test failed against the `-4` bytes when written, which is how it earned its place, and it then caught
+a third instance I had missed by hand-grepping: `httpd.conf`.
+
+**4. The README overclaimed.** 「中途任何一步不通过…不会装一半」 is stronger than the design provides.
+Rewritten to state the four cases honestly: verification/copy failures leave the active version
+untouched; activation is short and read back; **post-activation failures leave a complete, active
+release with an integration step failed**, reported explicitly and repaired by re-running the package;
+and no failure is ever reported as success.
+
+#### A defect in the test harness, found by these tests failing
+
+`nok()` ended with `[ -n "${2:-}" ] && printf ...`. A failing assertion called _without_ a detail
+argument therefore returned 1, `assert` returned 1, and `set -e` aborted the entire suite at the first
+such failure — every assertion after it silently never ran. It hid behind the habit of passing a
+detail message, and it is why several earlier mutation runs ended "before its summary". A harness whose
+failure path can terminate the run reports _some_ of the truth and looks complete. Both helpers now
+return 0 explicitly, and the suite reports every failure in one run.
+
+Two harness bugs in the new sections were found the same way: `VAR=x cd dir && sh …` does not export
+to the child, so both "concurrent" installers ran against the main sandbox's `HOME` and the section
+asserted nothing; and `PATH='…:$PATH'` in single quotes left `$PATH` literal, so the planted-destination
+run died with `sh: not found`. Both were visible only because the assertions reported concrete state
+rather than an exit code.
+
+#### Totals after this pass
+
+`npm run test:uos` → **138 assertions**, adding: two real concurrent installer processes on a clean
+`HOME`; a destination planted between staging and activation by a PATH shim; the four same-release
+cases (missing desktop entry — the named reproduction — missing command, damaged payload refused,
+healthy rerun idempotent). `npm run test:uos:archive` → **55 checks**, adding the shipped-recovery-
+document rule. Four mutants — plain `mv`, plain `mv` with no lock, the early same-release exit, and
+plain `mv` with no shape assertion — are each caught by the assertion written for it.
+
 ---
 
 ## C. Final installed-form physical-target evidence

@@ -10,21 +10,21 @@
 
 | 文件                                                                | 用途           |
 | ------------------------------------------------------------------- | -------------- |
-| `civic-work-desk-uos20-loongarch64-2026.09.23-4.tar.gz`             | 安装包         |
-| `civic-work-desk-uos20-loongarch64-2026.09.23-4.tar.gz.sha256`      | 安装包校验值   |
-| `civic-work-desk-uos20-final-acceptance-2026.09.23-4.tar.gz`        | 验收工具与表格 |
-| `civic-work-desk-uos20-final-acceptance-2026.09.23-4.tar.gz.sha256` | 验收包校验值   |
+| `civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz`             | 安装包         |
+| `civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz.sha256`      | 安装包校验值   |
+| `civic-work-desk-uos20-final-acceptance-2026.09.23-5.tar.gz`        | 验收工具与表格 |
+| `civic-work-desk-uos20-final-acceptance-2026.09.23-5.tar.gz.sha256` | 验收包校验值   |
 
 安装包 SHA-256：
 
 ```
-e5b3db3110e4db1a07492bc0bff8ab7a0c0d3e83f1e0611538b861a99101fbae
+969a2a74bb3e893ef7e794729578383620f0d819e6ce74bd1e2cfb43f370e5bf
 ```
 
 验收包 SHA-256：
 
 ```
-7ad20e941de37f16c0481b59bec4d00bf7dcf54eb755cf2398c823001b1c5906
+ac77a6e58eebb214acf16707d2a7e67a3aca2b98a36f8e55823822fee3680b30
 ```
 
 ## 二、最少要敲的命令
@@ -32,13 +32,13 @@ e5b3db3110e4db1a07492bc0bff8ab7a0c0d3e83f1e0611538b861a99101fbae
 **两个包都要先校验再解压。** 验收包自己也必须可信——它损坏了，它跑出来的结论就都不可信。
 
 ```sh
-sha256sum -c civic-work-desk-uos20-loongarch64-2026.09.23-4.tar.gz.sha256
-sha256sum -c civic-work-desk-uos20-final-acceptance-2026.09.23-4.tar.gz.sha256
+sha256sum -c civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz.sha256
+sha256sum -c civic-work-desk-uos20-final-acceptance-2026.09.23-5.tar.gz.sha256
 
-tar -xzf civic-work-desk-uos20-loongarch64-2026.09.23-4.tar.gz
-tar -xzf civic-work-desk-uos20-final-acceptance-2026.09.23-4.tar.gz
+tar -xzf civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz
+tar -xzf civic-work-desk-uos20-final-acceptance-2026.09.23-5.tar.gz
 
-cd civic-work-desk-uos20-loongarch64-2026.09.23-4
+cd civic-work-desk-uos20-loongarch64-2026.09.23-5
 sha256sum -c SHA256SUMS.txt | tail -n 2
 sh install.sh
 ```
@@ -48,7 +48,7 @@ sh install.sh
 然后按验收手册逐项做：
 
 ```sh
-cd ../civic-work-desk-uos20-final-acceptance-2026.09.23-4
+cd ../civic-work-desk-uos20-final-acceptance-2026.09.23-5
 sha256sum -c SHA256SUMS.txt | tail -n 2
 cat FINAL_ACCEPTANCE.md
 ```
