@@ -421,6 +421,9 @@ const kitPath = join(
   `civic-work-desk-uos20-final-acceptance-${versionRelease}.tar.gz`,
 );
 let kitDigest = null;
+/* Collected here so the next group can ask whether a document referenced from the release is
+ * delivered in either archive — the tester receives both. */
+let kitBasenames = null;
 if (!existsSync(kitPath)) {
   nok('the matching acceptance kit exists', kitPath);
 } else {
@@ -448,6 +451,7 @@ if (!existsSync(kitPath)) {
       .join(', '),
   );
 
+  kitBasenames = new Set(kitFiles.map((e) => e.name.split('/').pop()));
   const kitNames = new Set(kitFiles.map((e) => e.name.slice(kitRoot.length + 1)));
   const kitRequired = [
     'FINAL_ACCEPTANCE.md',
@@ -528,7 +532,60 @@ if (!existsSync(kitPath)) {
   );
 }
 
-group('9. the documented checksums are not stale');
+group('9. every recovery document a shipped file points at actually ships');
+/* An instruction is only a recovery path if the thing it names is reachable from what the operator
+ * received. `install.sh` used to tell the user to read `docs/uos-upgrade-recovery.md`, which exists in
+ * the repository and in no delivered archive — so the one message printed when something had already
+ * gone wrong pointed at a file that was not there.
+ *
+ * Two rules. `docs/` must never appear as a path in shipped text, because that directory is never
+ * part of a release. And any `*.md` a shipped file names must exist as a member of one of the two
+ * delivered archives — the kit's RESULT_TEMPLATE.md is legitimately referenced from the kit's own
+ * collector, so both archives count as "delivered". */
+const shippedText = files.filter((e) => /\.(sh|md|conf|desktop)$/.test(e.name));
+const deliveredBasenames = new Set(
+  files.map((e) => e.name.split('/').pop()).filter((n) => n !== undefined),
+);
+if (kitBasenames) for (const n of kitBasenames) deliveredBasenames.add(n);
+
+const docsRefs = [];
+const missingRefs = [];
+for (const entry of shippedText) {
+  const text = entry.data.toString('utf8');
+  for (const match of text.matchAll(/(?:^|[\s'"(（])((?:[\w./-]*\/)?[\w.-]+\.md)\b/g)) {
+    const ref = match[1];
+    if (/(^|\/)docs\//.test(ref)) {
+      docsRefs.push(`${entry.name}: ${ref}`);
+      continue;
+    }
+    const base = ref.split('/').pop();
+    if (base && !deliveredBasenames.has(base)) missingRefs.push(`${entry.name}: ${ref}`);
+  }
+}
+assert(
+  docsRefs.length === 0,
+  'no shipped file points at a repository-only docs/ path',
+  docsRefs.slice(0, 4).join(', '),
+);
+assert(
+  missingRefs.length === 0,
+  'every markdown file named by shipped text is itself delivered',
+  missingRefs.slice(0, 4).join(', '),
+);
+/* And the specific instruction the installer prints on a same-release run must name the section that
+ * now exists in the shipped README. */
+const installerText =
+  files.find((e) => e.name === `${rootName}/install.sh`)?.data.toString('utf8') ?? '';
+assert(
+  installerText.includes('README.md'),
+  'the installer directs the operator to the shipped README for repair',
+);
+assert(
+  readmeText.includes('## 六之二、修复'),
+  'the shipped README contains the repair section the installer names',
+);
+
+group('10. the documented checksums are not stale');
 /* A hash written into a document is a copy, and copies go stale the moment the artifact is rebuilt.
  * The tester verifies against the sidecar, so a wrong hash in the manual does not endanger the
  * install — it endangers the audit, because returned evidence is matched against the documented
@@ -568,7 +625,7 @@ if (!existsSync(acceptanceDoc)) {
   );
 }
 
-group('10. outer checksum sidecar');
+group('11. outer checksum sidecar');
 const sidecarPath = `${archivePath}.sha256`;
 if (!existsSync(sidecarPath)) {
   nok('sidecar .sha256 exists', sidecarPath);
