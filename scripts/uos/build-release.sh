@@ -113,15 +113,24 @@ cp "$SRC/README.md" "$APP_STAGE/README.md"
 chmod 755 "$APP_STAGE/install.sh"
 
 # ---- VERSION -----------------------------------------------------------------------------------
-# `targetTested` stays NO until the final installed form has been validated on the physical machine.
-# It is a fact about this artifact, not a placeholder to tidy up later.
+#
+# Two different facts, stated as two different fields, because collapsing them into one
+# "validatedOn" line was too easy to read as a compatibility claim:
+#
+#   rc11ApplicationServingValidatedOn — what RC1.1 really established on the physical machine: this
+#                                       application, served by BusyBox, in that browser;
+#   installedFormTargetValidated      — whether the installer/launcher lifecycle in THIS artifact has
+#                                       been validated there. It has not.
+#
+# `targetTested` stays NO until the second one is YES. It is a fact about this artifact, not a
+# placeholder to tidy up later.
 cat >"$APP_STAGE/VERSION" <<VERSION
 CivicWorkDesk UOS release candidate
 releaseId=$RELEASE_ID
 appVersion=$APP_VERSION
 applicationCommit=$APP_COMMIT
 applicationPhase=Phase 2 build, unchanged
-phase3Stage=Stage B (final installed form — target validation pending)
+phase3Stage=Stage B.1 (final installed form — target validation pending)
 canonicalOrigin=$CANONICAL_ORIGIN
 server=busybox-httpd
 serverSelectedBy=RC1.1 physical-target evidence (MIME, traversal, directory listing, app behaviour)
@@ -129,7 +138,9 @@ pythonRequired=NO
 sudoRequired=NO
 builtAt=$BUILT_AT
 builtOn=development workstation, Node 24
-validatedOn=UOS Desktop 20 Professional / loongarch64 / Loongson 3A6000 / kernel 4.19.0-loongson-3-desktop / 360 Browser 13.4.1140.83 / Chromium 126.0.6478.251
+rc11ApplicationServingValidatedOn=UOS Desktop 20 Professional / loongarch64 / Loongson 3A6000 / kernel 4.19.0-loongson-3-desktop / 360 Browser 13.4.1140.83 / Chromium 126.0.6478.251
+installedFormTargetValidated=NO — the installer, launcher, upgrade, rollback and uninstall lifecycle in this artifact has not yet run on the physical workstation
+genericPlatformSupportClaimed=NO — no claim is made for Linux, UOS or LoongArch in general
 targetTested=NO — final installed form not yet validated on the physical workstation
 VERSION
 
@@ -148,6 +159,7 @@ cp "$SRC/acceptance/FINAL_ACCEPTANCE.md" "$KIT_STAGE/FINAL_ACCEPTANCE.md"
 cp "$SRC/acceptance/RESULT_TEMPLATE.md" "$KIT_STAGE/RESULT_TEMPLATE.md"
 cp "$SRC/acceptance/collect-results.sh" "$KIT_STAGE/scripts/collect-results.sh"
 cp "$SRC/acceptance/port-conflict-test.sh" "$KIT_STAGE/scripts/port-conflict-test.sh"
+cp "$SRC/acceptance/post-uninstall-check.sh" "$KIT_STAGE/scripts/post-uninstall-check.sh"
 cat >"$KIT_STAGE/VERSION" <<KITVERSION
 CivicWorkDesk UOS final-acceptance kit
 kitFor=$APP_NAME
