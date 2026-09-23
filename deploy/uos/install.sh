@@ -233,6 +233,23 @@ set_pointer "$CURRENT" "$RELEASE_ID"
 printf '  current -> releases/%s（已核对）\n\n' "$RELEASE_ID"
 
 # ---------------------------------------------------------------- 7. desktop entry
+#
+# Two absolute paths are substituted into the template, and both are absolute on purpose:
+#
+#   Exec  — a desktop session does not necessarily have ~/.local/bin on PATH, and a menu entry has no
+#           working directory to depend on;
+#   Icon  — pointed through `current`, so the icon follows the active release without being rewritten
+#           on every upgrade.
+#
+# The browser is deliberately NOT named. The launcher goes through xdg-open, i.e. the desktop's own
+# default association, which on the tested target resolves to com.360.browser-stable.desktop. Invoking
+# the 360 binary directly would risk a different browser profile, and the business data belongs to a
+# profile — so it would present as an empty application.
+#
+# The rationale lives here rather than in the template because sed rewrites the template: an earlier
+# version explained the placeholders *inside* the file, and the placeholders in that explanation were
+# substituted too, so the installed entry asserted that two absolute paths "are substituted by
+# install.sh". Caught by reading the generated file, not the template.
 printf '正在安装菜单项…\n'
 DESKTOP_SRC="$TARGET/runtime/civic-work-desk.desktop"
 [ -f "$DESKTOP_SRC" ] || die "安装包缺少 runtime/civic-work-desk.desktop。"

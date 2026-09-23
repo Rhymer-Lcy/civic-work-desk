@@ -10,14 +10,8 @@ Terminal=false
 StartupNotify=false
 Categories=Office;ProjectManagement;
 Keywords=工作记录;台账;荣誉;报表;CivicWorkDesk;
-# @@BIN@@ and @@PREFIX@@ are substituted by install.sh with absolute paths. The installer refuses to
-# finish if any placeholder survives, because a desktop entry with an unresolved Exec fails silently
-# from the menu — the user clicks and nothing happens at all.
-#
-# Exec is an absolute path on purpose: a desktop session does not necessarily have ~/.local/bin on
-# PATH, and there is no working directory to depend on.
-#
-# The browser is not named here. The launcher goes through xdg-open, i.e. the desktop's own default
-# association, which on the tested target is com.360.browser-stable.desktop. Naming the 360 binary
-# directly would risk starting it with a different profile, and the business data belongs to a
-# profile, so that would look like an empty application.
+# Template. install.sh replaces the two placeholders with absolute paths and refuses to finish if
+# either survives. Rationale for the substitution, the absolute Exec and the absence of a named
+# browser is in install.sh section 7 — deliberately not repeated here, because the installer rewrites
+# this file and a comment that described the placeholders had its own placeholders substituted,
+# leaving the installed entry claiming that two absolute paths "are substituted by install.sh".
