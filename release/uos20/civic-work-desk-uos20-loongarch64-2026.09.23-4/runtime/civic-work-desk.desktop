@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=政务工作记录台
+GenericName=工作记录与荣誉档案
+Comment=本机离线使用的工作记录、进展与荣誉档案管理
+Exec=@@BIN@@/civic-work-desk
+Icon=@@PREFIX@@/current/app/icons/icon-512.png
+Terminal=false
+StartupNotify=false
+Categories=Office;ProjectManagement;
+Keywords=工作记录;台账;荣誉;报表;CivicWorkDesk;
+# Template. install.sh replaces the two placeholders with absolute paths and refuses to finish if
+# either survives. Rationale for the substitution, the absolute Exec and the absence of a named
+# browser is in install.sh section 7 — deliberately not repeated here, because the installer rewrites
+# this file and a comment that described the placeholders had its own placeholders substituted,
+# leaving the installed entry claiming that two absolute paths "are substituted by install.sh".
