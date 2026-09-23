@@ -47,18 +47,32 @@ TOTAL=0
 # Every assertion is counted, and the total is asserted at the end. Not decoration: the first run of
 # this suite had this number wrong, and the mismatch is what said so. A block that fails to run
 # otherwise looks exactly like a block that passed.
-EXPECTED_TESTS=114
+EXPECTED_TESTS=138
 
+# Both end with an explicit `return 0`, and that is not decoration.
+#
+# `nok` used to end with `[ -n "${2:-}" ] && printf ...`. When a failing assertion was called without a
+# detail argument, that test was false, so it was the function's exit status: `nok` returned 1, `assert`
+# returned 1, and `set -e` aborted the whole suite at the first such failure. Every assertion after it
+# silently never ran. It hid behind the habit of passing a detail message — the failures that did carry
+# one printed and returned 0 — and it is why several mutation runs ended "before its summary".
+#
+# A test harness whose failure path can terminate the run is worse than one that reports nothing: it
+# reports *some* of the truth and looks complete.
 ok() {
   TOTAL=$((TOTAL + 1))
   PASS=$((PASS + 1))
   printf '  ok   %s\n' "$1"
+  return 0
 }
 nok() {
   TOTAL=$((TOTAL + 1))
   FAIL=$((FAIL + 1))
   printf '  FAIL %s\n' "$1"
-  [ -n "${2:-}" ] && printf '       %s\n' "$2"
+  if [ -n "${2:-}" ]; then
+    printf '       %s\n' "$2"
+  fi
+  return 0
 }
 assert() {
   if [ "$1" = yes ]; then ok "$2"; else nok "$2" "${3:-}"; fi
@@ -676,16 +690,21 @@ assert "$(printf '%s' "$F5_OUT" | grep -q '续做启用步骤' && echo yes || ec
 assert "$([ "$(readlink "$PREFIX/current")" = "releases/relD" ] && echo yes || echo no)" \
   "resume: relD is now active" "$(readlink "$PREFIX/current")"
 
-# ---- fault 6: same release, already active ----------------------------------------------------
+# ---- fault 6: same release, already active -> a repair, not a no-op ---------------------------
+# This used to assert that the run told the operator to cut a new release and did nothing. That was the
+# defect: the installer's own failure messages promise that re-running repairs a missing menu entry, and
+# the early exit made those messages false. Section 19 exercises the repair behaviour properly; here we
+# only assert it is no longer a do-nothing branch.
 set +e
 F6_OUT="$( (cd "$BUNDLES/relD" && sh install.sh --no-start) 2>&1 )"
 F6_RC=$?
 set -e
-assert "$([ "$F6_RC" -eq 0 ] && echo yes || echo no)" "same release: exits 0 without acting" "$F6_OUT"
+assert "$([ "$F6_RC" -eq 0 ] && echo yes || echo no)" "same release: exits 0" "$F6_OUT"
 assert "$([ -f "$PREFIX/releases/relD/app/index.html" ] && echo yes || echo no)" \
-  "same release: the installed files were not disturbed"
-assert "$(printf '%s' "$F6_OUT" | grep -q '重新出包' && echo yes || echo no)" \
-  "same release: the operator is told what to do instead"
+  "same release: the installed app files were not disturbed"
+assert "$(printf '%s' "$F6_OUT" | grep -q '修复部署集成' && echo yes || echo no)" \
+  "same release: the run repairs the deployment integration rather than doing nothing" \
+  "$(printf '%s' "$F6_OUT" | tail -n 3)"
 
 # ---- fault 7: --force is gone --------------------------------------------------------------------
 set +e
@@ -873,8 +892,198 @@ assert "$([ "$(cat "$WORK/race-a" 2>/dev/null)" = 0 ] && [ "$(cat "$WORK/race-b"
 assert "$([ -L "$LOCK" ] || [ ! -e "$LOCK" ] && echo yes || echo no)" \
   "the lock is a symlink (so it cannot exist without naming a holder)"
 
+# ================================================================ installer concurrency
+group '17. two real installers at once cannot both activate'
+#
+# The defect this closes was reproduced against delivered bytes: on a clean HOME, two installers both
+# saw `$TARGET` absent, both staged, and the second one's plain `mv` moved its staging directory
+# *inside* the first one's release. Both exited 0 and both reported successful activation, because
+# `[ -d "$TARGET/app" ]` was still true.
+#
+# Two independent guards now exist and this section exercises the pair: an installer lock, and a
+# destination-safe rename that cannot descend into an existing directory. Real processes, not helper
+# functions — the race only exists between processes.
+CONC_HOME="$WORK/conc-home"
+CONC_RUN="$WORK/conc-run"
+rm -rf "$CONC_HOME" "$CONC_RUN"
+mkdir -p "$CONC_HOME" "$CONC_RUN"
+CONC_PREFIX="$CONC_HOME/.local/share/civic-work-desk"
+
+# `export`, not a `VAR=x cmd` prefix. The prefix form applies to the command it precedes, and the
+# command here was the `cd` builtin, so the child `sh install.sh` inherited the *outer* HOME — both
+# installers ran against the main sandbox and the test asserted nothing about concurrency. Caught
+# because the assertions then said the release directory did not exist.
+#
+# --no-start throughout: this sandbox must never bind the port the main sandbox is using.
+sh -c "export HOME='$CONC_HOME' XDG_RUNTIME_DIR='$CONC_RUN'; cd '$BUNDLES/relE' \
+  && sh install.sh --no-start >'$WORK/conc-a.out' 2>&1; printf '%s\n' \$? >'$WORK/conc-a.rc'" &
+CA=$!
+sh -c "export HOME='$CONC_HOME' XDG_RUNTIME_DIR='$CONC_RUN'; cd '$BUNDLES/relE' \
+  && sh install.sh --no-start >'$WORK/conc-b.out' 2>&1; printf '%s\n' \$? >'$WORK/conc-b.rc'" &
+CB=$!
+wait "$CA" 2>/dev/null || true
+wait "$CB" 2>/dev/null || true
+CONC_A_RC="$(cat "$WORK/conc-a.rc" 2>/dev/null || echo missing)"
+CONC_B_RC="$(cat "$WORK/conc-b.rc" 2>/dev/null || echo missing)"
+
+# The decisive assertion: no nested staging directory anywhere under the release tree. This is the
+# exact shape the defect produced, and a manifest check cannot see it because every listed file is
+# still correct.
+NESTED="$(find "$CONC_PREFIX/releases" -mindepth 2 -maxdepth 2 -type d 2>/dev/null \
+  | grep -E '/(\.staging|relE\.[0-9]+)$' | grep -c '' || true)"
+assert "$([ "$NESTED" -eq 0 ] && echo yes || echo no)" \
+  "no nested staging directory was created inside the release" "found $NESTED"
+
+CONC_SHAPE="$(find "$CONC_PREFIX/releases/relE" -mindepth 1 -maxdepth 1 2>/dev/null \
+  | sed "s|.*/||" | LC_ALL=C sort | tr '\n' ' ')"
+assert "$([ "$CONC_SHAPE" = "SHA256SUMS.txt VERSION app runtime " ] && echo yes || echo no)" \
+  "the release directory holds exactly the four expected entries" "got: $CONC_SHAPE"
+
+assert "$([ "$(readlink "$CONC_PREFIX/current")" = "releases/relE" ] && echo yes || echo no)" \
+  "current names the intended release" "$(readlink "$CONC_PREFIX/current" 2>/dev/null || echo none)"
+
+assert "$( (cd "$CONC_PREFIX/releases/relE" \
+  && grep -E '^[0-9a-f]{64}[ ]+[*]?(app/|runtime/|VERSION$)' SHA256SUMS.txt >"$WORK/cm" \
+  && sha256sum -c "$WORK/cm" >/dev/null 2>&1) && echo yes || echo no)" \
+  "the activated release verifies against its manifest"
+
+assert "$([ -x "$CONC_HOME/.local/bin/civic-work-desk" ] \
+  && [ -r "$CONC_PREFIX/lib/civic-lib.sh" ] && echo yes || echo no)" \
+  "commands and runtime library are coherent"
+assert "$([ -f "$CONC_HOME/.local/share/applications/civic-work-desk.desktop" ] && echo yes || echo no)" \
+  "the menu entry is present"
+
+# Both outcomes must be understandable. One may succeed and the other wait-then-succeed (a repair), or
+# the loser may fail clearly — what must not happen is two independent activations reported as success.
+CONC_BOTH_OK=no
+if [ "$CONC_A_RC" = 0 ] || [ "$CONC_B_RC" = 0 ]; then CONC_BOTH_OK=yes; fi
+assert "$([ "$CONC_BOTH_OK" = yes ] && echo yes || echo no)" \
+  "at least one installer reported success" "a=$CONC_A_RC b=$CONC_B_RC"
+if [ "$CONC_A_RC" != 0 ] || [ "$CONC_B_RC" != 0 ]; then
+  LOSER_OUT="$WORK/conc-a.out"
+  [ "$CONC_B_RC" != 0 ] && LOSER_OUT="$WORK/conc-b.out"
+  assert "$(grep -qE '另一个安装程序|错误' "$LOSER_OUT" && echo yes || echo no)" \
+    "the installer that did not activate said why" "$(tail -n 2 "$LOSER_OUT")"
+else
+  # Both succeeded: then the second must have gone through the repair/resume path, not a second
+  # activation. Its output has to say so.
+  assert "$(grep -qE '当前已经是这个版本|续做启用步骤|另一个安装程序' "$WORK/conc-b.out" \
+    || grep -qE '当前已经是这个版本|续做启用步骤|另一个安装程序' "$WORK/conc-a.out" \
+    && echo yes || echo no)" \
+    "the second installer went through repair/resume rather than activating again" \
+    "$(tail -n 3 "$WORK/conc-b.out")"
+fi
+
+group '18. the release directory appearing mid-run is handled, not merged'
+# Deterministic version of the same race: a sha256sum shim plants a complete, valid release at $TARGET
+# during the staged-verification step — i.e. after staging and before activation. Activation must
+# detect the destination, verify it, and resume; never merge into it.
+rm -rf "$CONC_HOME/.local" "$CONC_RUN"
+mkdir -p "$CONC_RUN"
+PLANTBIN="$WORK/plantbin"
+mkdir -p "$PLANTBIN"
+cat >"$PLANTBIN/sha256sum" <<SHIM
+#!/bin/sh
+n=\$(cat "$WORK/plant-count" 2>/dev/null || echo 0)
+n=\$((n + 1))
+printf '%s\n' "\$n" >"$WORK/plant-count"
+if [ "\$n" -eq 2 ]; then
+  mkdir -p "$CONC_PREFIX/releases"
+  cp -R "$BUNDLES/relE" "$CONC_PREFIX/releases/.plant.tmp"
+  rm -f "$CONC_PREFIX/releases/.plant.tmp/install.sh" "$CONC_PREFIX/releases/.plant.tmp/README.md"
+  mv -T "$CONC_PREFIX/releases/.plant.tmp" "$CONC_PREFIX/releases/relE"
+fi
+exec "$REAL_SHA" "\$@"
+SHIM
+chmod 755 "$PLANTBIN/sha256sum"
+: >"$WORK/plant-count"
+set +e
+# PATH in DOUBLE quotes so the inner shell expands $PATH. Inside single quotes it stayed literal, the
+# inner PATH became `<plantbin>:$PATH`, and the run died with `sh: not found`.
+PLANT_OUT="$(sh -c "export HOME='$CONC_HOME' XDG_RUNTIME_DIR='$CONC_RUN'; \
+  export PATH=\"$PLANTBIN:\$PATH\"; cd '$BUNDLES/relE' && sh install.sh --no-start" 2>&1)"
+PLANT_RC=$?
+set -e
+rm -f "$PLANTBIN/sha256sum"
+assert "$([ "$PLANT_RC" -eq 0 ] && echo yes || echo no)" \
+  "the run completed after the destination appeared mid-flight" "$(printf '%s' "$PLANT_OUT" | tail -n 3)"
+assert "$(printf '%s' "$PLANT_OUT" | grep -q '在暂存期间出现' && echo yes || echo no)" \
+  "it said the directory had appeared and re-checked it instead of merging"
+PLANT_NESTED="$(find "$CONC_PREFIX/releases/relE" -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+  | sed 's|.*/||' | grep -vE '^(app|runtime)$' | grep -c '' || true)"
+assert "$([ "$PLANT_NESTED" -eq 0 ] && echo yes || echo no)" \
+  "nothing was merged into the release directory" "found $PLANT_NESTED unexpected dirs"
+
+# ================================================================ same-release repair
+group '19. a same-release rerun repairs the deployment integration'
+# The reproduced defect: with `current` already naming this release, the installer exited 0, said the
+# version was already active, and repaired nothing — while its own failure message promised that
+# re-running would restore a missing menu entry.
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+( cd "$BUNDLES/relE" && sh install.sh --no-start ) >/dev/null 2>&1 || true
+APP_BEFORE="$(sha256sum "$PREFIX/releases/relE/app/index.html" | cut -d' ' -f1)"
+
+# 19a — the named regression: the exact independently reproduced scenario.
+rm -f "$DESKTOP"
+set +e
+R1_OUT="$( (cd "$BUNDLES/relE" && sh install.sh --no-start) 2>&1 )"
+R1_RC=$?
+set -e
+assert "$([ "$R1_RC" -eq 0 ] && echo yes || echo no)" \
+  "missing desktop entry: rerun succeeded" "$(printf '%s' "$R1_OUT" | tail -n 3)"
+assert "$([ -f "$DESKTOP" ] && echo yes || echo no)" \
+  "missing desktop entry: the menu entry was actually restored"
+assert "$(printf '%s' "$R1_OUT" | grep -q '修复部署集成' && echo yes || echo no)" \
+  "missing desktop entry: the run described itself as a repair, not a no-op"
+assert "$([ "$(sha256sum "$PREFIX/releases/relE/app/index.html" | cut -d' ' -f1)" = "$APP_BEFORE" ] \
+  && echo yes || echo no)" \
+  "missing desktop entry: the app tree was not re-copied or altered"
+
+# 19b — a missing installed command.
+rm -f "$BIN/civic-work-desk-status"
+set +e
+R2_OUT="$( (cd "$BUNDLES/relE" && sh install.sh --no-start) 2>&1 )"
+R2_RC=$?
+set -e
+assert "$([ "$R2_RC" -eq 0 ] && echo yes || echo no)" "missing command: rerun succeeded"
+assert "$([ -x "$BIN/civic-work-desk-status" ] && echo yes || echo no)" \
+  "missing command: the command was actually restored"
+
+# 19c — a damaged active payload must NOT be overwritten in place.
+DAMAGED="$PREFIX/releases/relE/app/index.html"
+printf 'damaged-by-test\n' >>"$DAMAGED"
+DAMAGED_HASH="$(sha256sum "$DAMAGED" | cut -d' ' -f1)"
+set +e
+R3_OUT="$( (cd "$BUNDLES/relE" && sh install.sh --no-start) 2>&1 )"
+R3_RC=$?
+set -e
+assert "$([ "$R3_RC" -ne 0 ] && echo yes || echo no)" \
+  "damaged payload: the rerun refused" "$(printf '%s' "$R3_OUT" | tail -n 3)"
+assert "$([ "$(sha256sum "$DAMAGED" | cut -d' ' -f1)" = "$DAMAGED_HASH" ] && echo yes || echo no)" \
+  "damaged payload: it was NOT overwritten in place"
+assert "$(printf '%s' "$R3_OUT" | grep -q 'README.md' && echo yes || echo no)" \
+  "damaged payload: the message points at a document that ships with the package"
+assert "$([ "$(readlink "$PREFIX/current")" = "releases/relE" ] && echo yes || echo no)" \
+  "damaged payload: current was left alone"
+
+# Restore the payload so the remaining sections run against a healthy install.
+( cd "$BUNDLES/relE" && cp app/index.html "$DAMAGED" )
+
+# 19d — a healthy rerun is safe and idempotent.
+set +e
+R4_OUT="$( (cd "$BUNDLES/relE" && sh install.sh --no-start) 2>&1 )"
+R4_RC=$?
+set -e
+assert "$([ "$R4_RC" -eq 0 ] && echo yes || echo no)" "healthy rerun: succeeded" \
+  "$(printf '%s' "$R4_OUT" | tail -n 3)"
+assert "$([ -f "$DESKTOP" ] && [ -x "$BIN/civic-work-desk" ] && echo yes || echo no)" \
+  "healthy rerun: integration still intact"
+assert "$([ "$(sha256sum "$PREFIX/releases/relE/app/index.html" | cut -d' ' -f1)" = "$APP_BEFORE" ] \
+  && echo yes || echo no)" \
+  "healthy rerun: the app tree is byte-identical to before"
+
 # ================================================================ uninstall
-group '17. uninstall preserves user data'
+group '20. uninstall preserves user data'
 mkdir -p "$SANDBOX/Downloads" "$SANDBOX/.config/com.360.browser/Default"
 printf '{"backup":true}\n' >"$SANDBOX/Downloads/civic-backup.json"
 printf 'x\n' >"$SANDBOX/Downloads/report.xlsx"
