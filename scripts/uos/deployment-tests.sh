@@ -47,7 +47,7 @@ TOTAL=0
 # Every assertion is counted, and the total is asserted at the end. Not decoration: the first run of
 # this suite had this number wrong, and the mismatch is what said so. A block that fails to run
 # otherwise looks exactly like a block that passed.
-EXPECTED_TESTS=69
+EXPECTED_TESTS=114
 
 ok() {
   TOTAL=$((TOTAL + 1))
@@ -95,7 +95,17 @@ BIN="$SANDBOX/.local/bin"
 PREFIX="$SANDBOX/.local/share/civic-work-desk"
 DESKTOP="$SANDBOX/.local/share/applications/civic-work-desk.desktop"
 
+SUMMARY_PRINTED=no
+
 cleanup() {
+  # An abort is a different failure from a failed assertion, and it used to be indistinguishable: the
+  # run simply ended with no summary, and a reader had to infer that from absence. Say it instead.
+  if [ "$SUMMARY_PRINTED" = no ]; then
+    printf '\n==================================================================\n'
+    printf 'SUITE ABORTED before its summary — a command failed under `set -e`,\n'
+    printf 'so the assertions after that point never ran. Assertions executed: %s.\n' "$TOTAL"
+    printf 'Do not read this as "everything else passed".\n'
+  fi
   # Only ever our own sandbox, and only processes recorded by our own state files or started here.
   for candidate in "$XDG_RUNTIME_DIR/civic-work-desk/httpd.pid" "$WORK/decoy.pid"; do
     [ -s "$candidate" ] || continue
@@ -160,6 +170,24 @@ health_release() {
 
 our_pid() {
   cat "$XDG_RUNTIME_DIR/civic-work-desk/httpd.pid" 2>/dev/null || true
+}
+
+# Wait for the fake xdg-open to record N invocations.
+#
+# The launcher backgrounds the browser call — deliberately, so a slow browser cannot hold the menu
+# entry open — and then exits. So the marker file is written *after* the launcher returns, and an
+# assertion made the instant it returns is a race. It lost intermittently under the load of a mutation
+# run, producing a failure in an unrelated section and briefly making two mutants look like they were
+# caught for the wrong reason.
+wait_for_opens() {
+  want="$1"
+  i=0
+  while [ "$i" -lt 25 ]; do
+    [ "$(grep -c '' "$XDG_OPEN_MARKER" 2>/dev/null || echo 0)" -ge "$want" ] && return 0
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
 }
 
 # Repoint one of the pointer symlinks, and verify it actually moved.
@@ -234,6 +262,7 @@ assert "$([ -n "$PID1" ] && kill -0 "$PID1" 2>/dev/null && echo yes || echo no)"
   "server running after launch"
 assert "$([ "$(health_release)" = relA ] && echo yes || echo no)" \
   "server serves the active release"
+wait_for_opens 1 || true
 assert "$(grep -qx 'http://127.0.0.1:8765/' "$XDG_OPEN_MARKER" && echo yes || echo no)" \
   "browser opened at exactly the canonical origin" "$(cat "$XDG_OPEN_MARKER")"
 assert "$([ "$(grep -c '' "$XDG_OPEN_MARKER")" -eq 1 ] && echo yes || echo no)" \
@@ -303,6 +332,10 @@ assert "$(printf '%s' "$CONFLICT_OUT" | grep -q "$PORT" && echo yes || echo no)"
   "message names the port"
 assert "$(kill -0 "$DECOY_PID" 2>/dev/null && echo yes || echo no)" \
   "conflicting process still alive after the failed launch"
+# A short settle before asserting the marker is EMPTY. The write, if it happened, would be racing us,
+# and a not-yet-written marker would make this pass for the wrong reason — the direction of failure
+# that looks like success.
+sleep 2
 assert "$([ -s "$XDG_OPEN_MARKER" ] && echo no || echo yes)" \
   "browser was NOT opened on conflict"
 assert "$([ -z "$(our_pid)" ] && echo yes || echo no)" \
@@ -412,7 +445,7 @@ minbin() {
   # "head: not found" followed by 「服务返回的版本信息无法解析」 — a health-gate failure whose stated
   # cause pointed at the server rather than at the shell. All of these are POSIX and present in both
   # coreutils and BusyBox, so the dependency is acceptable; what was not acceptable was not knowing it.
-  for tool in sh date mkdir rmdir cat head readlink basename sleep tr sed grep rm mv wc timeout; do
+  for tool in sh date mkdir rmdir cat head readlink basename sleep tr sed grep rm mv ln wc timeout; do
     src="$(command -v "$tool" 2>/dev/null || true)"
     [ -n "$src" ] || {
       printf 'harness error: this host has no %s\n' "$tool" >&2
@@ -511,8 +544,337 @@ assert "$([ -d "$PREFIX/releases/relB" ] && echo no || echo yes)" \
 assert "$(printf '%s' "$UPGRADE2_OUT" | grep -q '已清理旧版本目录：relB' && echo yes || echo no)" \
   "the pruning was reported rather than silent"
 
+# ================================================================ installer fault injection
+group '14. installer faults leave the running installation usable'
+#
+# Every failure below is injected, not simulated: a corrupted bundle byte, an unwritable path, or a
+# tool that fails on a chosen invocation via a PATH shim. What is asserted is never just the exit
+# status — it is the state afterwards: which release `current` names, whether the owned server is
+# still serving it, and whether a half-written release directory was left behind.
+#
+# This is the section the staging redesign exists for. The previous installer stopped the server and
+# (with --force) deleted the installed directory before the replacement was written, so a failure at
+# the wrong moment left nothing working while the comments promised otherwise.
+make_bundle relD
+REAL_SHA="$(command -v sha256sum)"
+REAL_LN="$(command -v ln)"
+REAL_MV="$(command -v mv)"
+FAULTBIN="$WORK/faultbin"
+mkdir -p "$FAULTBIN"
+
+# Establish a known-good baseline: relA active, server running and healthy.
+repoint "$PREFIX/current" relA
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+"$BIN/civic-work-desk" --no-browser >/dev/null 2>&1 || true
+BASE_PID="$(our_pid)"
+assert "$([ "$(health_release)" = relA ] && echo yes || echo no)" \
+  "baseline: relA active and served"
+
+# A single helper so every fault case asserts the same four things about the aftermath.
+assert_survived() {
+  label="$1"
+  assert "$([ "$(readlink "$PREFIX/current")" = "releases/relA" ] && echo yes || echo no)" \
+    "$label: current still points at relA" "$(readlink "$PREFIX/current")"
+  assert "$([ "$(health_release)" = relA ] && echo yes || echo no)" \
+    "$label: the running server still serves relA"
+}
+
+# ---- fault 1: the bundle itself is corrupt -----------------------------------------------------
+printf 'x-corrupted\n' >>"$BUNDLES/relD/app/index.html"
+set +e
+F1_OUT="$( (cd "$BUNDLES/relD" && sh install.sh --no-start) 2>&1 )"
+F1_RC=$?
+set -e
+assert "$([ "$F1_RC" -ne 0 ] && echo yes || echo no)" "corrupt bundle: install refused" "$F1_OUT"
+assert "$([ -d "$PREFIX/releases/relD" ] && echo no || echo yes)" \
+  "corrupt bundle: no release directory was created"
+assert_survived "corrupt bundle"
+make_bundle relD
+
+# ---- fault 2: staging cannot be created -------------------------------------------------------
+# `.staging` is made a regular file, so `mkdir -p` under it fails. A full disk fails the same way.
+rm -rf "$PREFIX/.staging"
+printf 'not a directory\n' >"$PREFIX/.staging"
+set +e
+F2_OUT="$( (cd "$BUNDLES/relD" && sh install.sh --no-start) 2>&1 )"
+F2_RC=$?
+set -e
+rm -f "$PREFIX/.staging"
+assert "$([ "$F2_RC" -ne 0 ] && echo yes || echo no)" "staging failure: install refused" "$F2_OUT"
+assert "$([ -d "$PREFIX/releases/relD" ] && echo no || echo yes)" \
+  "staging failure: no release directory was created"
+assert_survived "staging failure"
+
+# ---- fault 3: the staged copy fails verification ----------------------------------------------
+# A shim that lets the source check pass and fails the staged check, which is the case a source-only
+# check cannot see: a short write or a full disk produces a truncated copy of a perfect bundle.
+cat >"$FAULTBIN/sha256sum" <<SHIM
+#!/bin/sh
+n=\$(cat "$WORK/sha-count" 2>/dev/null || echo 0)
+n=\$((n + 1))
+printf '%s\n' "\$n" >"$WORK/sha-count"
+if [ "\$n" -ge 2 ]; then
+  printf 'injected staged-verification failure\n' >&2
+  exit 1
+fi
+exec "$REAL_SHA" "\$@"
+SHIM
+chmod 755 "$FAULTBIN/sha256sum"
+: >"$WORK/sha-count"
+set +e
+F3_OUT="$( (cd "$BUNDLES/relD" && PATH="$FAULTBIN:$PATH" sh install.sh --no-start) 2>&1 )"
+F3_RC=$?
+set -e
+rm -f "$FAULTBIN/sha256sum"
+assert "$([ "$F3_RC" -ne 0 ] && echo yes || echo no)" \
+  "staged-verify failure: install refused" "$F3_OUT"
+assert "$([ -d "$PREFIX/releases/relD" ] && echo no || echo yes)" \
+  "staged-verify failure: no release directory was left behind"
+assert "$(find "$PREFIX/.staging" -maxdepth 1 -mindepth 1 2>/dev/null | grep -q . && echo no || echo yes)" \
+  "staged-verify failure: the staging directory was cleaned up"
+assert_survived "staged-verify failure"
+
+# ---- fault 4: the activation pointer cannot be written ----------------------------------------
+# Both mechanisms civic_set_pointer can use are blocked, and only for the `current` pointer, so the
+# failure lands exactly where it matters: after the new release is staged and in place.
+cat >"$FAULTBIN/mv" <<SHIM
+#!/bin/sh
+for a in "\$@"; do
+  case "\$a" in */current) printf 'injected pointer failure\n' >&2; exit 1 ;; esac
+done
+exec "$REAL_MV" "\$@"
+SHIM
+cat >"$FAULTBIN/ln" <<SHIM
+#!/bin/sh
+for a in "\$@"; do
+  case "\$a" in */current) printf 'injected pointer failure\n' >&2; exit 1 ;; esac
+done
+exec "$REAL_LN" "\$@"
+SHIM
+chmod 755 "$FAULTBIN/mv" "$FAULTBIN/ln"
+set +e
+F4_OUT="$( (cd "$BUNDLES/relD" && PATH="$FAULTBIN:$PATH" sh install.sh --no-start) 2>&1 )"
+F4_RC=$?
+set -e
+rm -f "$FAULTBIN/mv" "$FAULTBIN/ln"
+assert "$([ "$F4_RC" -ne 0 ] && echo yes || echo no)" \
+  "pointer failure: install reported failure" "$F4_OUT"
+assert_survived "pointer failure"
+assert "$(printf '%s' "$F4_OUT" | grep -q '重新运行' && echo yes || echo no)" \
+  "pointer failure: the message says re-running the installer will finish the job"
+
+# ---- fault 5: resume finishes the interrupted activation --------------------------------------
+# relD's directory is now on disk from fault 4 but was never activated. A plain re-run must verify it
+# and activate it, without copying again.
+set +e
+F5_OUT="$( (cd "$BUNDLES/relD" && sh install.sh --no-start) 2>&1 )"
+F5_RC=$?
+set -e
+assert "$([ "$F5_RC" -eq 0 ] && echo yes || echo no)" "resume: install succeeded" "$F5_OUT"
+assert "$(printf '%s' "$F5_OUT" | grep -q '续做启用步骤' && echo yes || echo no)" \
+  "resume: it said it was resuming rather than re-copying"
+assert "$([ "$(readlink "$PREFIX/current")" = "releases/relD" ] && echo yes || echo no)" \
+  "resume: relD is now active" "$(readlink "$PREFIX/current")"
+
+# ---- fault 6: same release, already active ----------------------------------------------------
+set +e
+F6_OUT="$( (cd "$BUNDLES/relD" && sh install.sh --no-start) 2>&1 )"
+F6_RC=$?
+set -e
+assert "$([ "$F6_RC" -eq 0 ] && echo yes || echo no)" "same release: exits 0 without acting" "$F6_OUT"
+assert "$([ -f "$PREFIX/releases/relD/app/index.html" ] && echo yes || echo no)" \
+  "same release: the installed files were not disturbed"
+assert "$(printf '%s' "$F6_OUT" | grep -q '重新出包' && echo yes || echo no)" \
+  "same release: the operator is told what to do instead"
+
+# ---- fault 7: --force is gone --------------------------------------------------------------------
+set +e
+F7_OUT="$( (cd "$BUNDLES/relD" && sh install.sh --force) 2>&1 )"
+F7_RC=$?
+set -e
+assert "$([ "$F7_RC" -ne 0 ] && echo yes || echo no)" "--force is rejected" "$F7_OUT"
+assert "$([ -f "$PREFIX/releases/relD/app/index.html" ] && echo yes || echo no)" \
+  "--force did not delete anything"
+
+# ---- fault 8: desktop entry cannot be written --------------------------------------------------
+# The directory is made read-only rather than replaced by a file: `mkdir -p` on an existing directory
+# still succeeds, so the run reaches the desktop step with the release already activated — which is
+# the case under test. Replacing it with a file would instead abort earlier, testing something else.
+make_bundle relE
+mkdir -p "$SANDBOX/.local/share/applications"
+chmod 500 "$SANDBOX/.local/share/applications"
+set +e
+F8_OUT="$( (cd "$BUNDLES/relE" && sh install.sh --no-start) 2>&1 )"
+F8_RC=$?
+set -e
+chmod 700 "$SANDBOX/.local/share/applications"
+assert "$([ "$F8_RC" -ne 0 ] && echo yes || echo no)" \
+  "desktop failure: reported as a failure" "$F8_OUT"
+assert "$([ "$(readlink "$PREFIX/current")" = "releases/relE" ] && echo yes || echo no)" \
+  "desktop failure: the release is still activated (it is usable without a menu entry)"
+assert "$(printf '%s' "$F8_OUT" | grep -q 'civic-work-desk' && echo yes || echo no)" \
+  "desktop failure: the message gives the command to start it with"
+
+# ================================================================ stop safety
+group '15. stop never escalates to SIGKILL against an unproven PID'
+#
+# A stand-in is used rather than the real server, because what has to be controlled is (a) ignoring
+# SIGTERM so the ten-second window is actually entered, and (b) changing identity inside it. The
+# stand-in is built to pass every ownership check: its command line carries `httpd`, the canonical
+# host:port and the install prefix, and its real start time is recorded as the token.
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+
+start_stubborn() {
+  # A process that ignores TERM and looks exactly like ours.
+  sh -c 'trap "" TERM; while :; do sleep 1; done' \
+    httpd -f -p "127.0.0.1:$PORT" -h "$PREFIX/current/app" &
+  STUB_PID=$!
+  mkdir -p "$XDG_RUNTIME_DIR/civic-work-desk"
+  printf '%s\n' "$STUB_PID" >"$XDG_RUNTIME_DIR/civic-work-desk/httpd.pid"
+  printf '%s\n' "$PREFIX/current/app" >"$XDG_RUNTIME_DIR/civic-work-desk/httpd.root"
+  printf 'relE\n' >"$XDG_RUNTIME_DIR/civic-work-desk/httpd.release"
+  # Its genuine start time, read the same way the library reads it.
+  rest="$(sed 's/^.*) //' "/proc/$STUB_PID/stat")"
+  # shellcheck disable=SC2086
+  set -- $rest
+  printf '%s\n' "${20}" >"$XDG_RUNTIME_DIR/civic-work-desk/httpd.starttime"
+}
+
+# 15a: identity holds throughout — escalation to SIGKILL is correct and must happen.
+start_stubborn
+STUB_A="$STUB_PID"
+sleep 1
+assert "$([ -n "$(our_pid)" ] && echo yes || echo no)" \
+  "the stand-in is accepted as ours (so the test is testing something)"
+set +e
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1
+STOP_A_RC=$?
+set -e
+assert "$(kill -0 "$STUB_A" 2>/dev/null && echo no || echo yes)" \
+  "identity intact: a TERM-ignoring server of ours is force-stopped"
+assert "$([ "$STOP_A_RC" -eq 0 ] && echo yes || echo no)" \
+  "identity intact: stop reports success" "rc=$STOP_A_RC"
+
+# 15b: identity changes inside the wait — SIGKILL must NOT be sent.
+start_stubborn
+STUB_B="$STUB_PID"
+sleep 1
+# Note the `set +e`: civic-lib.sh carries `set -eu`, so sourcing it makes a non-zero return abort this
+# helper before it can record the status — which is exactly what happened the first time, leaving an
+# empty file and an assertion that read `rc=`.
+cat >"$WORK/do-stop.sh" <<STOPPER
+#!/bin/sh
+. "$PREFIX/lib/civic-lib.sh"
+set +e
+civic_server_stop >/dev/null 2>&1
+rc=\$?
+set -e
+printf '%s\n' "\$rc" >"$WORK/stop-rc"
+STOPPER
+chmod 755 "$WORK/do-stop.sh"
+: >"$WORK/stop-rc"
+sh "$WORK/do-stop.sh" &
+STOPPER_PID=$!
+# Two seconds in — well inside the ten-second wait — the recorded identity stops matching.
+sleep 2
+printf '999999999\n' >"$XDG_RUNTIME_DIR/civic-work-desk/httpd.starttime"
+wait "$STOPPER_PID" 2>/dev/null || true
+STOP_B_RC="$(cat "$WORK/stop-rc" 2>/dev/null || echo missing)"
+assert "$(kill -0 "$STUB_B" 2>/dev/null && echo yes || echo no)" \
+  "identity changed mid-stop: the process was NOT signalled with SIGKILL"
+assert "$([ "$STOP_B_RC" = 2 ] && echo yes || echo no)" \
+  "identity changed mid-stop: stop reports the refusal distinctly (rc=2)" "rc=$STOP_B_RC"
+assert "$([ -z "$(our_pid)" ] && echo yes || echo no)" \
+  "identity changed mid-stop: our runtime state was cleared"
+kill -9 "$STUB_B" 2>/dev/null || true
+
+# ================================================================ launcher lock
+group '16. launcher lock recovers from every abandoned shape'
+#
+# The lock is a symlink whose target IS the holder PID, so "a lock with no holder" cannot exist — the
+# shape that used to hang a launcher for thirty seconds and then fail. What remains is to prove that
+# every *abandoned* shape is recovered and that a genuinely live holder is still respected.
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+repoint "$PREFIX/current" relE
+LOCK="$XDG_RUNTIME_DIR/civic-work-desk/launcher.lock"
+mkdir -p "$XDG_RUNTIME_DIR/civic-work-desk"
+
+# 16a: a holder that no longer exists.
+rm -f "$LOCK"
+ln -s 999999 "$LOCK"
+set +e
+L1_OUT="$("$BIN/civic-work-desk" --no-browser 2>&1)"
+L1_RC=$?
+set -e
+assert "$([ "$L1_RC" -eq 0 ] && echo yes || echo no)" "dead holder: lock broken and launch proceeded" "$L1_OUT"
+assert "$([ "$(health_release)" = relE ] && echo yes || echo no)" "dead holder: server healthy afterwards"
+
+# 16b: a holder that is not a number at all.
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+rm -f "$LOCK"
+ln -s not-a-pid "$LOCK"
+set +e
+L2_OUT="$("$BIN/civic-work-desk" --no-browser 2>&1)"
+L2_RC=$?
+set -e
+assert "$([ "$L2_RC" -eq 0 ] && echo yes || echo no)" "garbage holder: lock broken" "$L2_OUT"
+
+# 16c: the holder PID is alive but belongs to something unrelated — the PID-reuse case.
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+sleep 300 &
+UNRELATED=$!
+rm -f "$LOCK"
+ln -s "$UNRELATED" "$LOCK"
+set +e
+L3_OUT="$("$BIN/civic-work-desk" --no-browser 2>&1)"
+L3_RC=$?
+set -e
+assert "$([ "$L3_RC" -eq 0 ] && echo yes || echo no)" "reused holder PID: lock broken" "$L3_OUT"
+assert "$(kill -0 "$UNRELATED" 2>/dev/null && echo yes || echo no)" \
+  "reused holder PID: the unrelated process was not touched"
+kill "$UNRELATED" 2>/dev/null || true
+
+# 16d: a genuinely live launcher holds it — must be respected, then released.
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+sh -c 'sleep 25' civic-work-desk &
+FAKE_LAUNCHER=$!
+rm -f "$LOCK"
+ln -s "$FAKE_LAUNCHER" "$LOCK"
+: >"$WORK/waiter-rc"
+sh -c "\"$BIN/civic-work-desk\" --no-browser >/dev/null 2>&1; printf '%s\n' \$? >\"$WORK/waiter-rc\"" &
+WAITER=$!
+sleep 3
+assert "$([ -z "$(our_pid)" ] && echo yes || echo no)" \
+  "live holder: the second launcher waited instead of starting a server"
+rm -f "$LOCK"
+kill "$FAKE_LAUNCHER" 2>/dev/null || true
+wait "$WAITER" 2>/dev/null || true
+assert "$([ "$(cat "$WORK/waiter-rc" 2>/dev/null)" = 0 ] && echo yes || echo no)" \
+  "live holder: once the lock was released the launcher completed" "rc=$(cat "$WORK/waiter-rc" 2>/dev/null)"
+
+# 16e: two launchers at once — one server, both satisfied.
+"$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+rm -f "$LOCK"
+: >"$WORK/race-a"
+: >"$WORK/race-b"
+sh -c "\"$BIN/civic-work-desk\" --no-browser >/dev/null 2>&1; printf '%s\n' \$? >\"$WORK/race-a\"" &
+RA=$!
+sh -c "\"$BIN/civic-work-desk\" --no-browser >/dev/null 2>&1; printf '%s\n' \$? >\"$WORK/race-b\"" &
+RB=$!
+wait "$RA" 2>/dev/null || true
+wait "$RB" 2>/dev/null || true
+RACE_COUNT="$(busybox ps 2>/dev/null | grep 'httpd' | grep -c "$PREFIX" || true)"
+assert "$([ "$RACE_COUNT" -le 1 ] && echo yes || echo no)" \
+  "simultaneous launches: exactly one owned server exists" "counted $RACE_COUNT"
+assert "$([ "$(cat "$WORK/race-a" 2>/dev/null)" = 0 ] && [ "$(cat "$WORK/race-b" 2>/dev/null)" = 0 ] && echo yes || echo no)" \
+  "simultaneous launches: both exited 0" "a=$(cat "$WORK/race-a" 2>/dev/null) b=$(cat "$WORK/race-b" 2>/dev/null)"
+
+# 16f: the lock carries its holder atomically, by construction.
+assert "$([ -L "$LOCK" ] || [ ! -e "$LOCK" ] && echo yes || echo no)" \
+  "the lock is a symlink (so it cannot exist without naming a holder)"
+
 # ================================================================ uninstall
-group '14. uninstall preserves user data'
+group '17. uninstall preserves user data'
 mkdir -p "$SANDBOX/Downloads" "$SANDBOX/.config/com.360.browser/Default"
 printf '{"backup":true}\n' >"$SANDBOX/Downloads/civic-backup.json"
 printf 'x\n' >"$SANDBOX/Downloads/report.xlsx"
@@ -532,6 +894,7 @@ assert "$(printf '%s' "$UNINSTALL_OUT" | grep -q '浏览器中仍然保留' && e
   "uninstall warns that browser-resident data remains"
 
 # ================================================================ summary
+SUMMARY_PRINTED=yes
 printf '\n==================================================================\n'
 printf 'tests run: %s   pass: %s   fail: %s\n' "$TOTAL" "$PASS" "$FAIL"
 
