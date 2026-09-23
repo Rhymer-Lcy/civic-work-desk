@@ -54,34 +54,90 @@ civic_log "launch requested release=$RELEASE"
 
 # ---------------------------------------------------------------- 2. single-launcher lock
 #
-# Double-clicking a menu entry twice in quick succession must not start two servers. `mkdir` is the
-# atomic primitive available in POSIX sh; the loser of the race waits for the winner instead of
-# proceeding. A lock whose owner is gone is stale — that happens on a kill or a power loss — and is
-# broken only after confirming the recorded PID no longer exists.
+# Double-clicking a menu entry twice must not start two servers.
+#
+# ## The lock is a symlink whose target is the holder's PID
+#
+# Not a directory containing a pid file. That shape had a hole: `mkdir` then `printf > lock/pid` are
+# two steps, so a launcher killed between them leaves a lock with no holder — and a later launcher
+# cannot tell that from a launcher that is merely mid-write. The previous code waited 30 seconds and
+# then failed, leaving the lock to be cleared by a logout or a reboot.
+#
+# A grace period would narrow that window. A symlink removes it: `ln -s <pid> <lock>` is a single
+# atomic operation that both takes the lock and records who holds it, and it fails if the name already
+# exists. There is no instant at which the lock exists without a holder, so the pid-less case cannot
+# occur at all — and a dangling symlink target is perfectly legal, since nothing ever resolves it.
+#
+# ## Breaking a stale lock without stealing a live one
+#
+# The holder is re-read immediately before removal and must still be the same value. That is what
+# makes it safe rather than merely unlikely: for the removal to hit the wrong lock, another launcher
+# would have had to replace it in that window — but replacing it requires removing it first, which
+# has not happened yet, and any new holder is a *live* process whose PID cannot equal the dead PID we
+# are about to act on. So "still the same holder" implies "still the same lock".
 LOCK="$CIVIC_RUN/launcher.lock"
+
+lock_holder() {
+  readlink "$LOCK" 2>/dev/null || true
+}
+
+# Is this holder a launcher that is actually running? A PID that is alive but belongs to something
+# unrelated is the PID-reuse case and counts as abandoned.
+holder_is_live_launcher() {
+  candidate="$1"
+  case "$candidate" in
+    '' | *[!0-9]*) return 1 ;;
+  esac
+  kill -0 "$candidate" 2>/dev/null || return 1
+  case "$(civic_pid_cmdline "$candidate")" in
+    *civic-work-desk*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# `ln` has to exist for the lock to be takeable at all, and its absence is otherwise misdiagnosed:
+# the `2>/dev/null` below is there to swallow the expected "File exists" on contention, and it
+# swallows "ln: not found" just as quietly — so the loop would run to exhaustion and report
+# "another launch is in progress" when the real problem is a missing command.
+command -v ln >/dev/null 2>&1 \
+  || civic_die "本机缺少 ln 命令，无法取得启动锁。请联系交付方。"
+
 acquired=no
 i=0
 while [ "$i" -lt 30 ]; do
-  if mkdir "$LOCK" 2>/dev/null; then
-    printf '%s\n' "$$" >"$LOCK/pid"
+  if ln -s "$$" "$LOCK" 2>/dev/null; then
     acquired=yes
     break
   fi
-  holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
-  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-    civic_log "breaking stale launcher lock (holder=$holder gone)"
-    rm -f "$LOCK/pid"
-    rmdir "$LOCK" 2>/dev/null || true
+
+  holder="$(lock_holder)"
+  if [ -z "$holder" ]; then
+    # The lock vanished between the failed ln and the readlink. Retry immediately.
+    i=$((i + 1))
     continue
   fi
-  sleep 1
+
+  if holder_is_live_launcher "$holder"; then
+    sleep 1
+    i=$((i + 1))
+    continue
+  fi
+
+  # Abandoned: dead, non-numeric, or a PID now belonging to something that is not a launcher.
+  if [ "$(lock_holder)" = "$holder" ]; then
+    civic_log "breaking abandoned launcher lock (holder=$holder)"
+    rm -f "$LOCK"
+  fi
   i=$((i + 1))
 done
 [ "$acquired" = yes ] || civic_die "另一个启动过程仍在进行中，请稍后再试。"
 
+# Release only our own lock. If something else holds it by the time we exit, leaving it alone is
+# strictly better than removing a lock we do not own.
 release_lock() {
-  rm -f "$LOCK/pid"
-  rmdir "$LOCK" 2>/dev/null || true
+  if [ "$(lock_holder)" = "$$" ]; then
+    rm -f "$LOCK"
+  fi
 }
 trap release_lock EXIT INT TERM
 
