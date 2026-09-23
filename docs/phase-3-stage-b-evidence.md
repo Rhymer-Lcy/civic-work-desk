@@ -349,7 +349,7 @@ verdict, which was PASS throughout:
 
 - it reported 「0 个文件」 for a downloads directory that demonstrably held a planted backup, because
   `xdg-user-dir DOWNLOAD` falls back to `$HOME` on a machine with no user-dirs configuration, and the
-  code only rejected a *missing* directory, not that one. It was counting the top level of the home
+  code only rejected a _missing_ directory, not that one. It was counting the top level of the home
   directory and calling it Downloads;
 - the count itself printed as `（0` and stopped, because `grep -c ''` exits non-zero on no match, so
   `|| echo 0` appended a second line and the variable held two.
