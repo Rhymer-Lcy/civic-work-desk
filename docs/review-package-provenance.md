@@ -346,3 +346,25 @@ The packager truncates captured gate output, so the log does not name the failin
 cause is not established, and calling it "flaky" is a description of the observation, not a diagnosis.
 Recorded rather than dismissed: if e2e fails again inside the packager, the first thing to fix is the
 output truncation, so the next occurrence names itself.
+
+## Stage-B.1 gate runs (2026-09-23, UTC+8)
+
+### `civic-work-desk-phase-2-20260923-022624-492c012dedbd.zip`
+
+digest `3f01aa3ea602041851a41c28a72560aa5ba575709ee7d3926bab460cefa8f214`
+
+**FAIL: format.** One documentation file edited after the last formatting pass. Retained because it
+happened, and because it is the third time in this project that a doc edit reached a gate unformatted
+— the habit to fix is running Prettier after every documentation edit, not just after code.
+
+### `civic-work-desk-phase-2-20260923-023049-bff2290a5523.zip`
+
+digest `35b5280a06446b64e20d3b3f28165dffff9e4be6d40b25c158e67075aed5e352`
+
+All ten gates passed. `verify-review-package.mjs` 21/21; consistency audit PASS with 32 archives and
+32 checksums present.
+
+Build reproducibility again held: the gate run's own `npm run build` replaced `dist/`, and the
+`2026.09.23-4` archive's 23 application files remained byte-identical to it afterwards, so the
+delivered artifact needed no rebuild. Two builds of one commit on one machine — not a general
+determinism claim.
