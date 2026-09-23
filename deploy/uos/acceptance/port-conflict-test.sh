@@ -56,8 +56,8 @@ printf 'decoy\n' >"$WORK/decoy-root/index.html"
 
 DECOY_PID=""
 
-cleanup() {
-  # 只结束本脚本自己启动的占位进程，并且在结束前再核对一次它的命令行。
+# 只结束本脚本自己启动的占位进程，并且在结束前再核对一次它的命令行。
+stop_decoy() {
   if [ -n "$DECOY_PID" ] && kill -0 "$DECOY_PID" 2>/dev/null; then
     cmd=""
     if [ -r "/proc/$DECOY_PID/cmdline" ]; then
@@ -66,13 +66,24 @@ cleanup() {
     case "$cmd" in
       *"$WORK/decoy-root"*)
         kill "$DECOY_PID" 2>/dev/null || true
-        printf '\n已结束占位进程（PID %s）。\n' "$DECOY_PID"
+        i=0
+        while [ "$i" -lt 10 ]; do
+          kill -0 "$DECOY_PID" 2>/dev/null || break
+          sleep 1
+          i=$((i + 1))
+        done
+        printf '已结束占位进程（PID %s）。\n' "$DECOY_PID"
         ;;
       *)
-        printf '\n注意：PID %s 的命令行已不是本脚本的占位进程，未做任何处理。\n' "$DECOY_PID"
+        printf '注意：PID %s 的命令行已不是本脚本的占位进程，未做任何处理。\n' "$DECOY_PID"
         ;;
     esac
   fi
+  DECOY_PID=""
+}
+
+cleanup() {
+  stop_decoy
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
@@ -211,10 +222,41 @@ if printf '%s' "$LAUNCH_OUT" | grep -q "$ORIGIN"; then
   printf '  [note] 输出中出现了规范地址，属正常提示。\n'
 fi
 
+# ---------------------------------------------------------------- 6. 恢复正常服务
+#
+# 本测试一开始停掉了 CivicWorkDesk 自己的服务，好让占位进程能占住端口。测完必须把它恢复，
+# 否则后面「状态与停止命令」那一节就无从测起——停止一个本来就没在运行的服务，什么也证明不了。
+printf '\n第 6 步：移除占位进程，恢复 CivicWorkDesk 正常服务\n'
+stop_decoy
+sleep 1
+
+set +e
+RESTORE_OUT="$("$LAUNCHER" --no-browser 2>&1)"
+RESTORE_RC=$?
+set -e
+printf '%s\n' "$RESTORE_OUT" | sed 's/^/    /'
+
+if [ "$RESTORE_RC" -eq 0 ]; then
+  check yes "CivicWorkDesk 服务已恢复（--no-browser，未打开浏览器）"
+else
+  check no "未能恢复 CivicWorkDesk 服务" "退出码 $RESTORE_RC"
+fi
+
+set +e
+"$STATUS_CMD" >/dev/null 2>&1
+RESTORE_STATUS_RC=$?
+set -e
+if [ "$RESTORE_STATUS_RC" -eq 0 ]; then
+  check yes "恢复后健康检查通过（后续可以正常测试 status / stop）"
+else
+  check no "恢复后健康检查未通过" "status 退出码 $RESTORE_STATUS_RC"
+fi
+
 printf '\n======================================================\n'
 printf '通过 %s 项，失败 %s 项。\n' "$PASS" "$FAIL"
 if [ "$FAIL" -eq 0 ]; then
   printf 'RESULT: PASS\n'
+  printf '\n本地服务现在处于运行状态，请继续做「状态与停止命令」一节。\n'
   exit 0
 fi
 printf 'RESULT: FAIL —— 请把上面整段输出回传。\n'
