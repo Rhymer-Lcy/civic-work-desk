@@ -47,7 +47,7 @@ TOTAL=0
 # Every assertion is counted, and the total is asserted at the end. Not decoration: the first run of
 # this suite had this number wrong, and the mismatch is what said so. A block that fails to run
 # otherwise looks exactly like a block that passed.
-EXPECTED_TESTS=59
+EXPECTED_TESTS=69
 
 ok() {
   TOTAL=$((TOTAL + 1))
@@ -386,8 +386,118 @@ set -e
 assert "$([ "$STATUS_RC" -eq 1 ] && echo yes || echo no)" \
   "status exits 1 when not running" "got $STATUS_RC"
 
+# ================================================================ minimal environments
+group '12. no setsid, and one HTTP client at a time'
+#
+# Everything above ran with the full development PATH: setsid present, GNU curl and GNU wget present.
+# The target may have none of those. Two branches had therefore never executed, and one of them was
+# broken:
+#
+#   `busybox wget -q -T 5 -O - <url>` SEGFAULTS on BusyBox 1.30.1 (exit 139, no output), while the
+#   same command without `-T` works. Since `command -v wget` resolves to BusyBox's wget on a
+#   BusyBox-centric system, the health gate would have died on exactly the machines this deployment
+#   targets — and the symptom would have been "the application will not open" with a perfectly
+#   healthy server behind it. The timeout is now applied with `timeout(1)` from outside instead.
+#
+# `setsid` cannot be masked by prepending to PATH, because `command -v` would find the real one
+# further along. So the PATH is built from scratch, out of symlinks to real binaries — and `sh` is the
+# real /bin/sh, not BusyBox's, because BusyBox's shell exposes every applet (including setsid) without
+# a PATH lookup at all. That was measured: `busybox sh -c 'command -v setsid'` answers, `dash` does not.
+minbin() {
+  dir="$1"
+  shift
+  mkdir -p "$dir"
+  # The launcher's real external-command dependencies. Deriving this list is half the value of the
+  # section: `head` was missing from the first version, and the launcher failed with
+  # "head: not found" followed by 「服务返回的版本信息无法解析」 — a health-gate failure whose stated
+  # cause pointed at the server rather than at the shell. All of these are POSIX and present in both
+  # coreutils and BusyBox, so the dependency is acceptable; what was not acceptable was not knowing it.
+  for tool in sh date mkdir rmdir cat head readlink basename sleep tr sed grep rm mv wc timeout; do
+    src="$(command -v "$tool" 2>/dev/null || true)"
+    [ -n "$src" ] || {
+      printf 'harness error: this host has no %s\n' "$tool" >&2
+      exit 2
+    }
+    ln -sf "$src" "$dir/$tool"
+  done
+  ln -sf "$(command -v busybox)" "$dir/busybox"
+  cp "$FAKEBIN/xdg-open" "$dir/xdg-open"
+  for client in "$@"; do
+    case "$client" in
+      curl) ln -sf "$(command -v curl)" "$dir/curl" ;;
+      busybox-wget) ln -sf "$(command -v busybox)" "$dir/wget" ;;
+    esac
+  done
+}
+
+MIN_ALL_OUT=""
+run_in_minbin() {
+  dir="$1"
+  "$BIN/civic-work-desk-stop" >/dev/null 2>&1 || true
+  : >"$XDG_OPEN_MARKER"
+  set +e
+  MIN_OUT="$(PATH="$dir" XDG_OPEN_MARKER="$XDG_OPEN_MARKER" HOME="$SANDBOX" \
+    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" "$dir/sh" "$BIN/civic-work-desk" 2>&1)"
+  MIN_RC=$?
+  set -e
+  MIN_ALL_OUT="$MIN_ALL_OUT
+$MIN_OUT"
+}
+
+CURLBIN="$WORK/minbin-curl"
+WGETBIN="$WORK/minbin-bbwget"
+minbin "$CURLBIN" curl
+minbin "$WGETBIN" busybox-wget
+
+MIN_HAS_SETSID="$(PATH="$CURLBIN" "$CURLBIN/sh" -c 'command -v setsid >/dev/null 2>&1 && echo yes || echo no')"
+assert "$([ "$MIN_HAS_SETSID" = no ] && echo yes || echo no)" \
+  "setsid is genuinely absent from the crafted environment" "got $MIN_HAS_SETSID"
+
+run_in_minbin "$CURLBIN"
+assert "$([ "$MIN_RC" -eq 0 ] && echo yes || echo no)" \
+  "launcher succeeds with curl only and no setsid" "$MIN_OUT"
+assert "$([ "$(health_release)" = relA ] && echo yes || echo no)" \
+  "health gate passed through curl"
+
+run_in_minbin "$WGETBIN"
+assert "$([ "$MIN_RC" -eq 0 ] && echo yes || echo no)" \
+  "launcher succeeds with a wget that is BusyBox, and no setsid" "$MIN_OUT"
+assert "$([ "$(health_release)" = relA ] && echo yes || echo no)" \
+  "health gate passed through the generic wget branch (-T segfault regression)"
+
+# And the third environment: no curl, and nothing on PATH *named* wget. The client chain then reaches
+# its `busybox-wget` case, which the previous environment never selects — `command -v wget` finds the
+# symlink there and takes the generic branch instead. Found by mutation testing: planting the `-T`
+# segfault in the busybox-wget case passed all 67 assertions until this environment existed.
+BBBIN="$WORK/minbin-bbonly"
+minbin "$BBBIN"
+run_in_minbin "$BBBIN"
+assert "$([ "$MIN_RC" -eq 0 ] && echo yes || echo no)" \
+  "launcher succeeds with only BusyBox's own wget applet" "$MIN_OUT"
+assert "$([ "$(health_release)" = relA ] && echo yes || echo no)" \
+  "health gate passed through the busybox-wget branch (-T segfault regression)"
+
+# The `nc` branch cannot be driven through the launcher on this host: it is reached only when BusyBox
+# has no wget applet, and this BusyBox has one. So the command line itself is checked directly, and
+# that limit is stated rather than papered over — the branch is verified, the selection path into it
+# is not.
+NC_BODY="$(printf 'GET /deployment-health.json HTTP/1.0\r\nHost: 127.0.0.1:%s\r\nConnection: close\r\n\r\n' "$PORT" \
+  | timeout 8 busybox nc 127.0.0.1 "$PORT" 2>/dev/null | tr -d '\r' | sed -e '1,/^$/d')"
+assert "$(printf '%s' "$NC_BODY" | grep -q '"releaseId"' && echo yes || echo no)" \
+  "the nc fallback command line returns the health body (branch checked directly)"
+
+MIN_PID="$(our_pid)"
+assert "$([ -n "$MIN_PID" ] && kill -0 "$MIN_PID" 2>/dev/null && echo yes || echo no)" \
+  "the server outlived the launcher without setsid" "pid=${MIN_PID:-none}"
+
+# The generic guard. A missing command produces "<tool>: not found" and then some *other*, misleading
+# error — so name it directly instead of leaving the next reader to infer it from an exit code.
+assert "$(printf '%s' "$MIN_ALL_OUT" | grep -q 'not found' && echo no || echo yes)" \
+  "no external command was missing in either minimal environment" \
+  "$(printf '%s' "$MIN_ALL_OUT" | grep 'not found' | head -n 3)"
+
 # ================================================================ second upgrade
-group '12. second upgrade, where BOTH pointers already exist'
+group '13. second upgrade, where BOTH pointers already exist'
 # The first upgrade only exercised creating `previous`. This one overwrites a `previous` that already
 # points somewhere — the other half of the symlink bug, and the half a single upgrade test hides.
 # State on entry: current -> relA, previous -> relB.
@@ -402,7 +512,7 @@ assert "$(printf '%s' "$UPGRADE2_OUT" | grep -q '已清理旧版本目录：relB
   "the pruning was reported rather than silent"
 
 # ================================================================ uninstall
-group '13. uninstall preserves user data'
+group '14. uninstall preserves user data'
 mkdir -p "$SANDBOX/Downloads" "$SANDBOX/.config/com.360.browser/Default"
 printf '{"backup":true}\n' >"$SANDBOX/Downloads/civic-backup.json"
 printf 'x\n' >"$SANDBOX/Downloads/report.xlsx"
