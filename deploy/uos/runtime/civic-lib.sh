@@ -49,6 +49,9 @@ fi
 CIVIC_PID_FILE="$CIVIC_RUN/httpd.pid"
 CIVIC_ROOT_FILE="$CIVIC_RUN/httpd.root"
 CIVIC_RELEASE_FILE="$CIVIC_RUN/httpd.release"
+# Process start time in clock ticks since boot, recorded at launch. The identity token that closes the
+# PID-reuse window; see civic_pid_is_ours.
+CIVIC_START_FILE="$CIVIC_RUN/httpd.starttime"
 
 # ---------------------------------------------------------------- output helpers
 
@@ -237,19 +240,42 @@ civic_health() {
 
 # ---------------------------------------------------------------- process ownership
 #
-# Three independent facts must all hold before a PID is treated as ours (§12):
+# Four independent facts must all hold before a PID is treated as ours (§12):
 #   - the process exists;
 #   - its command line is a BusyBox httpd bound to the canonical host:port;
-#   - its document root lies under our own install prefix.
+#   - its document root lies under our own install prefix;
+#   - its process start time equals the value recorded when we started it.
 #
-# The third is what distinguishes *our* server from another BusyBox httpd a user happens to be
-# running, and it is why a stop operation can never hit an unrelated process. PID reuse is assumed,
-# not hoped against: the file only nominates a candidate, /proc adjudicates.
+# The third distinguishes *our* server from another BusyBox httpd the user happens to be running. The
+# fourth closes PID reuse. PID reuse is assumed, not hoped against: the file nominates a candidate,
+# /proc adjudicates, and the start time is what makes the adjudication an identity check rather than a
+# resemblance check — a recycled PID running a coincidentally similar command line cannot forge it.
 civic_pid_cmdline() {
   pid="$1"
   if [ -r "/proc/$pid/cmdline" ]; then
     tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true
   fi
+}
+
+# Field 22 of /proc/<pid>/stat: the process start time in clock ticks since boot. Immutable for the
+# life of the process and not reused with the PID, which is exactly the property needed here.
+#
+# Parsed by cutting everything up to the LAST ')'. Field 2 is the executable name in parentheses and
+# may itself contain spaces and parentheses, so splitting on whitespace from the left is wrong; a
+# greedy match to the final ')' is correct. Measured against a process whose name was `we ird) name`.
+civic_pid_starttime() {
+  pid="$1"
+  [ -r "/proc/$pid/stat" ] || return 1
+  rest="$(sed 's/^.*) //' "/proc/$pid/stat" 2>/dev/null)" || return 1
+  [ -n "$rest" ] || return 1
+  # shellcheck disable=SC2086 # deliberate word splitting to index the stat fields
+  set -- $rest
+  [ $# -ge 20 ] || return 1
+  value="${20}"
+  case "$value" in
+    '' | *[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$value"
 }
 
 civic_pid_is_ours() {
@@ -270,6 +296,18 @@ civic_pid_is_ours() {
     *"$CIVIC_PREFIX"*) ;;
     *) return 1 ;;
   esac
+
+  # The start-time token, when we have one. Absent only for a server started by an older version of
+  # this library, so its absence weakens the check rather than failing it — but a token that exists
+  # and disagrees is decisive, and means the PID now belongs to something else.
+  if [ -f "$CIVIC_START_FILE" ]; then
+    recorded="$(cat "$CIVIC_START_FILE" 2>/dev/null || true)"
+    if [ -n "$recorded" ]; then
+      actual="$(civic_pid_starttime "$pid" 2>/dev/null || true)"
+      [ -n "$actual" ] || return 1
+      [ "$actual" = "$recorded" ] || return 1
+    fi
+  fi
   return 0
 }
 
@@ -373,10 +411,19 @@ civic_server_start() {
   fi
   pid=$!
 
+  # The identity token is written BEFORE the PID file, so there is never an instant at which the PID
+  # file names a process for which no token exists. A missing token weakens civic_pid_is_ours to the
+  # cmdline checks; a wrong one must never be possible.
+  start_token="$(civic_pid_starttime "$pid" 2>/dev/null || true)"
+  if [ -n "$start_token" ]; then
+    printf '%s\n' "$start_token" >"$CIVIC_START_FILE"
+  else
+    rm -f "$CIVIC_START_FILE"
+  fi
   printf '%s\n' "$pid" >"$CIVIC_PID_FILE"
   printf '%s\n' "$app_dir" >"$CIVIC_ROOT_FILE"
   printf '%s\n' "$release" >"$CIVIC_RELEASE_FILE"
-  civic_log "started httpd pid=$pid release=$release"
+  civic_log "started httpd pid=$pid release=$release starttime=${start_token:-unknown}"
 
   # Confirm it is still alive. An immediate exit means a rejected option or a lost bind race, and
   # must be reported as a failure rather than handed to the health check as if it had started.
@@ -397,24 +444,44 @@ civic_server_start() {
   printf '%s\n' "$pid"
 }
 
-# Stop the owned server. Never takes a PID from anywhere but our own state file, and never signals
-# anything whose identity has not been confirmed.
+civic_clear_run_state() {
+  rm -f "$CIVIC_PID_FILE"
+  rm -f "$CIVIC_ROOT_FILE"
+  rm -f "$CIVIC_RELEASE_FILE"
+  rm -f "$CIVIC_START_FILE"
+}
+
+# Stop the owned server.
+#
+# Exit status: 0 stopped · 1 nothing of ours was running · 2 the PID stopped being ours mid-stop and
+# was deliberately NOT signalled further. Echoes the PID on 0.
+#
+# ## Why ownership is re-checked before every signal
+#
+# The earlier version validated once, sent TERM, waited ten seconds, then sent SIGKILL to the same
+# number. Those ten seconds are a PID-reuse window: the server can exit during them, the kernel can
+# hand its PID to something unrelated, and the SIGKILL then lands on a stranger. The probability is
+# low and the consequence — killing someone else's process — is exactly what this deployment promises
+# it will never do, so it is re-checked rather than reasoned about.
+#
+# The re-check is the full identity test, including the start-time token, so a recycled PID whose
+# command line happens to resemble ours still fails it. And when the check fails, the response is to
+# stop and report, never to escalate: an unproven SIGKILL is worse than a stop that did not complete.
 civic_server_stop() {
   pid="$(civic_server_pid)"
   if [ -z "$pid" ]; then
     return 1
   fi
 
+  # TERM. Ownership was just established by civic_server_pid, immediately above.
   kill "$pid" 2>/dev/null || true
 
-  # Up to ten seconds; POSIX sleep counts whole seconds only. A static file server with no transfer
-  # in flight exits on the first TERM, so this almost always ends on the first iteration.
+  # Up to ten seconds; POSIX sleep counts whole seconds only. A static file server with no transfer in
+  # flight exits on the first TERM, so this almost always ends on the first iteration.
   i=0
   while [ "$i" -lt 10 ]; do
     if ! kill -0 "$pid" 2>/dev/null; then
-      rm -f "$CIVIC_PID_FILE"
-      rm -f "$CIVIC_ROOT_FILE"
-      rm -f "$CIVIC_RELEASE_FILE"
+      civic_clear_run_state
       civic_log "stopped httpd pid=$pid"
       printf '%s\n' "$pid"
       return 0
@@ -423,11 +490,86 @@ civic_server_stop() {
     i=$((i + 1))
   done
 
+  # Still alive after TERM. Re-prove identity before escalating.
+  if ! civic_pid_is_ours "$pid"; then
+    civic_log "refused to force-stop pid=$pid: identity no longer ours (PID reuse)"
+    printf '警告：进程 %s 已不再是本程序的服务（可能是 PID 被复用），\n' "$pid" >&2
+    printf '      因此没有对它发送强制结束信号。已清理本程序的运行状态。\n' >&2
+    printf '      如需确认当前占用端口 %s 的是什么：ss -ltnp | grep %s\n' "$CIVIC_PORT" "$CIVIC_PORT" >&2
+    civic_clear_run_state
+    return 2
+  fi
+
   kill -9 "$pid" 2>/dev/null || true
-  rm -f "$CIVIC_PID_FILE"
-  rm -f "$CIVIC_ROOT_FILE"
-  rm -f "$CIVIC_RELEASE_FILE"
-  civic_log "force-stopped httpd pid=$pid"
-  printf '%s\n' "$pid"
-  return 0
+
+  # And confirm it actually went. A KILL that did not take effect must not be reported as a stop.
+  i=0
+  while [ "$i" -lt 5 ]; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      civic_clear_run_state
+      civic_log "force-stopped httpd pid=$pid"
+      printf '%s\n' "$pid"
+      return 0
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+
+  civic_log "force-stop did not take effect for pid=$pid"
+  printf '错误：进程 %s 未能结束。运行状态未清理，以免丢失它的身份记录。\n' "$pid" >&2
+  return 2
+}
+
+# ---------------------------------------------------------------- pointer activation
+#
+# Repoint one of the release pointers (`current` / `previous`) and prove it moved.
+#
+# Two mechanisms, in order of preference:
+#
+#   1. a temporary symlink beside the target, then `mv -T`. `rename(2)` is atomic and does not follow
+#      symlinks, so there is no window in which the pointer is absent. `-T` is what stops mv from
+#      treating a destination that is a symlink-to-directory as a directory to move *into* — the
+#      original defect in this code, where the new pointer landed inside the old release while every
+#      command reported success.
+#   2. `ln -sfn`, which unlinks and recreates. Not atomic: a crash inside that window leaves no
+#      pointer at all. Used only where `mv -T` is unavailable.
+#
+# Measured on the development host: GNU coreutils mv replaces the pointer correctly under `-T` with
+# nothing landing in the old release directory, and BusyBox mv **rejects** `-T` with "invalid option"
+# rather than doing something else — so attempting the atomic path and falling back on failure is safe
+# in both directions. The target runs GNU coreutils 8.30, which has `-T`.
+#
+# Either way the result is read back, because the failure this guards against is a command that
+# reports success without moving anything.
+civic_set_pointer() {
+  pointer="$1"
+  release="$2"
+  target="releases/$release"
+  dir="$(dirname "$pointer")"
+  tmp="$dir/.civic-pointer.$$"
+
+  rm -f "$tmp"
+  ln -s "$target" "$tmp" 2>/dev/null || {
+    printf 'pointer-temp-failed\n'
+    return 1
+  }
+
+  if mv -T "$tmp" "$pointer" 2>/dev/null; then
+    method=atomic
+  else
+    rm -f "$tmp"
+    ln -sfn "$target" "$pointer" 2>/dev/null || {
+      printf 'pointer-write-failed\n'
+      return 1
+    }
+    method=non-atomic
+  fi
+
+  actual="$(readlink "$pointer" 2>/dev/null || true)"
+  if [ "$actual" != "$target" ]; then
+    printf 'pointer-mismatch:%s\n' "${actual:-none}"
+    return 1
+  fi
+  civic_log "pointer $pointer -> $target ($method)"
+  printf 'ok:%s\n' "$method"
 }
