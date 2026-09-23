@@ -368,3 +368,17 @@ Build reproducibility again held: the gate run's own `npm run build` replaced `d
 `2026.09.23-4` archive's 23 application files remained byte-identical to it afterwards, so the
 delivered artifact needed no rebuild. Two builds of one commit on one machine — not a general
 determinism claim.
+
+## Stage-B.2 gate run (2026-09-23, UTC+8)
+
+### `civic-work-desk-phase-2-20260923-031912-490fe78c9142.zip`
+
+digest `ab88f312ba6a41a35a55ed1da814720c5ca75e398546c94c79b75dc0f24a1b3a`
+
+All ten gates passed on the first attempt. `verify-review-package.mjs` 21/21; consistency audit PASS.
+Build reproducibility held again: the gate run's `npm run build` replaced `dist/`, and the
+`2026.09.23-5` archive's 23 application files remained byte-identical to it.
+
+Release ids `-1` through `-4` and every sidecar are preserved. Five release ids in one day is untidy;
+each was superseded by a defect found in the artifact rather than in the plan, and a reused id would
+be worse than an untidy list — returned evidence could then be matched against the wrong build.
