@@ -17,7 +17,7 @@
 安装包 SHA-256：
 
 ```
-388bd1f86298e3b5fdb257c6c47bcbf202ed84c43989a374237b8d67007d5c48
+fdef748d424f4e1ee46110cdeababb60210a8e38d7eeb22d72e8890d2fbe813e
 ```
 
 ## 二、最少要敲的命令

@@ -1,7 +1,7 @@
 CivicWorkDesk UOS release candidate
 releaseId=2026.09.23-1
 appVersion=0.1.0
-applicationCommit=4630ea93bf4f4b74516d128d57ad4a47b82b2541
+applicationCommit=403b13be1f0f9b9cc3abaaab90446659b7007905
 applicationPhase=Phase 2 build, unchanged
 phase3Stage=Stage B (final installed form — target validation pending)
 canonicalOrigin=http://127.0.0.1:8765
@@ -9,7 +9,7 @@ server=busybox-httpd
 serverSelectedBy=RC1.1 physical-target evidence (MIME, traversal, directory listing, app behaviour)
 pythonRequired=NO
 sudoRequired=NO
-builtAt=2026-09-23T03:43:17Z
+builtAt=2026-09-23T03:55:51Z
 builtOn=development workstation, Node 24
 validatedOn=UOS Desktop 20 Professional / loongarch64 / Loongson 3A6000 / kernel 4.19.0-loongson-3-desktop / 360 Browser 13.4.1140.83 / Chromium 126.0.6478.251
 targetTested=NO — final installed form not yet validated on the physical workstation
