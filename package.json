@@ -33,7 +33,10 @@
     "review:package": "node scripts/create-review-package.mjs",
     "review:verify": "node scripts/verify-review-package.mjs",
     "screenshots": "playwright test --project=screenshots",
-    "lint:uos": "node scripts/uos/lint-shell.mjs"
+    "lint:uos": "node scripts/uos/lint-shell.mjs",
+    "test:uos": "node scripts/uos/run-deployment-tests.mjs",
+    "test:uos:archive": "node scripts/uos/archive-tests.mjs",
+    "verify:uos": "npm run lint:uos && npm run test:uos && npm run test:uos:archive"
   },
   "dependencies": {
     "date-fns": "4.4.0",
