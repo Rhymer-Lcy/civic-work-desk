@@ -36,13 +36,40 @@ const OUT_DIR = join(ROOT, '_review_packages');
  * after one phase while its summary claims another. Bump it deliberately when a phase closes; earlier
  * archives keep the label they were built with, which is what makes a directory of them readable.
  */
-const PHASE = '2';
+const PHASE = '3';
 const PHASE_SLUG = `phase-${PHASE.replace(/\./g, '-')}`;
+
+/**
+ * The frozen UOS release that passed physical target validation, packaged verbatim.
+ *
+ * Named explicitly rather than globbed. A glob would pick up whichever release happened to be newest,
+ * and the one thing this package must not do is ship a different artifact under the digest the
+ * evidence is bound to. `verifyFrozenArtifacts` below re-checks both digests before the archive is
+ * written, and refuses to build if either disagrees.
+ */
+const FROZEN_RELEASE = {
+  'release/civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz':
+    '969a2a74bb3e893ef7e794729578383620f0d819e6ce74bd1e2cfb43f370e5bf',
+  'release/civic-work-desk-uos20-final-acceptance-2026.09.23-5.tar.gz':
+    'ac77a6e58eebb214acf16707d2a7e67a3aca2b98a36f8e55823822fee3680b30',
+};
 
 /* ------------------------------------------------------------------ packaging allow-list */
 
 /** Directories packaged in full (minus `EXCLUDED_SEGMENTS`). */
-const INCLUDE_DIRS = ['src', 'tests', 'docs', 'scripts', 'public', '.github', '.vscode', 'dist'];
+const INCLUDE_DIRS = [
+  'src',
+  'tests',
+  'docs',
+  'scripts',
+  'public',
+  '.github',
+  '.vscode',
+  'dist',
+  // The maintained UOS deployment payload: installer, runtime, acceptance kit. Reviewable source for
+  // everything inside the frozen release artifact.
+  'deploy',
+];
 
 /** Individual files packaged. Missing entries are skipped and reported. */
 const INCLUDE_FILES = [
@@ -68,6 +95,12 @@ const INCLUDE_FILES = [
   '.prettierrc.json',
   '.prettierignore',
   '_review_packages/.gitkeep',
+  // The frozen UOS release and acceptance kit, plus their sidecars. Listed here rather than collected,
+  // because INCLUDE_FILES bypasses EXCLUDED_NAMES — which otherwise drops every `.sha256`.
+  'release/civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz',
+  'release/civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz.sha256',
+  'release/civic-work-desk-uos20-final-acceptance-2026.09.23-5.tar.gz',
+  'release/civic-work-desk-uos20-final-acceptance-2026.09.23-5.tar.gz.sha256',
 ];
 
 /**
@@ -552,6 +585,39 @@ function testResults(results) {
 
 /* ------------------------------------------------------------------ main */
 
+/**
+ * Re-verify the frozen release artifacts before packaging them.
+ *
+ * The digests in FROZEN_RELEASE are the ones the physical-target evidence is bound to. If a file on
+ * disk no longer matches, something rebuilt it, and packaging it would put untested bytes under a
+ * tested digest — the one substitution this whole record exists to prevent. So this refuses rather
+ * than warns.
+ */
+function verifyFrozenArtifacts() {
+  const rows = [];
+  for (const [path, expected] of Object.entries(FROZEN_RELEASE)) {
+    const full = join(ROOT, path);
+    if (!existsSync(full)) {
+      console.error(`error: frozen artifact missing: ${path}`);
+      process.exit(2);
+    }
+    const actual = sha256(readFileSync(full));
+    if (actual !== expected) {
+      console.error(`error: ${path} no longer matches the validated digest.`);
+      console.error(`  expected ${expected}`);
+      console.error(`  actual   ${actual}`);
+      console.error(
+        'This artifact was rebuilt. The physical-target evidence does not apply to it.',
+      );
+      process.exit(2);
+    }
+    rows.push(`${path.split('/').pop()}  ${actual}`);
+  }
+  console.log('frozen release artifacts verified against their validated digests:');
+  for (const row of rows) console.log(`  ${row}`);
+  console.log('');
+}
+
 function main() {
   const skipGates = process.argv.includes('--no-gates');
   const now = new Date();
@@ -562,6 +628,8 @@ function main() {
 
   console.log('CivicWorkDesk — review package');
   console.log('');
+
+  verifyFrozenArtifacts();
 
   let results = [];
   if (skipGates) {
@@ -771,6 +839,10 @@ function buildSummary({ git, marks, results, skipGates, entryCount, zipName }) {
       );
   const countRows = skipGates ? ['| (gates skipped) | — |'] : totalsRows(results);
 
+  const frozenRows = Object.entries(FROZEN_RELEASE)
+    .map(([path, digest]) => `| \`${path.split('/').pop()}\` | \`${digest}\` |`)
+    .join('\n');
+
   return `# CivicWorkDesk — Phase ${PHASE} review package
 
 | | |
@@ -780,6 +852,49 @@ function buildSummary({ git, marks, results, skipGates, entryCount, zipName }) {
 | Commit | \`${git.sha}\` on \`${git.branch}\` |
 | Working tree | ${git.clean ? 'clean' : '**not clean** — see GIT_STATUS.txt'} |
 | Entries | ${String(entryCount)} |
+
+## Phase 3 — UOS Offline Deployment & Release Engineering: SIGNED OFF
+
+The authoritative closeout is \`docs/phase-3-final-signoff.md\`. This package carries it, the evidence
+behind it, and the exact artifact it describes.
+
+**The validated release, packaged verbatim under \`release/\`:**
+
+| Artifact | SHA-256 |
+| --- | --- |
+${frozenRows}
+
+Both digests were re-verified against the files on disk before this archive was written; the packager
+refuses to build if either disagrees. Neither artifact was rebuilt for the closeout, and no \`-6\`
+exists — the physical-target evidence is bound to these digests, so regenerating the bytes would void
+it.
+
+**Validated on:** UOS Desktop 20 Professional · loongarch64 / Loongson 3A6000 · kernel
+4.19.0-loongson-3-desktop · 360 Browser 13.4.1140.83 / Chromium 126.0.6478.251 · fully offline. No
+claim is made for Linux generally, other UOS versions, other LoongArch systems or other browser
+versions.
+
+**Where to read what:**
+
+| Topic | File |
+| --- | --- |
+| the sign-off itself | \`docs/phase-3-final-signoff.md\` |
+| physical-target evidence (class C), transcribed and sanitised | \`docs/phase-3-evidence/\` |
+| RC1.1 target evidence (A) and development evidence (B), with every defect found | \`docs/phase-3-stage-b-evidence.md\` |
+| the deployment payload itself | \`deploy/uos/\` |
+| operator-facing deployment, upgrade and release process | \`docs/uos-deployment.md\`, \`docs/uos-upgrade-recovery.md\`, \`docs/uos-release-process.md\` |
+
+One provenance note carried deliberately: the frozen artifact's \`VERSION\` still reads
+\`targetTested=NO\`, \`installedFormTargetValidated=NO\` and \`phase3Stage=Stage B.1\`. Those were true
+when the bytes were produced, and editing them would have meant rebuilding. \`Stage B.1\` is a known
+non-blocking staleness — the process reached Stage B.2 before validation — and nothing reads the field
+at run time.
+
+---
+
+The remainder of this summary is the **Phase-2 product and UX record**, retained unchanged for
+continuity: Phase 3 changed no application code, so the application described below is the application
+that was validated.
 
 ## What this is
 
