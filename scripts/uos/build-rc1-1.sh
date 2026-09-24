@@ -86,10 +86,10 @@ printf 'Inner manifest: %s files\n' "$(grep -c '' SHA256SUMS.txt)"
 
 # ---- archive -------------------------------------------------------------------------------------
 #
-# `--owner=0 --group=0 --numeric-owner` strips the development machine's identity: RC1 carried
-# `Lcy311/197121` in every header, which is a Windows account name and a Windows GID that mean
-# nothing on the target and need not travel. Numeric 0/0 is portable and does **not** require root
-# to extract — tar only applies ownership when it is running as root.
+# `--owner=0 --group=0 --numeric-owner` strips the development machine's identity: RC1 carried the
+# build account's own `<name>/<gid>` pair in every tar header — a Windows account name and a Windows
+# GID that mean nothing on the target and need not travel. Numeric 0/0 is portable and does **not**
+# require root to extract — tar only applies ownership when it is running as root.
 #
 # Permissions are left as they are on disk, which is what preserves the executable bit on the
 # scripts (verified below) while keeping data files read-only for others.
