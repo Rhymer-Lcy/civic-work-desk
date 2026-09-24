@@ -10,20 +10,36 @@
     What it will NOT do, by construction:
       * require or request administrator rights;
       * install, download, or modify any program;
-      * change a setting, a registry value, a firewall rule or a URL ACL;
-      * read browser profiles, cookies, history, bookmarks or any document;
+      * change a setting, a registry value, a firewall rule, a URL ACL or any policy;
+      * read browser profiles, cookies, history, bookmarks, passwords or any document;
       * leave a server running -- the two bind tests release their sockets immediately;
       * contact the network. Every check is local.
+      * test browser PWA capability. Service worker / IndexedDB / Cache Storage / Web Crypto need a
+        page served at the canonical origin, so they belong to Stage B, after a server is chosen.
 
-    ABSENCE IS A VALID RESULT. "not present", "denied" and "in use" are measurements. The probe is not
-    failing when it reports them, and it deliberately keeps going rather than stopping at the first.
+    STATUS TOKENS. Every measured line carries one, so results compare across machines:
+
+      [PASS]        an operation we wanted to succeed, succeeded
+      [PRESENT]     the thing exists / is available
+      [NOT PRESENT] the thing does not exist -- valid evidence, not a failure
+      [DENIED]      permission or policy refused it -- valid evidence, not a failure
+      [IN USE]      the resource is occupied by something else
+      [INFO]        a plain fact with no pass/fail meaning
+      [ERROR]       the query itself failed unexpectedly; the message is quoted verbatim
+
+    ABSENCE IS EVIDENCE. [NOT PRESENT] and [DENIED] are answers we need as much as [PASS] is. The
+    probe keeps going rather than stopping at the first one.
+
+    ASCII ONLY. Windows PowerShell 5.1 reads a BOM-less .ps1 in the machine's ANSI code page, so any
+    non-ASCII byte in this file is corrupted before the script runs -- which is exactly how an earlier
+    revision produced a mojibake report. The bundle builder enforces this.
 
 .NOTES
     Run as an ORDINARY user. If you are prompted for administrator rights, something is wrong -- stop
     and report that instead.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\probe-windows.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\probe-windows.ps1
 #>
 
 [CmdletBinding()]
@@ -36,8 +52,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 # $PSScriptRoot is NOT populated inside a param() default value under Windows PowerShell 5.1 -- the
 # version colleagues actually have -- so a `Join-Path $PSScriptRoot 'out'` default fails there with
-# "Cannot bind argument to parameter 'Path' because it is an empty string". Resolved here instead,
-# with a fallback for the case where the script is piped rather than invoked by path.
+# "Cannot bind argument to parameter 'Path' because it is an empty string". Resolved here instead.
 if (-not $OutDir) {
     $root = $PSScriptRoot
     if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
@@ -56,6 +71,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $report = Join-Path $OutDir "civic-work-desk-windows-probe-$stamp.txt"
 
 $script:Lines = New-Object System.Collections.Generic.List[string]
+$script:Summary = New-Object System.Collections.Generic.List[string]
 
 function Emit {
     param([string]$Text = '')
@@ -66,32 +82,59 @@ function Emit {
 function Section {
     param([string]$Title)
     Emit ''
-    Emit ('=' * 70)
+    Emit ('=' * 78)
     Emit $Title
-    Emit ('=' * 70)
+    Emit ('=' * 78)
 }
 
-function Item {
+function Status {
+    param(
+        [string]$Token,
+        [string]$Name,
+        $Detail = '',
+        [switch]$Key
+    )
+    Emit ('  [{0,-11}] {1,-32} {2}' -f $Token, $Name, $Detail)
+    if ($Key) { $script:Summary.Add(('{0,-11}  {1}' -f $Token, $Name)) | Out-Null }
+}
+
+function Info {
     param([string]$Name, $Value)
     if ($null -eq $Value -or "$Value" -eq '') { $Value = '(not available)' }
-    Emit ('  {0,-34} {1}' -f $Name, $Value)
+    Status 'INFO' $Name $Value
 }
 
-# A probe must never die on one unavailable API. Every check runs inside this.
-function Try-Item {
+# A probe must never die on one unavailable API. Every query runs inside this, and a failure is
+# reported verbatim rather than swallowed -- a policy or permission message is exactly the diagnostic
+# we need back.
+function Show-Fact {
     param([string]$Name, [scriptblock]$Probe)
     try {
-        Item $Name (& $Probe)
+        Info $Name (& $Probe)
     } catch {
-        Item $Name ("(query failed: {0})" -f $_.Exception.Message)
+        Status 'ERROR' $Name ("query failed: {0}" -f $_.Exception.Message)
+    }
+}
+
+function Show-Presence {
+    param([string]$Name, [scriptblock]$Probe, [switch]$Key)
+    try {
+        $value = & $Probe
+        if ($value) { Status 'PRESENT' $Name $value -Key:$Key }
+        else { Status 'NOT PRESENT' $Name '' -Key:$Key }
+    } catch {
+        Status 'ERROR' $Name ("query failed: {0}" -f $_.Exception.Message) -Key:$Key
     }
 }
 
 Emit 'CivicWorkDesk -- Windows 11 deployment probe (Phase 4, Stage A)'
 Emit ''
-Emit "collected      : $(Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz')"
+Emit "collected       : $(Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz')"
 Emit "canonical origin: $CanonicalOrigin"
-Emit 'read-only      : this probe installs nothing and changes nothing'
+Emit 'read-only       : installs nothing, changes nothing, contacts no network'
+Emit ''
+Emit 'STATUS TOKENS: [PASS] [PRESENT] [NOT PRESENT] [DENIED] [IN USE] [INFO] [ERROR]'
+Emit 'NOT PRESENT and DENIED are evidence, not test failures.'
 Emit ''
 Emit 'PRIVACY NOTE: this report contains the machine name, the account name and installed-software'
 Emit 'versions. It contains no browser data, no documents and no file contents. Redact the account or'
@@ -99,102 +142,116 @@ Emit 'machine name before sharing if you prefer; the technical meaning does not 
 
 # ---------------------------------------------------------------- 1. Windows identity
 Section '1. Windows identity'
-Try-Item 'OS caption' { (Get-CimInstance Win32_OperatingSystem).Caption }
-Try-Item 'OS version' { (Get-CimInstance Win32_OperatingSystem).Version }
-Try-Item 'build' {
+Show-Fact 'OS caption' { (Get-CimInstance Win32_OperatingSystem).Caption }
+Show-Fact 'OS version' { (Get-CimInstance Win32_OperatingSystem).Version }
+Show-Fact 'build' {
     $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
-    '{0} (UBR {1}) DisplayVersion {2}' -f $cv.CurrentBuild, $cv.UBR, $cv.DisplayVersion
+    '{0}.{1}  DisplayVersion {2}' -f $cv.CurrentBuild, $cv.UBR, $cv.DisplayVersion
 }
-Try-Item 'edition' {
+Show-Fact 'edition' {
     (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop).EditionID
 }
-Try-Item 'OS architecture' { (Get-CimInstance Win32_OperatingSystem).OSArchitecture }
-Try-Item 'process architecture' { $env:PROCESSOR_ARCHITECTURE }
-Try-Item 'is 64-bit process' { [Environment]::Is64BitProcess }
-Try-Item 'CPU' { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name }
-Try-Item 'memory (GB)' {
+Show-Fact 'OS architecture' {
+    $a = (Get-CimInstance Win32_OperatingSystem).OSArchitecture
+    "$a   (PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE)"
+}
+# Keyed: an ARM64 machine rules out shipping any x64-only binary, so it changes the decision even
+# though it is neither a pass nor a failure.
+# The verdict is in the NAME, not the detail, because the SUMMARY block prints names only -- an
+# "ARM64 machine" line there would otherwise be silent about the answer.
+if ($env:PROCESSOR_ARCHITECTURE -match 'ARM' -or $env:PROCESSOR_ARCHITEW6432 -match 'ARM') {
+    Status 'INFO' 'ARM64 machine: YES' 'an x64-only binary would not run here' -Key
+} else {
+    Status 'INFO' 'ARM64 machine: no (x64)' '' -Key
+}
+Show-Fact 'CPU' { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name }
+Show-Fact 'memory (GB)' {
     [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
 }
 
 # ---------------------------------------------------------------- 2. account and elevation
 Section '2. Account and elevation'
-Try-Item 'user' { "$env:USERDOMAIN\$env:USERNAME" }
-Try-Item 'running elevated' {
+Show-Fact 'user' { "$env:USERDOMAIN\$env:USERNAME" }
+$elevated = $false
+try {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole(
+    $elevated = (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)
+} catch { }
+if ($elevated) {
+    Status 'INFO' 'running elevated' 'TRUE -- please re-run WITHOUT administrator rights' -Key
+} else {
+    Status 'PASS' 'running as ordinary user' 'not elevated (this is what we need)' -Key
 }
-Try-Item 'in local Administrators' {
+Show-Fact 'in local Administrators' {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     ($id.Groups | ForEach-Object { $_.Translate([Security.Principal.NTAccount]).Value }) -contains
         'BUILTIN\Administrators'
 }
-Emit ''
-Emit '  Note: "running elevated = False" is the expected and desired result. The product must install'
-Emit '  and run without elevation; a probe run as administrator would measure the wrong machine.'
 
-# ---------------------------------------------------------------- 3. PowerShell
-Section '3. PowerShell'
-Try-Item 'PSVersion (this host)' { $PSVersionTable.PSVersion.ToString() }
-Try-Item 'PSEdition' { $PSVersionTable.PSEdition }
-Try-Item 'CLR version' { $PSVersionTable.CLRVersion }
-Try-Item 'Windows PowerShell 5.1 present' {
+# ---------------------------------------------------------------- 3. PowerShell and policy
+Section '3. PowerShell and execution policy'
+Show-Fact 'PSVersion (this host)' { $PSVersionTable.PSVersion.ToString() }
+Show-Fact 'PSEdition' { $PSVersionTable.PSEdition }
+Show-Presence 'Windows PowerShell 5.1' {
     $p = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    if (Test-Path -LiteralPath $p) { $p } else { 'no' }
-}
-Try-Item 'PowerShell 7+ present' {
+    if (Test-Path -LiteralPath $p) { $p } else { $null }
+} -Key
+Show-Presence 'PowerShell 7+' {
     $c = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-    if ($c) { "$($c.Source)  ($((& $c.Source -NoProfile -Command '$PSVersionTable.PSVersion.ToString()')))" }
-    else { 'no' }
+    if ($c) {
+        $v = & $c.Source -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' 2>$null
+        "$v   $($c.Source)"
+    } else { $null }
+} -Key
+Show-Fact 'ExecutionPolicy (effective)' { Get-ExecutionPolicy }
+Show-Fact 'ExecutionPolicy (per scope)' {
+    (Get-ExecutionPolicy -List | ForEach-Object { "$($_.Scope)=$($_.ExecutionPolicy)" }) -join '  '
 }
-Try-Item 'ExecutionPolicy (effective)' { Get-ExecutionPolicy }
-Try-Item 'ExecutionPolicy (per scope)' {
-    (Get-ExecutionPolicy -List | ForEach-Object { "$($_.Scope)=$($_.ExecutionPolicy)" }) -join ' '
-}
-Try-Item '.NET runtime' { [System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription }
+Show-Fact '.NET runtime' { [System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription }
 
-# ---------------------------------------------------------------- 4. tools we might rely on
-Section '4. Tools present'
-foreach ($tool in 'curl.exe', 'tar.exe', 'certutil.exe', 'where.exe', 'powershell.exe', 'explorer.exe') {
-    Try-Item $tool {
+# ---------------------------------------------------------------- 4. tools
+Section '4. Tools'
+foreach ($tool in 'curl.exe', 'tar.exe', 'certutil.exe', 'where.exe', 'explorer.exe') {
+    Show-Presence $tool {
         $c = Get-Command $tool -ErrorAction SilentlyContinue
-        if ($c) { $c.Source } else { 'not present' }
+        if ($c) { $c.Source } else { $null }
     }
 }
-Try-Item 'Get-FileHash cmdlet' {
-    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) { 'available' } else { 'not available' }
-}
-Try-Item 'Expand-Archive cmdlet' {
-    if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) { 'available' } else { 'not available' }
+Show-Presence 'Get-FileHash' {
+    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) { 'cmdlet available' } else { $null }
+} -Key
+Show-Presence 'Expand-Archive' {
+    if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) { 'cmdlet available' } else { $null }
 }
 
 # ---------------------------------------------------------------- 5. writable user locations
 Section '5. Writable user locations'
 $locations = [ordered]@{
-    'LOCALAPPDATA'   = $env:LOCALAPPDATA
-    'APPDATA'        = $env:APPDATA
-    'USERPROFILE'    = $env:USERPROFILE
-    'TEMP'           = $env:TEMP
-    'Desktop'        = [Environment]::GetFolderPath('Desktop')
-    'Start Menu'     = [Environment]::GetFolderPath('Programs')
-    'Downloads'      = (Join-Path $env:USERPROFILE 'Downloads')
+    'LOCALAPPDATA' = $env:LOCALAPPDATA
+    'APPDATA'      = $env:APPDATA
+    'USERPROFILE'  = $env:USERPROFILE
+    'TEMP'         = $env:TEMP
+    'Desktop'      = [Environment]::GetFolderPath('Desktop')
+    'Start Menu'   = [Environment]::GetFolderPath('Programs')
+    'Downloads'    = (Join-Path $env:USERPROFILE 'Downloads')
 }
 foreach ($name in $locations.Keys) {
     $path = $locations[$name]
-    $verdict = '(unset)'
-    if ($path) {
-        try {
-            $probeFile = Join-Path $path (".civic-probe-{0}.tmp" -f ([guid]::NewGuid().ToString('N')))
-            Set-Content -LiteralPath $probeFile -Value 'probe' -ErrorAction Stop
-            Remove-Item -LiteralPath $probeFile -Force -ErrorAction SilentlyContinue
-            $verdict = "writable   $path"
-        } catch {
-            $verdict = "NOT writable   $path"
-        }
+    # LOCALAPPDATA is where the install would live, so its result is keyed into the summary; the rest
+    # are context.
+    $key = ($name -eq 'LOCALAPPDATA')
+    if (-not $path) { Status 'NOT PRESENT' $name '(environment variable unset)' -Key:$key; continue }
+    try {
+        $probeFile = Join-Path $path (".civic-probe-{0}.tmp" -f ([guid]::NewGuid().ToString('N')))
+        Set-Content -LiteralPath $probeFile -Value 'probe' -ErrorAction Stop
+        Remove-Item -LiteralPath $probeFile -Force -ErrorAction SilentlyContinue
+        Status 'PASS' ("$name writable") $path -Key:$key
+    } catch {
+        Status 'DENIED' ("$name writable") ("{0}   ({1})" -f $path, $_.Exception.Message) -Key:$key
     }
-    Item $name $verdict
 }
-Try-Item 'proposed install root' {
+Show-Fact 'proposed install root' {
     if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'CivicWorkDesk' } else { '(no LOCALAPPDATA)' }
 }
 
@@ -213,7 +270,8 @@ $browsers = [ordered]@{
     '360 Browser'    = @(
         (Join-Path $env:LOCALAPPDATA '360Chrome\Chrome\Application\360chrome.exe'),
         (Join-Path ${env:ProgramFiles(x86)} '360\360se6\Application\360se.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} '360Chrome\Chrome\Application\360chrome.exe'))
+        (Join-Path ${env:ProgramFiles(x86)} '360Chrome\Chrome\Application\360chrome.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} '360se6\Application\360se.exe'))
     'Firefox'        = @(
         (Join-Path $env:ProgramFiles 'Mozilla Firefox\firefox.exe'),
         (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe'))
@@ -224,92 +282,102 @@ foreach ($name in $browsers.Keys) {
         if ($candidate -and (Test-Path -LiteralPath $candidate)) { $found = $candidate; break }
     }
     if ($found) {
-        $version = try { (Get-Item -LiteralPath $found).VersionInfo.ProductVersion } catch { 'unknown' }
-        Item $name "$version   $found"
+        $version = 'version unreadable'
+        try { $version = (Get-Item -LiteralPath $found).VersionInfo.ProductVersion } catch { }
+        Status 'PRESENT' $name "$version   $found" -Key
     } else {
-        Item $name 'not found in the usual locations'
+        Status 'NOT PRESENT' $name 'not in the usual install locations' -Key
     }
 }
-Try-Item 'default http handler (ProgId)' {
+Show-Fact 'default http handler' {
     $key = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice'
     (Get-ItemProperty -Path $key -ErrorAction Stop).ProgId
 }
-Try-Item 'default https handler (ProgId)' {
+Show-Fact 'default https handler' {
     $key = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice'
     (Get-ItemProperty -Path $key -ErrorAction Stop).ProgId
 }
 
 # ---------------------------------------------------------------- 7. the port
-Section "7. Port $CanonicalPort and loopback"
-Try-Item "listeners on $CanonicalPort" {
-    $c = Get-NetTCPConnection -LocalPort $CanonicalPort -State Listen -ErrorAction SilentlyContinue
-    if ($c) {
-        ($c | ForEach-Object {
-            $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
-            "{0} pid {1} ({2})" -f $_.LocalAddress, $_.OwningProcess, $(if ($p) { $p.ProcessName } else { '?' })
-        }) -join '; '
-    } else { 'none -- port is free' }
+Section "7. Port $CanonicalPort"
+$portOwner = $null
+try {
+    $portOwner = Get-NetTCPConnection -LocalPort $CanonicalPort -State Listen -ErrorAction SilentlyContinue
+} catch { }
+if ($portOwner) {
+    $desc = ($portOwner | ForEach-Object {
+        $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+        "{0} pid {1} ({2})" -f $_.LocalAddress, $_.OwningProcess, $(if ($p) { $p.ProcessName } else { 'unknown' })
+    }) -join '; '
+    Status 'IN USE' "port $CanonicalPort" $desc -Key
+} else {
+    Status 'PASS' "port $CanonicalPort free" 'nothing is listening' -Key
 }
-Try-Item 'excluded port ranges (TCP)' {
-    $out = & netsh int ipv4 show excludedportrange protocol=tcp 2>&1 | Out-String
-    $hit = $out -split "`r?`n" | Where-Object { $_ -match '^\s*\d+\s+\d+' } | ForEach-Object {
-        $n = ($_ -split '\s+') | Where-Object { $_ -ne '' }
-        if ([int]$n[0] -le $CanonicalPort -and [int]$n[1] -ge $CanonicalPort) { "$($n[0])-$($n[1]) INCLUDES $CanonicalPort" }
+# Hyper-V, WSL2 and Docker reserve large dynamic TCP ranges at boot. A reserved range makes the bind
+# fail with no process visible as the owner, which reads like a mystery unless it is measured here.
+try {
+    $excl = & netsh int ipv4 show excludedportrange protocol=tcp 2>&1 | Out-String
+    $hits = @()
+    foreach ($line in ($excl -split "`r?`n")) {
+        if ($line -match '^\s*(\d+)\s+(\d+)') {
+            $lo = [int]$Matches[1]
+            $hi = [int]$Matches[2]
+            if ($lo -le $CanonicalPort -and $hi -ge $CanonicalPort) { $hits += "$lo-$hi" }
+        }
     }
-    if ($hit) { ($hit -join '; ') } else { "no excluded range covers $CanonicalPort" }
+    if ($hits.Count -gt 0) {
+        Status 'IN USE' "port $CanonicalPort reserved" ('excluded range(s): ' + ($hits -join ', ')) -Key
+    } else {
+        Status 'PASS' "port $CanonicalPort not reserved" 'no excluded TCP range covers it' -Key
+    }
+} catch {
+    Status 'ERROR' "port $CanonicalPort reservation" ("query failed: {0}" -f $_.Exception.Message) -Key
 }
 
-# The decisive test for Candidate B: can an ordinary user bind a raw loopback socket on this port?
-Section '8. Candidate B -- raw TcpListener bind (no admin expected)'
-$tcpVerdict = 'not attempted'
+# ---------------------------------------------------------------- 8. Candidate B
+Section '8. Candidate B -- raw TcpListener bind on 127.0.0.1:8765'
 try {
     $addr = [System.Net.IPAddress]::Parse($CanonicalHost)
     $listener = New-Object System.Net.Sockets.TcpListener($addr, $CanonicalPort)
     $listener.Start()
     $ep = $listener.LocalEndpoint.ToString()
     $listener.Stop()
-    $tcpVerdict = "SUCCESS -- bound $ep as an ordinary user, then released it"
+    Status 'PASS' 'TcpListener bind' "bound $ep as an ordinary user, then released it" -Key
 } catch {
-    $tcpVerdict = "FAILED -- $($_.Exception.Message)"
+    Status 'DENIED' 'TcpListener bind' ("{0}" -f $_.Exception.Message) -Key
 }
-Item 'TcpListener 127.0.0.1:8765' $tcpVerdict
 Emit ''
-Emit '  This is the load-bearing measurement for a PowerShell socket server. A success here means a'
-Emit '  non-admin user-space server is possible on this machine; a failure is a genuine finding and'
-Emit '  must not be worked around by asking for administrator rights.'
+Emit '  This is the load-bearing measurement for a PowerShell socket server. DENIED here is a genuine'
+Emit '  finding and must not be worked around by asking for administrator rights.'
 
-# The decisive test for Candidate A: http.sys needs a URL ACL for non-admin prefixes.
-Section '9. Candidate A -- HttpListener prefix registration (expected to need a URL ACL)'
-$httpVerdict = 'not attempted'
+# ---------------------------------------------------------------- 9. Candidate A
+Section '9. Candidate A -- HttpListener prefix http://127.0.0.1:8765/'
 try {
     $hl = New-Object System.Net.HttpListener
     $hl.Prefixes.Add("http://$CanonicalHost`:$CanonicalPort/")
     $hl.Start()
     $hl.Stop()
     $hl.Close()
-    $httpVerdict = 'SUCCESS -- http.sys accepted the prefix without elevation'
+    Status 'PASS' 'HttpListener prefix' 'http.sys accepted the literal 127.0.0.1 prefix, un-elevated' -Key
 } catch {
-    $httpVerdict = "FAILED -- $($_.Exception.Message)"
+    Status 'DENIED' 'HttpListener prefix' ("{0}" -f $_.Exception.Message) -Key
 }
-Item 'HttpListener 127.0.0.1:8765' $httpVerdict
 Emit ''
-Emit '  Both outcomes are real measurements, neither is a probe error. http.sys requires a URL ACL for'
-Emit '  wildcard prefixes (+, *, a hostname) but generally permits a literal 127.0.0.1 prefix without'
-Emit '  one; it succeeded un-elevated on the development workstation. If it is DENIED here while'
-Emit '  section 8 succeeds, that is a finding about this machine and Candidate A is out for it.'
-Try-Item 'existing URL ACLs mentioning 8765' {
+Emit '  Both outcomes are real measurements. http.sys requires a URL ACL for wildcard prefixes'
+Emit '  (+, *, a hostname) but generally permits a literal 127.0.0.1 prefix without one. If this is'
+Emit '  DENIED while section 8 passes, Candidate A is out for this machine.'
+Show-Fact 'URL ACL mentioning 8765' {
     $out = & netsh http show urlacl 2>&1 | Out-String
-    if ($out -match "8765") { 'an ACL referencing 8765 exists (see netsh http show urlacl)' }
-    else { 'none' }
+    if ($out -match '8765') { 'an ACL referencing 8765 exists' } else { 'none' }
 }
 
-# ---------------------------------------------------------------- 10. shortcut feasibility
-Section '10. Shortcut and pointer feasibility (no file is created outside TEMP)'
-Try-Item 'WScript.Shell available' {
+# ---------------------------------------------------------------- 10. shortcut / pointer feasibility
+Section '10. Shortcut and pointer feasibility (nothing is created outside TEMP)'
+Show-Presence 'WScript.Shell (shortcuts)' {
     $null = New-Object -ComObject WScript.Shell
-    'yes (Start Menu shortcut creation is possible)'
-}
-Try-Item 'directory junction without elevation' {
+    'available -- Start Menu shortcut creation is possible'
+} -Key
+try {
     $base = Join-Path $env:TEMP ("civic-probe-{0}" -f ([guid]::NewGuid().ToString('N')))
     $target = Join-Path $base 'target'
     $link = Join-Path $base 'link'
@@ -317,15 +385,24 @@ Try-Item 'directory junction without elevation' {
     $r = & cmd.exe /c mklink /J "`"$link`"" "`"$target`"" 2>&1 | Out-String
     $ok = Test-Path -LiteralPath $link
     Remove-Item -LiteralPath $base -Recurse -Force -ErrorAction SilentlyContinue
-    if ($ok) { 'yes -- junctions work without elevation' } else { "no -- $($r.Trim())" }
+    if ($ok) { Status 'PASS' 'directory junction' 'junctions work without elevation' -Key }
+    else { Status 'DENIED' 'directory junction' ($r.Trim()) -Key }
+} catch {
+    Status 'ERROR' 'directory junction' ("{0}" -f $_.Exception.Message) -Key
 }
-Try-Item 'Developer Mode (symlinks w/o admin)' {
+Show-Fact 'Developer Mode (symlinks)' {
     $k = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
     $v = (Get-ItemProperty -Path $k -ErrorAction Stop).AllowDevelopmentWithoutDevLicense
     if ($v -eq 1) { 'enabled' } else { 'disabled' }
 }
 
-# ---------------------------------------------------------------- done
+# ---------------------------------------------------------------- summary
+Section 'SUMMARY -- the lines that decide the Windows server mechanism'
+foreach ($line in $script:Summary) { Emit ("  {0}" -f $line) }
+Emit ''
+Emit '  Stage A deliberately does NOT test service worker, IndexedDB, Cache Storage or Web Crypto.'
+Emit '  Those need a page served at the canonical origin and belong to Stage B.'
+
 Section 'END'
 Emit ''
 Emit 'Nothing was installed, started or left running. Both bind tests released their sockets.'
@@ -333,8 +410,8 @@ Emit ''
 
 Set-Content -LiteralPath $report -Value ($script:Lines -join "`r`n") -Encoding UTF8
 Write-Host ''
-Write-Host "Report written to:"
+Write-Host 'Report written to:'
 Write-Host "    $report"
 Write-Host ''
-Write-Host 'Please return that file. Review it first if you wish -- it contains no browser data and no'
+Write-Host 'Please return that file. You may read it first -- it contains no browser data and no'
 Write-Host 'document contents, only machine and software facts.'
