@@ -68,7 +68,7 @@ function arg(name, fallback) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-const releaseId = arg('--release-id', '2026.09.24-win-rc2');
+const releaseId = arg('--release-id', '2026.09.24-win-rc3');
 const skipInstaller = process.argv.includes('--skip-installer');
 
 /* Must agree with layout.ReleaseIDPattern in the Go module. A release id becomes a directory name, and
@@ -76,6 +76,14 @@ const skipInstaller = process.argv.includes('--skip-installer');
  * activate. */
 if (!/^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[a-z0-9]([a-z0-9.-]{0,29}[a-z0-9])?$/.test(releaseId)) {
   fatal(`illegal release id: ${releaseId}`);
+}
+
+/* The human label, derived from the id rather than typed anywhere. RC2's installer said "RC1" in
+ * its Properties dialog because that string was hard-coded in the .iss; deriving it means the two
+ * cannot disagree again. */
+const releaseLabel = (releaseId.split('-').pop() ?? '').toUpperCase();
+if (!/^RC[0-9]+$/.test(releaseLabel)) {
+  fatal(`cannot derive a release label from ${releaseId} (got ${JSON.stringify(releaseLabel)})`);
 }
 
 function fatal(message) {
@@ -117,6 +125,31 @@ console.log('');
 console.log(`  release id   : ${releaseId}`);
 console.log(`  Go toolchain : ${GO_VERSION} at ${GO_ROOT}`);
 console.log(`  installer    : ${skipInstaller ? '(skipped)' : INNO_VERSION}`);
+console.log('');
+
+/* --------------------------------------------------- 0. the source commit must be real and public
+ *
+ * RC2 recorded a commit GitHub cannot resolve: the build ran against an unpushed HEAD, and that
+ * commit was rewritten by a rebase before the branch was pushed. Nothing read the field, so nothing
+ * noticed until an external audit did.
+ *
+ * The SHA is therefore no longer taken from HEAD and hoped about. It is asserted first -- real, a
+ * commit, reachable from the public branch, resolvable by GitHub -- and the build produces nothing
+ * if it is not. --offline-provenance downgrades only the GitHub half, and says so.
+ */
+console.log('0. release-provenance assertion');
+const sourceCommit =
+  arg('--source-commit', '') ||
+  (spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout ?? '').trim();
+const provenanceArgs = [
+  join(ROOT, 'scripts', 'windows', 'assert-release-provenance.mjs'),
+  '--commit',
+  sourceCommit,
+  '--release-id',
+  releaseId,
+];
+if (process.argv.includes('--offline-provenance')) provenanceArgs.push('--offline');
+run(process.execPath, provenanceArgs, { cwd: ROOT, stdio: 'inherit' });
 console.log('');
 
 /* ------------------------------------------------------------------ 1. verify the source payload */
@@ -281,9 +314,6 @@ console.log(
 
 /* ------------------------------------------------------------------ 4. VERSION and the manifest */
 const builtAt = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-const sourceCommit =
-  spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout?.trim() ??
-  'unknown';
 
 const version = [
   'CivicWorkDesk Windows release candidate',
@@ -292,8 +322,10 @@ const version = [
   `appVersion=${appVersion}`,
   `applicationCommit=${appCommit}`,
   `applicationPayloadSource=civic-work-desk-uos20-loongarch64-2026.09.23-5`,
-  `applicationPayloadUnchanged=YES — byte-identical except deployment-health.json`,
-  `deploymentCommit=${sourceCommit}`,
+  // Derived from the set the check above actually verified, not retyped. A hand-written copy of this
+  // claim would go stale the moment the declared rewrites changed, and nothing would notice.
+  `applicationPayloadUnchanged=YES — byte-identical except ${[...declaredRewrites].join(', ')}`,
+  `deploymentSourceCommit=${sourceCommit}`,
   `canonicalOrigin=http://127.0.0.1:8765`,
   `server=civic-server (Go net/http, standard library only)`,
   `goToolchain=${GO_VERSION}`,
@@ -307,7 +339,7 @@ const version = [
   `adminRequired=NO`,
   `builtAt=${builtAt}`,
   'builtOn=development workstation, Windows 11 x64',
-  'phase=Phase 4 Windows RC1 (field-validation candidate)',
+  `phase=Phase 4 Windows ${releaseLabel} (field-validation candidate)`,
   'windowsCompatibilityCertified=NO — validated on the development workstation only',
   'targetTested=NO — no colleague machine has run this build yet',
   '',
@@ -386,6 +418,7 @@ if (!skipInstaller) {
         `/DCivicAppVersion=${appVersion}`,
         `/DCivicOutDir=${outDir}`,
         `/DCivicOutBase=${setupBase}`,
+        `/DCivicReleaseLabel=${releaseLabel}`,
         join(ROOT, 'deploy', 'windows', 'installer', 'civic-work-desk.iss'),
       ],
       { cwd: ROOT },

@@ -52,7 +52,9 @@
     "verify:windows": "npm run test:windows && npm run audit:copy && npm run build:windows",
     "audit:copy": "node scripts/copy-audit.mjs",
     "scan:release": "node scripts/windows/scan-release-artifact.mjs",
-    "accept:windows:ux": "node scripts/windows/acceptance-rc2-ux.mjs"
+    "accept:windows:ux": "node scripts/windows/acceptance-ux.mjs",
+    "assert:release:provenance": "node scripts/windows/assert-release-provenance.mjs",
+    "assert:release:identity": "node scripts/windows/assert-release-identity.mjs"
   },
   "dependencies": {
     "date-fns": "4.4.0",
