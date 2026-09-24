@@ -1,0 +1,24 @@
+CivicWorkDesk Windows release candidate
+releaseId=2026.09.24-win-rc2
+releaseChannel=windows-x64
+appVersion=0.1.0
+applicationCommit=ad65e8f6e186912ae97200264f05ab26181f34e1
+applicationPayloadSource=civic-work-desk-uos20-loongarch64-2026.09.23-5
+applicationPayloadUnchanged=YES — byte-identical except deployment-health.json
+deploymentCommit=9adf28af4762da2e8ed97691b55182f5642038c1
+canonicalOrigin=http://127.0.0.1:8765
+server=civic-server (Go net/http, standard library only)
+goToolchain=go1.27.1
+goBuildFlags=-trimpath -buildvcs=false -ldflags="-s -w"; CGO_ENABLED=0 GOOS=windows GOARCH=amd64
+windowsResources=hand-written COFF (.syso): icon + VERSIONINFO, no external resource tool
+installerToolchain=Inno Setup 7.1.0 (x64)
+nodeRequired=NO
+pythonRequired=NO
+powershellRequired=NO
+dotnetRequired=NO
+adminRequired=NO
+builtAt=2026-09-24T12:25:37Z
+builtOn=development workstation, Windows 11 x64
+phase=Phase 4 Windows RC1 (field-validation candidate)
+windowsCompatibilityCertified=NO — validated on the development workstation only
+targetTested=NO — no colleague machine has run this build yet

@@ -226,24 +226,30 @@ versions, for other LoongArch systems, or for other browser versions. The deploy
 no root, no system service, no Node, no Python — BusyBox `httpd` serves the files and `xdg-open`
 opens the browser. Sign-off and evidence: `docs/phase-3-final-signoff.md`.
 
-### Windows 11 x64 — RC1, field-validation candidate, NOT certified
+### Windows 11 x64 — RC2, field-validation candidate, NOT certified
 
-> `CivicWorkDesk-Windows-x64-2026.09.24-rc1-Setup.exe` was rehearsed end to end on **one** Windows 11
+> `CivicWorkDesk-Windows-x64-2026.09.24-rc2-Setup.exe` was rehearsed end to end on **one** Windows 11
 > x64 development workstation (build 26200), from the actual installer bytes, as an ordinary
-> non-elevated user, in Chromium. 116 deployment checks and 63 browser checks passed.
+> non-elevated user, in Chromium. 118 deployment checks, 131 distribution-experience checks and 70
+> browser checks passed.
 
 That sentence is the whole claim, and it is deliberately weaker than the UOS one above: **no colleague's
 machine has run this build.** Nothing is known yet about managed-desktop policy, endpoint security
-software, redirected profiles, or 360 Browser specifically. The installer is also **unsigned**, so
-SmartScreen may warn.
+software, redirected profiles, or 360 Browser specifically. The installer is **unsigned** (verified:
+`NotSigned`), so SmartScreen may warn.
 
 The deployment is per-user: no administrator rights, no Program Files, no `HKEY_LOCAL_MACHINE`, no
 Windows service, no scheduled task, no firewall change, and nothing for a user to install — a small
-bundled Go binary serves the same payload at the same origin. The application itself is byte-identical
-to the validated UOS payload apart from one deployment-metadata file, and the build asserts that.
+bundled Go binary serves the same payload at the same origin. RC2 adds a choosable installation
+directory (validated, with no silent fallback), a proper multi-resolution Windows icon drawn from the
+application's own artwork, an optional desktop shortcut, a tidier Start Menu, durable install-failure
+diagnostics, and a diagnostic report that no longer carries the account or machine name.
 
-Detail, measurements and the open unknowns: [docs/phase-4-windows-rc1.md](docs/phase-4-windows-rc1.md).
-Stage-A plan and probe: [docs/phase-4-windows-stage-a-plan.md](docs/phase-4-windows-stage-a-plan.md).
+The application payload is byte-identical to RC1's apart from one deployment-metadata file, and the
+build asserts that rather than assuming it.
+
+Detail, measurements and the open unknowns: [docs/phase-4-windows-rc2.md](docs/phase-4-windows-rc2.md).
+RC1 remains published and unmodified: [docs/phase-4-windows-rc1.md](docs/phase-4-windows-rc1.md).
 
 ### Verifying a release download
 
