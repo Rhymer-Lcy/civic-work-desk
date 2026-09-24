@@ -205,4 +205,24 @@ export default tseslint.config(
     files: ['scripts/**/*.mjs', 'eslint.config.js'],
     ...tseslint.configs.disableTypeChecked,
   },
+  {
+    /*
+     * The Windows acceptance harness drives a real browser, so parts of it are source for the PAGE, not
+     * for Node: every `page.evaluate()` callback is serialised and executed inside Chromium, where
+     * `location`, `window`, `indexedDB`, `caches` and `navigator` are exactly the right globals to use.
+     * Without this the file reports `no-undef` for correct browser code -- the same reason
+     * `tests/**` already gets both global sets.
+     *
+     * Empty arrow functions are also deliberate here: `.catch(() => {})` is how this harness says "a
+     * missing element is one of the outcomes I am measuring", and turning each into a named no-op would
+     * add noise without adding meaning.
+     */
+    files: ['scripts/windows/acceptance-rc1-browser.mjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      '@typescript-eslint/no-empty-function': 'off',
+    },
+  },
 );

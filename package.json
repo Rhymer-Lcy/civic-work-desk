@@ -44,7 +44,12 @@
     "lint:uos": "node scripts/uos/lint-shell.mjs",
     "test:uos": "node scripts/uos/run-deployment-tests.mjs",
     "test:uos:archive": "node scripts/uos/archive-tests.mjs",
-    "verify:uos": "npm run lint:uos && npm run test:uos && npm run test:uos:archive"
+    "verify:uos": "npm run lint:uos && npm run test:uos && npm run test:uos:archive",
+    "test:windows": "node scripts/windows/run-go-tests.mjs",
+    "build:windows": "node scripts/windows/build-release.mjs",
+    "accept:windows": "node scripts/windows/acceptance-rc1.mjs",
+    "accept:windows:browser": "node scripts/windows/acceptance-rc1-browser.mjs",
+    "verify:windows": "npm run test:windows && npm run build:windows"
   },
   "dependencies": {
     "date-fns": "4.4.0",

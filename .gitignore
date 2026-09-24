@@ -77,6 +77,25 @@ _review_packages/*
 release/*/.runtime/
 release/*.tar.gz
 
+# Windows release build output. The installer, the staged payload and the Go build directory are all
+# build products: the tracked sources plus the `.sha256` sidecar are the provenance, and the installer
+# itself belongs in a GitHub Release where it can be downloaded and checksum-verified. The acceptance
+# reports are tracked deliberately -- they are the record of what was measured.
+release/windows/.build/
+release/windows/civic-work-desk-windows-x64-*/
+release/windows/*.exe
+release/windows/*.log
+
+# The acceptance reports carry the operator's account name and machine paths, so they follow the same rule
+# as tester-collected probe output: reviewed and transcribed into docs/ deliberately, never committed raw.
+# Their measured results are in docs/phase-4-windows-rc1.md.
+release/windows/acceptance-rc1-*.txt
+
+# The tester instructions beside the installer are a build-derived copy of
+# deploy/windows/installer/README-测试说明.txt. Tracking both copies is how they drift apart; the source is
+# tracked and the build re-derives this one.
+release/windows/README-测试说明.txt
+
 # Distribution archives built by scripts/windows/build-probe-bundle.mjs. Same reasoning as the .tar.gz
 # above: the archive is a build product, deterministic from its inputs, so the tracked probe sources plus
 # the `.sha256` sidecar are the provenance. The sidecar IS tracked — it is how a tester checks the copy
