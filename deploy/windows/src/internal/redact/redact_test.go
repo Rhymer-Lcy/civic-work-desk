@@ -75,10 +75,15 @@ func TestForwardSlashFormIsAlsoRewritten(t *testing.T) {
 	}
 }
 
-// The whole point of the feature is that a custom directory stays diagnosable. A redactor that ate
-// D:\Applications\CivicWorkDesk would make a custom-path installation impossible to support, which is
-// worse than the identity it would be protecting.
-func TestCustomInstallPathIsUntouched(t *testing.T) {
+// An UNREGISTERED path is left alone. That is the raw behaviour of the prefix substitution, and it is
+// what keeps the redactor from rewriting arbitrary text.
+//
+// RC2's version of this test asserted the same thing for a different and now-retracted reason: that a
+// custom installation directory "identifies nobody" and must therefore stay verbatim. It plainly can
+// identify somebody — see customroot_test.go — so a custom root is now registered with MaskInstallRoot
+// and masked. What survives here is only the narrow claim that Paths does not touch what it was never
+// told about.
+func TestUnregisteredPathIsUntouched(t *testing.T) {
 	withEnv(t, map[string]string{
 		"USERPROFILE":  `C:\Users\Alice`,
 		"LOCALAPPDATA": `C:\Users\Alice\AppData\Local`,

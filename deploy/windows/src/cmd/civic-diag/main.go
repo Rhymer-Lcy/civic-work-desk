@@ -59,7 +59,8 @@ func main() {
 	w("")
 	w("这份文件包含：Windows 版本、已安装的程序版本、本地服务运行状态、端口状态、")
 	w("默认浏览器标识，以及程序自身的运行日志。")
-	w("%s", "用户目录已替换为环境变量形式（例如 %LOCALAPPDATA%），不含账号名与计算机名。")
+	w("%s", "用户目录已替换为环境变量形式（例如 %LOCALAPPDATA%）；自定义安装目录只保留盘符，")
+	w("%s", "显示为 D:\\<CUSTOM_INSTALL_ROOT>。本文件不含账号名、计算机名，也不含你选择的目录名。")
 	w("这份文件不包含：任何工作记录、任何浏览器数据（历史、Cookie、密码、站点存储内容）、")
 	w("任何文档内容，也不含任何口令或密钥。")
 	w("")
@@ -83,9 +84,25 @@ func main() {
 		return
 	}
 
+	// Register the root BEFORE any line is written. From here on the writer's redaction covers it
+	// everywhere it appears -- the server executable, the document root, the log file, an error string --
+	// rather than only in the field below.
+	redact.MaskInstallRoot(tree.Root)
+
 	section(w, "2. Installation")
 	w("  install root      : %s", tree.Root)
-	w("  install root kind : %s", installRootKind(tree.Root))
+	w("  install root kind : %s", redact.RootKind(tree.Root))
+	if redact.RootKind(tree.Root) == "custom" {
+		// The directory names are withheld, so report what a custom-path problem is actually diagnosed
+		// from. None of these can name a person.
+		c := redact.Describe(tree.Root)
+		w("  install volume    : %s", c.Volume)
+		w("  path has spaces   : %s", yesNo(c.HasSpaces))
+		w("  path has non-ASCII: %s", yesNo(c.HasNonASCII))
+		w("  path depth        : %d", c.Depth)
+		w("  path length       : %d", c.Length)
+		w("  path writable     : %s", yesNo(rootWritable(tree.Root)))
+	}
 	activeID, activeErr := tree.ActiveRelease()
 	if activeErr != nil {
 		w("  active release    : (none) %v", activeErr)
@@ -275,17 +292,20 @@ func tailFile(path string, n int) ([]string, error) {
 	return lines, nil
 }
 
-// installRootKind says whether the installation is in the default place or somewhere the user chose.
-//
-// Redacting %LOCALAPPDATA% would otherwise make the two indistinguishable at a glance, and "is this a
-// custom-path installation" is the first question to ask about a problem that only some people see.
-func installRootKind(root string) string {
-	base := os.Getenv("LOCALAPPDATA")
-	if base == "" {
-		return "unknown (LOCALAPPDATA is not set)"
+// yesNo renders a boolean the way a report reads best.
+func yesNo(v bool) string {
+	if v {
+		return "yes"
 	}
-	if strings.EqualFold(filepath.Clean(root), filepath.Join(filepath.Clean(base), "CivicWorkDesk")) {
-		return "default (%LOCALAPPDATA%\\CivicWorkDesk)"
+	return "no"
+}
+
+// rootWritable answers the one characteristic that needs the filesystem rather than the string.
+func rootWritable(root string) bool {
+	probe := filepath.Join(root, ".civic-diag-write-probe.tmp")
+	if err := os.WriteFile(probe, []byte("probe"), 0o644); err != nil {
+		return false
 	}
-	return "custom installation directory"
+	_ = os.Remove(probe)
+	return true
 }

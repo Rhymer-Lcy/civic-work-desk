@@ -31,6 +31,7 @@ import (
 
 	"civicworkdesk/windows/internal/httpserve"
 	"civicworkdesk/windows/internal/layout"
+	"civicworkdesk/windows/internal/redact"
 	"civicworkdesk/windows/internal/release"
 	"civicworkdesk/windows/internal/serverstate"
 	"civicworkdesk/windows/internal/winproc"
@@ -199,7 +200,17 @@ func directoryChecks(root string) []check {
 		add("installation directory", "FAIL", "no directory was given")
 		return checks
 	}
+	// The directory names themselves are withheld; what is reported is what a path problem is diagnosed
+	// from. The user who typed the path sees it in the wizard dialog, which is not a forwarded file.
+	redact.MaskInstallRoot(root)
+	c := redact.Describe(root)
 	add("proposed directory", "INFO", redactUserPaths(root))
+	add("directory kind", "INFO", redact.RootKind(root))
+	add("volume", "INFO", c.Volume)
+	add("has spaces", "INFO", boolWord(c.HasSpaces))
+	add("has non-ASCII", "INFO", boolWord(c.HasNonASCII))
+	add("depth", "INFO", fmt.Sprintf("%d", c.Depth))
+	add("length", "INFO", fmt.Sprintf("%d", c.Length))
 	verdict := JudgeInstallRoot(root)
 	if verdict.OK {
 		add("directory is usable", "PASS", verdict.Reason)
@@ -251,11 +262,24 @@ func runtimeChecks(tree layout.Tree, releaseID string) []check {
 	return append(checks, portChecks(tree, id)...)
 }
 
+// boolWord renders a characteristic the way the report reads best.
+func boolWord(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
+}
+
 func cmdPreflight(tree layout.Tree, stage preflightStage, rawRoot, releaseID, reportPath string) int {
 	if !stage.valid() {
 		fmt.Fprintf(os.Stderr, "error: unknown preflight stage %q\n", stage)
 		return exitUsage
 	}
+
+	// The report is written somewhere durable and forwarded by an ordinary colleague, so a user-chosen
+	// installation directory must not travel in it. Registering the root here covers every line below,
+	// including the ones that only mention it incidentally.
+	redact.MaskInstallRoot(tree.Root)
 
 	var checks []check
 	if stage == stageMachine || stage == stageAll {
