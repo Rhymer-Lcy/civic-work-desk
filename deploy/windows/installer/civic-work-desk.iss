@@ -1,4 +1,9 @@
-; CivicWorkDesk -- Windows x64 per-user installer (Phase 4 RC1, field-validation candidate)
+; CivicWorkDesk -- Windows x64 per-user installer (Phase 4 field-validation candidate)
+;
+; This file carries NO release-candidate number. RC2 shipped with VersionInfoDescription hard-coded
+; to "RC1", so the installer's own Properties dialog told a user it was a release it was not -- the
+; sort of defect that a build cannot notice because nothing downstream reads it. The label now comes
+; from the build via CivicReleaseLabel, and an acceptance check reads it back out of the built bytes.
 ;
 ; Built with Inno Setup 7. Its licence grants permission to use it "for any purpose, including
 ; commercial applications"; condition 3 invites but does not require an acknowledgement, which the
@@ -37,6 +42,9 @@
 #ifndef CivicOutBase
   #define CivicOutBase "CivicWorkDesk-Windows-x64-Setup"
 #endif
+#ifndef CivicReleaseLabel
+  #error Define CivicReleaseLabel with the release-candidate label, e.g. RC3
+#endif
 
 #define CivicAppName "政务工作记录台"
 #define CivicAppNameEn "CivicWorkDesk"
@@ -51,7 +59,7 @@ AppVersion={#CivicReleaseId}
 AppVerName={#CivicAppName} {#CivicReleaseId}
 VersionInfoVersion={#CivicAppVersion}
 VersionInfoProductName={#CivicAppNameEn}
-VersionInfoDescription={#CivicAppNameEn} Windows x64 RC1 (field-validation candidate)
+VersionInfoDescription={#CivicAppNameEn} Windows x64 {#CivicReleaseLabel} (field-validation candidate)
 AppPublisher={#CivicPublisher}
 AppPublisherURL=https://github.com/Rhymer-Lcy/civic-work-desk
 AppSupportURL=https://github.com/Rhymer-Lcy/civic-work-desk/issues
@@ -212,6 +220,8 @@ Type: files; Name: "{userdesktop}\{#CivicAppName}.lnk"
 [Code]
 var
   DiagnosticPath: string;
+  { True when the only writable location was Setup's own temp directory, which is removed on exit. }
+  DiagnosticIsTemporary: Boolean;
 
 function CheckerPath(): string;
 begin
@@ -225,9 +235,12 @@ end;
 
   RC1 wrote the preflight report into Setup's temp directory and then told the user to copy it before
   the dialog was dismissed. That is a race an ordinary tester cannot be expected to win, and when they
-  lose it the evidence is gone. The Desktop is tried first because it needs no explanation; the profile
-  root and the temp directory are fallbacks for a redirected or read-only Desktop, and whichever one
-  works is the path shown in the message. }
+  lose it the evidence is gone.
+
+  The Desktop is tried first because it needs no explanation, then the profile root. Both are durable.
+  Setup's temp directory is the LAST resort and is NOT durable -- it is deleted when Setup exits -- so
+  reaching it is reported differently: the message says so and asks the user to save the file first.
+  Describing all three as equivalent fallbacks, as RC2 did, was wrong. }
 function DiagnosticCandidates(Stamp: string): TArrayOfString;
 var
   Names: TArrayOfString;
@@ -249,6 +262,7 @@ var
 begin
   Candidates := DiagnosticCandidates(GetDateTimeString('yyyymmdd-hhnnss', #0, #0));
   DiagnosticPath := '';
+  DiagnosticIsTemporary := False;
 
   for I := 0 to GetArrayLength(Candidates) - 1 do
   begin
@@ -275,7 +289,11 @@ begin
         DiagnosticPath := '';
       end
       else
+      begin
         DiagnosticPath := Candidates[I];
+        { Index 2 is Setup's temp directory -- see DiagnosticCandidates. }
+        DiagnosticIsTemporary := (I = 2);
+      end;
       Result := ResultCode;
       exit;
     end;
@@ -288,11 +306,22 @@ end;
 
 function DiagnosticSentence(): string;
 begin
-  if DiagnosticPath <> '' then
-    Result := '诊断文件已保存至：' + #13#10 + DiagnosticPath + #13#10#13#10 +
-              '如需协助，请将该诊断文件（TXT）反馈给维护人员。'
+  if DiagnosticPath = '' then
+  begin
+    Result := '无法写出诊断文件（桌面、用户目录与临时目录均不可写）。';
+    exit;
+  end;
+
+  { The temp directory is not durable. Saying "saved to <path>" about a file Setup is about to delete
+    would be the same false promise RC1 made, so this case says what is actually true and asks for the
+    one action that preserves it. }
+  if DiagnosticIsTemporary then
+    Result := '诊断文件已写入临时目录：' + #13#10 + DiagnosticPath + #13#10#13#10 +
+              '该目录会在安装程序退出时被清理。' + #13#10 +
+              '请先将该文件另存到桌面或其他目录，再关闭本窗口，然后反馈给维护人员。'
   else
-    Result := '无法写出诊断文件（桌面与用户目录都不可写）。';
+    Result := '诊断文件已保存至：' + #13#10 + DiagnosticPath + #13#10#13#10 +
+              '如需协助，请将该诊断文件（TXT）反馈给维护人员。';
 end;
 
 { What is true after a blocked preflight, and nothing more.
@@ -421,8 +450,18 @@ begin
       if not Exec(OldAdmin, 'deactivate --root "' + ExpandConstant('{app}') + '"',
                   '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       begin
-        Result := '无法停止正在运行的政务工作记录台（' + OldAdmin + ' 无法执行）。' + #13#10 +
-                  '请从开始菜单运行“维护工具 → 停止本地服务”，然后重新安装。';
+        { The subject of the RC2 wording was ambiguous: "（<path> 无法执行）" reads as though the
+          PROGRAM could not run, when what failed was the stop tool. The path leaves the primary
+          sentence and becomes a labelled technical detail below the instruction.
+
+          DiagnosticSentence() must NOT be used here. It reports the last preflight report, and a
+          passing stage deletes its own report -- so on the ordinary path into this branch the
+          variable is empty and the sentence would announce that the Desktop, profile and temp
+          directory are all unwritable. That would be an invented failure. Caught in review of this
+          very change. }
+        Result := '无法停止正在运行的政务工作记录台：停止工具无法执行。' + #13#10#13#10 +
+                  '请从开始菜单运行“维护工具 → 停止本地服务”，然后重新安装。' + #13#10#13#10 +
+                  '技术细节（反馈时请一并提供）：' + #13#10 + OldAdmin;
         exit;
       end;
 

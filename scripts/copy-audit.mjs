@@ -49,6 +49,11 @@ const RETIRED = [
   { text: '系统未被修改', instead: '未写入正式安装目录，安装未完成' },
   { text: '安装 政务工作记录台', instead: '安装政务工作记录台（纯中文短语内不加空格）' },
   { text: '卸载 政务工作记录台', instead: '卸载政务工作记录台（纯中文短语内不加空格）' },
+  // Caught by the external review, then MISSED by this audit for a whole release: the RC2 installer
+  // still said 「（<path> 无法执行）」, whose grammatical subject reads as the program rather than the
+  // stop tool. It is listed explicitly because the audit works on phrases, and a phrase it was never
+  // told about is a phrase it cannot find.
+  { text: '无法执行）', instead: '停止工具无法执行。（路径移入诊断文件）' },
   { text: '「', instead: '“（GB/T 15834 横排引号）' },
   { text: '」', instead: '”（GB/T 15834 横排引号）' },
 ];
@@ -91,6 +96,11 @@ const REQUIRED = [
     text: '请勿关闭 Windows Defender 或 SmartScreen',
     why: 'the instruction never to weaken Windows security',
     in: ['deploy/windows/installer/README-测试说明.txt'],
+  },
+  {
+    text: '无法停止正在运行的政务工作记录台：停止工具无法执行。',
+    why: 'the disambiguated stop-tool failure sentence',
+    in: ['deploy/windows/installer/civic-work-desk.iss'],
   },
   {
     text: '固定访问地址',
