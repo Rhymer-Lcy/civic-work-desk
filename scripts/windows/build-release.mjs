@@ -322,24 +322,61 @@ if (!skipInstaller) {
   if (!existsSync(ISCC)) fatal(`${ISCC} is not present; set CIVIC_ISCC or pass --skip-installer`);
   const outDir = join(ROOT, 'release', 'windows');
   const setupBase = `CivicWorkDesk-Windows-x64-${releaseId.replace(/-win-/, '-')}-Setup`;
-  run(
-    ISCC,
-    [
-      `/DCivicPayload=${payload}`,
-      `/DCivicReleaseId=${releaseId}`,
-      `/DCivicAppVersion=${appVersion}`,
-      `/DCivicOutDir=${outDir}`,
-      `/DCivicOutBase=${setupBase}`,
-      join(ROOT, 'deploy', 'windows', 'installer', 'civic-work-desk.iss'),
-    ],
-    { cwd: ROOT },
-  );
   setupPath = join(outDir, `${setupBase}.exe`);
-  if (!existsSync(setupPath)) fatal(`Inno Setup reported success but ${setupPath} does not exist`);
-  const digest = fileDigest(setupPath);
-  writeFileSync(`${setupPath}.sha256`, `${digest}  ${setupBase}.exe\n`, 'utf8');
-  console.log(`   ${setupBase}.exe  ${String(statSync(setupPath).size)} bytes`);
-  console.log(`   sha256  ${digest}`);
+  const sidecarPath = `${setupPath}.sha256`;
+
+  /*
+   * ## The installer is NOT bit-reproducible, and that has a consequence
+   *
+   * The payload IS. The application files come from the frozen UOS release, and the four Go binaries are
+   * built with -trimpath -buildvcs=false, so two builds of an unchanged tree produce an identical
+   * SHA256SUMS.txt — verified by building twice and diffing the manifest. The Inno Setup wrapper around
+   * them is not: compiling the same payload twice yields a different .exe, because Setup embeds
+   * non-deterministic data.
+   *
+   * So the installer's digest identifies ONE published artifact, not "whatever this script produces".
+   * Recompiling after a release silently invalidates the digest quoted in the release notes and in the
+   * tracked sidecar — which happened once during this work, replacing verified published bytes locally
+   * with bytes nobody had ever checked. Refusing to overwrite is what makes that impossible by accident;
+   * --force-installer is the deliberate way to cut a new one.
+   */
+  if (existsSync(setupPath) && !process.argv.includes('--force-installer')) {
+    const existing = fileDigest(setupPath);
+    const recorded = existsSync(sidecarPath)
+      ? readFileSync(sidecarPath, 'utf8').trim().split(/\s+/)[0]
+      : '(no sidecar)';
+    console.log(`   ${setupBase}.exe already exists; NOT recompiling it.`);
+    console.log(`   on disk : ${existing}`);
+    console.log(`   sidecar : ${recorded}`);
+    if (existing !== recorded) {
+      fatal('the existing installer does not match its sidecar; resolve that before building');
+    }
+    console.log(
+      '   Inno Setup output is not bit-reproducible, so recompiling would change the digest the',
+    );
+    console.log(
+      '   release notes and the sidecar quote. Pass --force-installer to cut a new installer.',
+    );
+  } else {
+    run(
+      ISCC,
+      [
+        `/DCivicPayload=${payload}`,
+        `/DCivicReleaseId=${releaseId}`,
+        `/DCivicAppVersion=${appVersion}`,
+        `/DCivicOutDir=${outDir}`,
+        `/DCivicOutBase=${setupBase}`,
+        join(ROOT, 'deploy', 'windows', 'installer', 'civic-work-desk.iss'),
+      ],
+      { cwd: ROOT },
+    );
+    if (!existsSync(setupPath))
+      fatal(`Inno Setup reported success but ${setupPath} does not exist`);
+    const digest = fileDigest(setupPath);
+    writeFileSync(sidecarPath, `${digest}  ${setupBase}.exe\n`, 'utf8');
+    console.log(`   ${setupBase}.exe  ${String(statSync(setupPath).size)} bytes`);
+    console.log(`   sha256  ${digest}`);
+  }
 
   // The tester instructions travel with the installer, not inside it. A colleague who has only the two
   // files must be able to read what they are about to run and what it will do; a document that only
@@ -354,7 +391,17 @@ if (!skipInstaller) {
     noticeTarget,
     noticeBody.subarray(0, 3).equals(bom) ? noticeBody : Buffer.concat([bom, noticeBody]),
   );
-  console.log(`   ${'README-测试说明.txt'}  ${String(statSync(noticeTarget).size)} bytes`);
+  console.log(`   README-测试说明.txt  ${String(statSync(noticeTarget).size)} bytes`);
+
+  // GitHub strips non-ASCII characters from release-asset filenames, turning README-测试说明.txt into
+  // README-.txt. So an ASCII-named copy of the same bytes is produced here for uploading, rather than
+  // being made by hand at release time -- a hand-made copy is one the build cannot reproduce, and the
+  // published asset should be reproducible like everything else.
+  const asciiNotice = join(outDir, 'README-testing-zh-CN.txt');
+  writeFileSync(asciiNotice, readFileSync(noticeTarget));
+  console.log(
+    `   README-testing-zh-CN.txt  ${String(statSync(asciiNotice).size)} bytes (same bytes, ASCII name for GitHub)`,
+  );
 
   // The instructions quote the installer's own filename in the hash-checking step. If the release id ever
   // changes and that line is not updated, a tester would check the wrong file and conclude nothing.
@@ -365,6 +412,26 @@ if (!skipInstaller) {
     );
   }
 }
+
+/* ------------------------------------------------------------------ 6. reproducible provenance
+ *
+ * The payload manifest and VERSION are copied somewhere tracked, because they are the part of this build
+ * that IS bit-reproducible: two runs over an unchanged tree produce an identical SHA256SUMS.txt. The
+ * installer's digest cannot serve that purpose — Inno Setup output is not deterministic — so its sidecar
+ * pins one published artifact while these two files let a reviewer reproduce and compare the contents.
+ */
+const provenanceDir = join(ROOT, 'release', 'windows', 'provenance');
+mkdirSync(provenanceDir, { recursive: true });
+writeFileSync(
+  join(provenanceDir, `${releaseId}-payload-SHA256SUMS.txt`),
+  readFileSync(join(payload, 'SHA256SUMS.txt')),
+);
+writeFileSync(
+  join(provenanceDir, `${releaseId}-VERSION.txt`),
+  readFileSync(join(payload, 'VERSION')),
+);
+console.log('');
+console.log(`5. provenance written to release/windows/provenance/ (payload manifest and VERSION)`);
 
 console.log('');
 console.log('summary');

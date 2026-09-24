@@ -95,6 +95,7 @@ release/windows/acceptance-rc1-*.txt
 # deploy/windows/installer/README-测试说明.txt. Tracking both copies is how they drift apart; the source is
 # tracked and the build re-derives this one.
 release/windows/README-测试说明.txt
+release/windows/README-testing-zh-CN.txt
 
 # Distribution archives built by scripts/windows/build-probe-bundle.mjs. Same reasoning as the .tar.gz
 # above: the archive is a build product, deterministic from its inputs, so the tracked probe sources plus

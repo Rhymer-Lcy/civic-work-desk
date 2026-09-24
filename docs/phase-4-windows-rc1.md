@@ -275,6 +275,24 @@ properly); expectations that the XLSX ledger and the DOCX statistical summary wo
 titles; and Chinese text read through PowerShell's stdout, which is written in the console code page and
 arrived mangled.
 
+## 8a. Reproducibility, stated precisely
+
+The **payload** is bit-reproducible. The application files are copied from the frozen UOS release, and the
+four Go binaries are built with `-trimpath -buildvcs=false`, so two builds of an unchanged tree produce an
+identical `SHA256SUMS.txt` — verified by building twice and diffing the manifest, not assumed. That
+manifest and the release's `VERSION` are tracked under
+[release/windows/provenance/](../release/windows/provenance/), so a reviewer can rebuild and compare.
+
+The **installer is not**. Compiling the same payload twice with Inno Setup yields a different `.exe`,
+because Setup embeds non-deterministic data. So the installer's SHA-256 identifies **one published
+artifact** — it is what a tester checks their download against — and it is _not_ a value a rebuild will
+reproduce.
+
+That distinction has a practical consequence, and it bit once during this work: recompiling after the
+release replaced the verified published bytes on disk with bytes nobody had checked, and silently rewrote
+the sidecar that the release notes quote. The build script now refuses to overwrite an existing installer,
+reports the on-disk and recorded digests, and requires `--force-installer` to cut a new one.
+
 ## 9. What is NOT established
 
 - **Windows compatibility is not certified.** One machine, one operator, one browser engine.
