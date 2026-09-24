@@ -469,7 +469,15 @@ for (const c of customCases) {
   )?.[1];
   if (diagPath && existsSync(diagPath)) {
     const report = readFileSync(diagPath, 'utf8');
-    check(report.includes(c.dir), `  ${c.name}: diagnostics keep the custom path verbatim`);
+    /* RC2 asserted here that the report kept the chosen path VERBATIM, on the reasoning that a path the
+     * user typed identifies nobody. That reasoning was wrong — `D:\张三\政务工作记录台` is a person's
+     * name — and this assertion was the thing holding the defect in place: it would have failed the fix.
+     * It is inverted rather than deleted, so the property is still pinned, in the opposite direction. */
+    check(!report.includes(c.dir), `  ${c.name}: diagnostics do NOT keep the custom path verbatim`);
+    check(
+      report.includes('<CUSTOM_INSTALL_ROOT>'),
+      `  ${c.name}: the custom root is reported as a placeholder`,
+    );
     check(
       /install root kind *: custom/.test(report),
       `  ${c.name}: diagnostics name it a custom directory`,
