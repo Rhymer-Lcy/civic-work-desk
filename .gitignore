@@ -77,6 +77,12 @@ _review_packages/*
 release/*/.runtime/
 release/*.tar.gz
 
+# Distribution archives built by scripts/windows/build-probe-bundle.mjs. Same reasoning as the .tar.gz
+# above: the archive is a build product, deterministic from its inputs, so the tracked probe sources plus
+# the `.sha256` sidecar are the provenance. The sidecar IS tracked — it is how a tester checks the copy
+# they received against what this repository says it should be.
+release/*.zip
+
 # Phase-4 Windows probe and acceptance output collected from a tester's machine. These carry host
 # names, user profile paths and installed-software inventories; they are reviewed and transcribed into
 # docs/ deliberately, never committed raw.
