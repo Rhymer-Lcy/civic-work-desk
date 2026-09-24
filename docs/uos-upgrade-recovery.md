@@ -1,7 +1,14 @@
 # UOS 升级、回滚与卸载
 
-> **状态：Stage B 实现完成，命令已可用。**
-> 最终安装形态尚未在目标机验证；升级与回退的实测项见 `docs/uos-final-acceptance.md`。
+> **状态：Phase 3 已签署完成。** 权威结论见 [phase-3-final-signoff.md](phase-3-final-signoff.md)，
+> 实测记录见 [uos-final-acceptance.md](uos-final-acceptance.md)。
+>
+> 本行原本写的是“最终安装形态尚未在目标机验证”。那是签署前的状态，现已过时。
+>
+> 需要区分两件事：冻结发布包 `civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz`
+> 内部 `VERSION` 中的 `installedFormTargetValidated=NO` 记录的是**构建时**的状态，
+> 而物理验证是在那之后针对**同一批字节**完成的。该发布包不会为了改写这条构建期元数据而重建：
+> 重建会产生不同的字节，而被验证的正是现有这一份。
 
 ## 一条贯穿始终的原则
 
