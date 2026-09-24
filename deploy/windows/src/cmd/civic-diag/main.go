@@ -10,8 +10,17 @@
 // document contents. No file contents of any kind except the deployment's own log, which by construction
 // holds only request lines -- method, path, status, bytes, duration -- and no user data.
 //
-// The report does contain the account name and the machine name, because they appear in paths. That is
-// stated at the top of the file so the person forwarding it knows what they are forwarding.
+// ## And what RC2 stopped collecting
+//
+// RC1 reported the machine name and the account name as fields of their own, and every path in it
+// carried the account name a second time. None of that is needed to diagnose a deployment: the useful
+// facts are which release is active, whether the port is free, and whether process ownership can be
+// proven. So the two fields are gone and paths are rewritten to the environment variable they came
+// from -- `%LOCALAPPDATA%\\CivicWorkDesk\\...` rather than `C:\\Users\\<someone>\\...`.
+//
+// A custom installation directory such as `D:\\Applications\\CivicWorkDesk` is deliberately left
+// verbatim: it identifies nobody, and losing it would make exactly the installations this release added
+// support for impossible to diagnose.
 package main
 
 import (
@@ -22,6 +31,7 @@ import (
 	"time"
 
 	"civicworkdesk/windows/internal/layout"
+	"civicworkdesk/windows/internal/redact"
 	"civicworkdesk/windows/internal/release"
 	"civicworkdesk/windows/internal/serverstate"
 	"civicworkdesk/windows/internal/winproc"
@@ -35,24 +45,30 @@ const (
 
 func main() {
 	var b strings.Builder
-	w := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
+	// Every line goes through the redactor on the way out, so a path cannot reach the report by some
+	// route the author forgot to wrap. That is the difference between "the fields I remembered are
+	// clean" and "the file is clean".
+	w := func(format string, args ...any) {
+		fmt.Fprintf(&b, "%s\n", redact.Paths(fmt.Sprintf(format, args...)))
+	}
 
 	w("政务工作记录台 — 诊断信息 / CivicWorkDesk diagnostic report")
 	w("")
 	w("采集时间 : %s", time.Now().Format(time.RFC3339))
-	w("规范地址 : %s/", canonicalOrigin)
+	w("固定访问地址 : %s/", canonicalOrigin)
 	w("")
-	w("这份文件包含：Windows 版本、本机名与账号名（出现在路径里）、已安装的发布版本、")
-	w("服务运行状态、端口状态、默认浏览器标识，以及部署自身的请求日志。")
-	w("这份文件不包含：任何工作记录、任何浏览器数据（历史/Cookie/密码/IndexedDB 内容）、")
-	w("任何文档内容。可以直接回传。")
+	w("这份文件包含：Windows 版本、已安装的程序版本、本地服务运行状态、端口状态、")
+	w("默认浏览器标识，以及程序自身的运行日志。")
+	w("%s", "用户目录已替换为环境变量形式（例如 %LOCALAPPDATA%），不含账号名与计算机名。")
+	w("这份文件不包含：任何工作记录、任何浏览器数据（历史、Cookie、密码、站点存储内容）、")
+	w("任何文档内容，也不含任何口令或密钥。")
 	w("")
 
 	section(w, "1. Windows")
 	w("  OS                : %s", osDescription())
 	w("  architecture      : %s", os.Getenv("PROCESSOR_ARCHITECTURE"))
-	w("  computer          : %s", os.Getenv("COMPUTERNAME"))
-	w("  user              : %s\\%s", os.Getenv("USERDOMAIN"), os.Getenv("USERNAME"))
+	// The machine name and the account name were RC1 fields and are deliberately absent: neither is
+	// needed to diagnose this deployment, and both identify the person forwarding the file.
 	if progID, err := winproc.DefaultBrowserProgID(); err == nil {
 		w("  default browser   : %s", progID)
 	} else {
@@ -69,6 +85,7 @@ func main() {
 
 	section(w, "2. Installation")
 	w("  install root      : %s", tree.Root)
+	w("  install root kind : %s", installRootKind(tree.Root))
 	activeID, activeErr := tree.ActiveRelease()
 	if activeErr != nil {
 		w("  active release    : (none) %v", activeErr)
@@ -169,9 +186,10 @@ func main() {
 		}
 	}
 
-	section(w, "6. What to do with this file")
-	w("  把这个 txt 原样发回即可。如果还能打开应用，也请顺便访问一次")
-	w("  %s/__civic/platform ，点“复制全部结果”，把那段文字一起发回。", canonicalOrigin)
+	section(w, "6. 如何反馈")
+	w("  请将这份诊断文件（TXT）原样反馈给维护人员。")
+	w("  如果程序还能打开，也请访问一次 %s/__civic/platform ，", canonicalOrigin)
+	w("  点“复制全部结果”，把那段文字一并反馈。")
 
 	finish(b.String())
 }
@@ -208,11 +226,11 @@ func finish(report string) {
 	}
 	if written == "" {
 		fmt.Print(report)
-		fmt.Fprintln(os.Stderr, "\n无法写出诊断文件，上面是完整内容，请直接复制。")
+		fmt.Fprintln(os.Stderr, "\n无法写出诊断文件，以上为完整内容，请复制后反馈。")
 		os.Exit(5)
 	}
 
-	fmt.Printf("诊断信息已保存到：\n\n    %s\n\n请把这个文件发回。\n", written)
+	fmt.Printf("诊断文件已保存至：\n\n    %s\n\n请将该诊断文件（TXT）反馈给维护人员。\n", written)
 	// Opening it is a convenience, not the deliverable. If the shell refuses, the path above is enough.
 	_ = winproc.OpenInDefaultBrowserOrEditor(written)
 }
@@ -255,4 +273,19 @@ func tailFile(path string, n int) ([]string, error) {
 		lines = lines[len(lines)-n:]
 	}
 	return lines, nil
+}
+
+// installRootKind says whether the installation is in the default place or somewhere the user chose.
+//
+// Redacting %LOCALAPPDATA% would otherwise make the two indistinguishable at a glance, and "is this a
+// custom-path installation" is the first question to ask about a problem that only some people see.
+func installRootKind(root string) string {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		return "unknown (LOCALAPPDATA is not set)"
+	}
+	if strings.EqualFold(filepath.Clean(root), filepath.Join(filepath.Clean(base), "CivicWorkDesk")) {
+		return "default (%LOCALAPPDATA%\\CivicWorkDesk)"
+	}
+	return "custom installation directory"
 }
