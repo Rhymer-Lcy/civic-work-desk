@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "CivicWorkDesk - a local-first, installable PWA for keeping public-sector work records and honour/award archives.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rhymer-Lcy/civic-work-desk.git"
+  },
+  "homepage": "https://github.com/Rhymer-Lcy/civic-work-desk#readme",
+  "bugs": {
+    "url": "https://github.com/Rhymer-Lcy/civic-work-desk/issues"
+  },
   "license": "UNLICENSED",
   "type": "module",
   "engines": {

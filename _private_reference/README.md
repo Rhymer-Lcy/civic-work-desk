@@ -2,9 +2,9 @@
 
 ## Why this directory exists
 
-CivicWorkDesk is a rewrite of a single-file HTML prototype ("工作记录台"). That prototype
-embedded roughly 180 **real** work records directly in its source: personal names, mobile and
-landline numbers, named counterpart organisations, and descriptions of live public-sector work.
+CivicWorkDesk is a rewrite of a single-file HTML prototype ("工作记录台"). That prototype embedded
+**real** work records directly in its source. It is confidential material and is excluded from Git,
+from production builds, from test fixtures and from every review package.
 
 The original file is kept here — unmodified — for exactly three purposes:
 

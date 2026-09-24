@@ -199,6 +199,59 @@ with no failing gate.
 | `docs/release-checklist.md`        | Gates before packaging and before deploying                      |
 | `docs/decisions/0001-pwa-first.md` | Why a PWA and not a native wrapper                               |
 
+## Deployment and supported platforms
+
+CivicWorkDesk is a static PWA. Deployment means serving `dist/` from a local HTTP server on a fixed,
+canonical origin and opening the default browser at it:
+
+```
+http://127.0.0.1:8765/
+```
+
+That origin is not a preference. Browser storage is keyed on scheme + host + port, so a different
+origin is a different, empty IndexedDB — which presents to a user as data loss. Every deployment holds
+that origin exactly, and fails loudly rather than falling back to another port or to `localhost`.
+
+### UOS (LoongArch) — validated
+
+> CivicWorkDesk release `2026.09.23-5`
+> (SHA-256 `969a2a74bb3e893ef7e794729578383620f0d819e6ce74bd1e2cfb43f370e5bf`)
+> was physically validated on UOS Desktop 20 Professional,
+> loongarch64 / Loongson 3A6000,
+> kernel 4.19.0-loongson-3-desktop,
+> using 360 Browser 13.4.1140.83 / Chromium 126.0.6478.251.
+
+That sentence is the whole claim. It is **not** a claim of support for Linux generally, for other UOS
+versions, for other LoongArch systems, or for other browser versions. The deployment is user-level:
+no root, no system service, no Node, no Python — BusyBox `httpd` serves the files and `xdg-open`
+opens the browser. Sign-off and evidence: `docs/phase-3-final-signoff.md`.
+
+### Windows 11 — in progress, not certified
+
+Phase 4 is characterising Windows 11 before anything is built. There is no Windows release, and no
+claim of Windows compatibility is made. Plan and probe: `docs/phase-4-windows-stage-a-plan.md`.
+
+### Verifying a release download
+
+Release archives are published as GitHub Releases, not committed to this repository. Verify one before
+installing it:
+
+```sh
+sha256sum -c civic-work-desk-uos20-loongarch64-<version>.tar.gz.sha256   # must print OK
+tar -xzf civic-work-desk-uos20-loongarch64-<version>.tar.gz
+cd civic-work-desk-uos20-loongarch64-<version>
+sha256sum -c SHA256SUMS.txt                                             # every file, individually
+sh install.sh                                                           # no sudo, user-level
+```
+
+The outer `.sha256` authenticates the archive; the inner `SHA256SUMS.txt` covers every file inside it.
+The installer re-verifies the bundle itself before it copies anything, and again after staging.
+
 ## Licence
 
-Internal tool. Not licensed for redistribution. See `package.json`.
+**No licence is granted.** The source is published here so it can be read, reviewed and audited — not
+so it can be reused. All rights are reserved by the copyright holder; there is no permission to use,
+copy, modify, merge, publish, distribute, sublicense or sell any part of it, and `package.json`
+records `"license": "UNLICENSED"` to say the same thing in machine-readable form.
+
+If you want to do something with this code, ask first.
