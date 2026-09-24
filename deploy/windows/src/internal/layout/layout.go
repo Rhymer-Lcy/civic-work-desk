@@ -49,13 +49,59 @@ type Tree struct {
 	Root string
 }
 
-// Default returns the tree under %LOCALAPPDATA%, the location an ordinary user can always write.
+// Default returns the installation this executable belongs to.
+//
+// ## Why it is not simply %LOCALAPPDATA%\CivicWorkDesk
+//
+// It was, until RC2 let a user choose the installation directory — and then the launcher, the status
+// tool, the stop command and the diagnostics all looked in the default location, found nothing, and
+// reported "no installed version" from inside a perfectly good installation on another drive. The
+// acceptance run caught it as exit code 4 on every custom-path case.
+//
+// The binaries live in `<root>\bin\`, so the running executable's own path names the root without
+// needing any configuration, registry value or environment variable to be right. That also makes two
+// installations on one machine independent: each one's tools operate on their own tree.
+//
+// %LOCALAPPDATA% remains the fallback for the case where the executable is somewhere unexpected —
+// a copy run from a download folder, say — because a wrong answer there is better than no answer.
 func Default() (Tree, error) {
+	if root, ok := rootFromExecutable(); ok {
+		return Tree{Root: root}, nil
+	}
 	base := os.Getenv("LOCALAPPDATA")
 	if base == "" {
 		return Tree{}, errors.New("LOCALAPPDATA is not set; cannot locate the per-user installation root")
 	}
 	return Tree{Root: filepath.Join(base, "CivicWorkDesk")}, nil
+}
+
+// rootFromExecutable derives the installation root from where this program is running.
+//
+// Two layouts are recognised, because the tools legitimately run from both: `<root>\bin\x.exe`, which
+// is what the shortcuts point at, and `<root>\releases\<id>\server\x.exe`, which is where a release
+// keeps its own copy and where the launcher falls back to when bin\ is being repaired.
+func rootFromExecutable() (string, bool) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	dir := filepath.Dir(exe)
+
+	switch strings.ToLower(filepath.Base(dir)) {
+	case "bin":
+		return filepath.Dir(dir), true
+	case "server":
+		// <root>\releases\<id>\server -> <root>
+		releaseDir := filepath.Dir(dir)
+		releasesDir := filepath.Dir(releaseDir)
+		if strings.EqualFold(filepath.Base(releasesDir), "releases") {
+			return filepath.Dir(releasesDir), true
+		}
+	}
+	return "", false
 }
 
 // At returns a tree rooted at an explicit path. Used by the installer, which knows where it put
