@@ -272,7 +272,7 @@ info('shortcuts', shortcuts.join(', '));
 check(shortcuts.includes('政务工作记录台.lnk'), 'main shortcut named 政务工作记录台');
 // RC2 moved the maintenance actions one level down, so that "stop the local service" no longer sits
 // beside the application as though it were an ordinary thing to do. The grouping itself is asserted in
-// acceptance-rc2-ux.mjs; what matters here is that both are still REACHABLE.
+// acceptance-ux.mjs; what matters here is that both are still REACHABLE.
 const maintenanceDir = join(START_MENU, '维护工具');
 const maintenance = existsSync(maintenanceDir) ? readdirSync(maintenanceDir).sort() : [];
 info('维护工具', maintenance.join(', ') || '(absent)');

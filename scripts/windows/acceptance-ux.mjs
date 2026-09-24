@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * RC2 acceptance for what RC2 changed: installation paths, icons, shortcuts, Start Menu, install-failure
+ * Acceptance for the distribution surface: installation paths, icons, shortcuts, Start Menu, install-failure
  * diagnostics, diagnostic privacy, and copy.
  *
- *   node scripts/windows/acceptance-rc2-ux.mjs [--release-id <id>]
+ *   node scripts/windows/acceptance-ux.mjs [--release-id <id>]
  *
- * The properties RC1 already had are re-proved by scripts/windows/acceptance-deploy.mjs and
+ * The deployment and browser properties are re-proved by scripts/windows/acceptance-deploy.mjs and
  * scripts/windows/acceptance-browser.mjs, which this does not duplicate. Everything here is driven from
  * the ACTUAL installer bytes and asserts concrete final state — a shortcut's resolved target, the bytes
  * of an icon resource, the text of a report — rather than exit codes.
@@ -22,14 +22,16 @@ function argValue(name, fallback) {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
-const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc2');
+const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc3');
 const SETUP_BASE = `CivicWorkDesk-Windows-x64-${RELEASE_ID.replace('-win-', '-')}-Setup`;
 const SETUP = join(ROOT, 'release', 'windows', `${SETUP_BASE}.exe`);
-const RC1_SETUP = join(
+// The immediately previous PUBLISHED release, for the in-place upgrade test. RC2 is what a colleague
+// would already have installed when RC3 reaches them, so it is the upgrade that has to work.
+const PREVIOUS_SETUP = join(
   ROOT,
   'release',
   'windows',
-  'CivicWorkDesk-Windows-x64-2026.09.24-rc1-Setup.exe',
+  'CivicWorkDesk-Windows-x64-2026.09.24-rc2-Setup.exe',
 );
 const DEFAULT_ROOT = join(
   process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
@@ -46,7 +48,31 @@ const START_MENU = join(
 );
 const DESKTOP = join(process.env.USERPROFILE ?? homedir(), 'Desktop');
 const ORIGIN = 'http://127.0.0.1:8765';
-const WORK = join(tmpdir(), 'civic-rc2-ux');
+const WORK = join(tmpdir(), 'civic-ux-acceptance');
+const SEP = String.fromCharCode(92);
+const JOIN_D = 'D:' + SEP;
+/* Identity-shaped directory names for the adversarial privacy cases. Written as escapes so this
+ * source file carries nothing that could be mistaken for real personal data. */
+const CHINESE_NAME = '\u5f20\u4e09';
+const CHINESE_APP = '\u653f\u52a1\u5de5\u4f5c\u8bb0\u5f55\u53f0';
+const CHINESE_ORG = '\u67d0\u5355\u4f4d';
+const CHINESE_PERSON = '\u674e\u67d0';
+const DIAGWORD = '\u8bca\u65ad\u4fe1\u606f';
+
+/* Sentences the installer must contain, by meaning rather than by marker. Escapes keep this file
+ * ASCII-clean while still asserting on the real user-facing text. */
+// \u8be5\u76ee\u5f55\u4f1a\u5728\u5b89\u88c5\u7a0b\u5e8f\u9000\u51fa\u65f6\u88ab\u6e05\u7406\u3002
+const TEMP_WARNING =
+  '\u8be5\u76ee\u5f55\u4f1a\u5728\u5b89\u88c5\u7a0b\u5e8f\u9000\u51fa\u65f6\u88ab\u6e05\u7406\u3002';
+// \u8bf7\u5148\u5c06\u8be5\u6587\u4ef6\u53e6\u5b58\u5230\u684c\u9762
+const SAVE_FIRST = '\u8bf7\u5148\u5c06\u8be5\u6587\u4ef6\u53e6\u5b58\u5230\u684c\u9762';
+// \u8bca\u65ad\u6587\u4ef6\u5df2\u4fdd\u5b58\u81f3\uff1a
+const DIAG_SAVED = '\u8bca\u65ad\u6587\u4ef6\u5df2\u4fdd\u5b58\u81f3\uff1a';
+// \u684c\u9762\u3001\u7528\u6237\u76ee\u5f55\u4e0e\u4e34\u65f6\u76ee\u5f55\u5747\u4e0d\u53ef\u5199
+const ALL_UNWRITABLE =
+  '\u684c\u9762\u3001\u7528\u6237\u76ee\u5f55\u4e0e\u4e34\u65f6\u76ee\u5f55\u5747\u4e0d\u53ef\u5199';
+// \u684c\u9762\u4e0e\u7528\u6237\u76ee\u5f55\u90fd\u4e0d\u53ef\u5199  -- the RC2 wording, which omitted the temp directory
+const OLD_TWO_PLACE = '\u684c\u9762\u4e0e\u7528\u6237\u76ee\u5f55\u90fd\u4e0d\u53ef\u5199';
 
 const results = [];
 let failures = 0;
@@ -172,15 +198,13 @@ if (Test-Path $key) { Remove-Item $key -Recurse -Force -ErrorAction SilentlyCont
   await waitFor(async () => !(await portOpen()), 8000);
 }
 
-console.log('CivicWorkDesk Windows RC2 -- distribution-experience acceptance');
+console.log(`CivicWorkDesk Windows ${RELEASE_ID} -- distribution-experience acceptance`);
 console.log('');
 console.log(`  release  : ${RELEASE_ID}`);
 console.log(`  installer: ${SETUP}`);
 
 if (!existsSync(SETUP)) {
-  console.error(
-    'error: the RC2 installer is not built. Run scripts/windows/build-release.mjs first.',
-  );
+  console.error('error: the installer is not built. Run scripts/windows/build-release.mjs first.');
   process.exit(2);
 }
 
@@ -262,7 +286,7 @@ check(
 );
 check(
   readFileSync(join(DEFAULT_ROOT, 'current.txt'), 'utf8').trim() === RELEASE_ID,
-  'the RC2 release is active',
+  'this release is active',
   RELEASE_ID,
 );
 
@@ -505,42 +529,45 @@ if (!existsSync(checker)) {
 }
 
 // ===================================================================================================
-section('7. RC1 to RC2 upgrade');
+section('7. previous release to this one, upgrade in place');
 await cleanSlate();
-if (!existsSync(RC1_SETUP)) {
-  na('upgrade from RC1', 'the published RC1 installer is not present');
+if (!existsSync(PREVIOUS_SETUP)) {
+  na('upgrade from the previous release', 'its published installer is not present');
 } else {
-  const rc1 = sh(RC1_SETUP, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
+  const rc1 = sh(PREVIOUS_SETUP, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
   check(
     rc1.status === 0 && existsSync(join(DEFAULT_ROOT, 'current.txt')),
-    'RC1 installs from its published bytes',
+    'the previous release installs from its published bytes',
     `code ${rc1.status}`,
   );
   const rc1Id = readFileSync(join(DEFAULT_ROOT, 'current.txt'), 'utf8').trim();
-  info('RC1 active release', rc1Id);
+  info('previous active release', rc1Id);
 
-  // Leave RC1's local service RUNNING across the upgrade: that is the case that aborted during the RC1
-  // rehearsal, and the reason PrepareToInstall exists.
+  // Leave the previous release's local service RUNNING across the upgrade: that is the case that
+  // aborted during the RC1 rehearsal, and the reason PrepareToInstall exists.
   sh(join(DEFAULT_ROOT, 'bin', 'civic-launch.exe'), ['open']);
   await waitFor(portOpen, 15000);
-  check(await portOpen(), 'RC1 is serving before the upgrade');
+  check(await portOpen(), 'the previous release is serving before the upgrade');
 
   const upgrade = installTo('');
   check(
     upgrade.status === 0,
-    'RC2 installs over RC1 while it was running',
+    'this release installs over it while it was running',
     `code ${upgrade.status}`,
   );
   check(
     readFileSync(join(DEFAULT_ROOT, 'current.txt'), 'utf8').trim() === RELEASE_ID,
-    'RC2 is now the active release',
+    'this release is now active',
   );
   check(
     readFileSync(join(DEFAULT_ROOT, 'previous.txt'), 'utf8').trim() === rc1Id,
-    'previous.txt records RC1 as the rollback target',
+    'previous.txt records it as the rollback target',
     rc1Id,
   );
-  check(existsSync(join(DEFAULT_ROOT, 'releases', rc1Id)), 'the RC1 release directory is retained');
+  check(
+    existsSync(join(DEFAULT_ROOT, 'releases', rc1Id)),
+    'the previous release directory is retained',
+  );
 
   // No second installation anywhere.
   const roots = ps(`
@@ -688,6 +715,147 @@ if (reportPath && existsSync(reportPath)) {
 sh(join(DEFAULT_ROOT, 'bin', 'civic-launch.exe'), ['stop']);
 
 // ===================================================================================================
+section('9b. custom paths that look like people');
+// RC2 emitted a user-chosen installation directory verbatim, on the stated grounds that it "identifies
+// nobody". These are the paths that make that false. A forwardable report must not carry any of them.
+const IDENTITY_CASES = [
+  {
+    name: 'a Latin personal name',
+    dir: JOIN_D + 'Alice' + SEP + 'CivicWorkDesk',
+    fragments: ['Alice'],
+  },
+  {
+    name: 'a Chinese personal name',
+    dir: JOIN_D + 'ZHANGSAN' + SEP + 'CWD',
+    fragments: ['ZHANGSAN'],
+  },
+  {
+    name: 'an organisation and a person',
+    dir: JOIN_D + 'MOUDANWEI' + SEP + 'LIMOU' + SEP + 'CivicWorkDesk',
+    fragments: ['MOUDANWEI', 'LIMOU'],
+  },
+];
+// The Chinese cases are written with their real characters here; the ASCII placeholders above keep this
+// source file free of anything that could be mistaken for real data.
+IDENTITY_CASES[1].dir = JOIN_D + CHINESE_NAME + SEP + CHINESE_APP;
+IDENTITY_CASES[1].fragments = [CHINESE_NAME];
+IDENTITY_CASES[2].dir = JOIN_D + CHINESE_ORG + SEP + CHINESE_PERSON + SEP + 'CivicWorkDesk';
+IDENTITY_CASES[2].fragments = [CHINESE_ORG, CHINESE_PERSON];
+
+if (!dIsFixed) {
+  na('identity-shaped custom paths', 'no writable fixed D: drive on this machine; not simulated');
+} else {
+  for (const c of IDENTITY_CASES) {
+    await cleanSlate(c.dir);
+    rmSync(c.dir, { recursive: true, force: true });
+    const r = installTo(c.dir);
+    if (r.status !== 0 || !existsSync(join(c.dir, 'current.txt'))) {
+      check(false, `install to ${c.name}`, `${c.dir} (code ${r.status})`);
+      continue;
+    }
+    check(true, `install to ${c.name}`, c.dir);
+
+    sh(join(c.dir, 'bin', 'civic-launch.exe'), ['open']);
+    await waitFor(portOpen, 15000);
+    const diag = sh(join(c.dir, 'bin', 'civic-diag.exe'), []);
+    // Built with RegExp rather than a literal: the diagnostic filename carries a Chinese word that is
+    // held in a constant, and a regex literal cannot interpolate one.
+    const reportRe = new RegExp(`([A-Z]:\\\\[^\\r\\n]*CivicWorkDesk-${DIAGWORD}-[0-9-]+\\.txt)`);
+    const reportPath = reportRe.exec(diag.stdout ?? '')?.[1];
+    if (!reportPath || !existsSync(reportPath)) {
+      check(false, `  ${c.name}: a diagnostic report was produced`, reportPath ?? '(none)');
+      sh(join(c.dir, 'bin', 'civic-launch.exe'), ['stop']);
+      uninstallFrom(c.dir);
+      rmSync(c.dir, { recursive: true, force: true });
+      continue;
+    }
+    const body = readFileSync(reportPath, 'utf8');
+
+    for (const fragment of c.fragments) {
+      check(
+        !body.includes(fragment),
+        `  ${c.name}: the report does not contain ${JSON.stringify(fragment)}`,
+      );
+    }
+    check(!body.includes(c.dir), `  ${c.name}: the report does not contain the chosen path`);
+    check(
+      body.includes('<CUSTOM_INSTALL_ROOT>'),
+      `  ${c.name}: the root is reported as a placeholder`,
+    );
+    // Masked, but still diagnosable. Matched tolerantly of label padding: what has to hold is that the
+    // characteristic is reported, not that its colon lands in a particular column.
+    check(/install volume *: D:/.test(body), `  ${c.name}: the volume survives`);
+    check(/path has spaces *: (yes|no)/.test(body), `  ${c.name}: the space flag survives`);
+    check(/path has non-ASCII *: (yes|no)/.test(body), `  ${c.name}: the character class survives`);
+    check(/path depth *: [0-9]+/.test(body), `  ${c.name}: the depth survives`);
+    check(/path length *: [0-9]+/.test(body), `  ${c.name}: the length survives`);
+    check(/path writable *: (yes|no)/.test(body), `  ${c.name}: writability survives`);
+    check(body.includes(RELEASE_ID), `  ${c.name}: the release id survives`);
+
+    rmSync(reportPath, { force: true });
+    sh(join(c.dir, 'bin', 'civic-launch.exe'), ['stop']);
+    uninstallFrom(c.dir);
+    await sleep(1200);
+    rmSync(c.dir, { recursive: true, force: true });
+  }
+}
+
+// ===================================================================================================
+section('9c. install-diagnostic fallback semantics');
+// The three fallback locations are not equivalent: Setup's temp directory is deleted when Setup exits.
+// RC2's message said "saved to <path>" for all three, which for the last one is the same false promise
+// RC1 made. What is asserted here is the SEMANTICS of the messages, read out of the installer source,
+// because provoking an unwritable Desktop on a real machine would require changing the operator's own
+// profile.
+const issText = readFileSync(
+  join(ROOT, 'deploy', 'windows', 'installer', 'civic-work-desk.iss'),
+  'utf8',
+);
+check(
+  /DiagnosticIsTemporary\s*:=\s*\(I = 2\)/.test(issText),
+  'the temp location is recognised as the last resort',
+);
+check(
+  issText.includes(TEMP_WARNING),
+  'the temp case says the directory is cleaned when Setup exits',
+);
+check(issText.includes(SAVE_FIRST), 'the temp case asks the user to save the file before closing');
+check(issText.includes(DIAG_SAVED), 'the durable case still says the file was saved');
+check(issText.includes(ALL_UNWRITABLE), 'the no-location case names all three places, not two');
+check(!issText.includes(OLD_TWO_PLACE), 'the RC2 two-place wording is gone');
+
+// ===================================================================================================
+section('9d. release identity and provenance, from the built bytes');
+const identity = sh(process.execPath, [
+  join(ROOT, 'scripts', 'windows', 'assert-release-identity.mjs'),
+  '--release-id',
+  RELEASE_ID,
+]);
+check(
+  identity.status === 0,
+  'every current-release field names this release',
+  (identity.stdout ?? '')
+    .split(/\r?\n/)
+    .filter((l) => /FAIL|RESULT/.test(l))
+    .join(' | '),
+);
+
+const provenance = sh(process.execPath, [
+  join(ROOT, 'scripts', 'windows', 'assert-release-provenance.mjs'),
+  '--verify-built',
+  '--release-id',
+  RELEASE_ID,
+]);
+check(
+  provenance.status === 0,
+  'the recorded source commit is real, public and reachable',
+  (provenance.stdout ?? '')
+    .split(/\r?\n/)
+    .filter((l) => /FAIL|RESULT/.test(l))
+    .join(' | '),
+);
+
+// ===================================================================================================
 section('10. copy audit');
 const copy = sh(process.execPath, [join(ROOT, 'scripts', 'copy-audit.mjs'), '--mutate']);
 check(
@@ -715,9 +883,9 @@ console.log(
 );
 
 writeFileSync(
-  join(ROOT, 'release', 'windows', `acceptance-rc2-ux-${RELEASE_ID}.txt`),
+  join(ROOT, 'release', 'windows', `acceptance-ux-${RELEASE_ID}.txt`),
   [
-    'CivicWorkDesk Windows RC2 -- distribution-experience acceptance',
+    `CivicWorkDesk Windows ${RELEASE_ID} -- distribution-experience acceptance`,
     '',
     `release : ${RELEASE_ID}`,
     `checks  : ${results.length} (${failures} failed)`,
