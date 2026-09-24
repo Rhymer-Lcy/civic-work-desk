@@ -26,6 +26,13 @@ const transcriptName = "install.log"
 // The log holds what the program printed about the deployment -- release ids, paths inside the
 // installation, digest verdicts. No records, no tokens, no browser data.
 func startTranscript(logsDir string) func() {
+	// Do not CREATE the installation tree just to log into it. A machine-stage preflight runs before
+	// anything is installed and may well conclude that nothing should be; leaving an empty
+	// %LOCALAPPDATA%\CivicWorkDesk\logs behind after a refused install is a small lie about what
+	// happened, and the installer's own message promises the opposite.
+	if _, err := os.Stat(filepath.Dir(logsDir)); err != nil {
+		return func() {}
+	}
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return func() {}
 	}

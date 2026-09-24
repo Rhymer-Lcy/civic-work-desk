@@ -62,6 +62,7 @@ func main() {
 	root := fs.String("root", "", "installation root")
 	releaseID := fs.String("release", "", "release id")
 	reportPath := fs.String("report", "", "write a preflight report to this file")
+	stage := fs.String("stage", "all", "preflight stage: machine, directory, runtime or all")
 	_ = fs.Parse(os.Args[2:])
 
 	tree, err := resolveTree(*root)
@@ -83,7 +84,7 @@ func main() {
 
 	switch command {
 	case "preflight":
-		finish(cmdPreflight(tree, *releaseID, *reportPath))
+		finish(cmdPreflight(tree, preflightStage(*stage), *root, *releaseID, *reportPath))
 	case "activate":
 		finish(cmdActivate(tree, *releaseID))
 	case "verify":
@@ -101,7 +102,8 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr,
-		"usage: civic-admin.exe <preflight|activate|verify|rollback|deactivate> --root <dir> [--release <id>]")
+		"usage: civic-admin.exe <preflight|activate|verify|rollback|deactivate> --root <dir> "+
+			"[--release <id>] [--stage machine|directory|runtime|all] [--report <file>]")
 }
 
 func resolveTree(root string) (layout.Tree, error) {
@@ -128,19 +130,41 @@ func (c check) String() string { return fmt.Sprintf("[%-11s] %-34s %s", c.Status
 // blocking reports whether this result should stop the installation.
 func (c check) blocking() bool { return c.Status == "FAIL" || c.Status == "IN USE" }
 
-func cmdPreflight(tree layout.Tree, releaseID, reportPath string) int {
-	var checks []check
-	add := func(name, status, detail string) {
-		checks = append(checks, check{name, status, detail})
-	}
+// preflightStage names which questions a run is allowed to ask.
+//
+// RC1 asked all of them at once, against a hard-coded %LOCALAPPDATA% path, which is what made a custom
+// installation directory impossible: the machine checks had to pass before a directory was chosen, and
+// the directory checks had to pass before the wizard moved on, and the runtime checks could only be
+// answered after the previous version's local service had been stopped. Those are three different
+// moments, so they are three different stages.
+type preflightStage string
 
-	// --- the platform ---------------------------------------------------------------------------
+const (
+	stageMachine   preflightStage = "machine"
+	stageDirectory preflightStage = "directory"
+	stageRuntime   preflightStage = "runtime"
+	stageAll       preflightStage = "all"
+)
+
+func (p preflightStage) valid() bool {
+	switch p {
+	case stageMachine, stageDirectory, stageRuntime, stageAll:
+		return true
+	}
+	return false
+}
+
+// machineChecks are true or false about the computer, whatever is installed and wherever.
+func machineChecks() []check {
+	var checks []check
+	add := func(name, status, detail string) { checks = append(checks, check{name, status, detail}) }
+
 	major, build := windowsVersion()
 	if major >= 10 && build >= 22000 {
 		add("Windows 11", "PASS", fmt.Sprintf("build %d", build))
 	} else {
 		add("Windows 11", "FAIL",
-			fmt.Sprintf("build %d; CivicWorkDesk RC1 targets Windows 11 (build 22000 or later)", build))
+			fmt.Sprintf("build %d; this build targets Windows 11 (build 22000 or later)", build))
 	}
 	if arch := os.Getenv("PROCESSOR_ARCHITECTURE"); strings.EqualFold(arch, "AMD64") {
 		add("x64 architecture", "PASS", arch)
@@ -148,25 +172,48 @@ func cmdPreflight(tree layout.Tree, releaseID, reportPath string) int {
 		add("x64 architecture", "FAIL",
 			fmt.Sprintf("PROCESSOR_ARCHITECTURE=%s; this build is x64 only", arch))
 	}
-
-	// --- the places we must be able to write ----------------------------------------------------
-	for _, spec := range []struct{ name, dir string }{
-		{"LOCALAPPDATA writable", os.Getenv("LOCALAPPDATA")},
-		{"install root usable", tree.Root},
-		{"Start Menu writable", userPrograms()},
-	} {
-		if spec.dir == "" {
-			add(spec.name, "FAIL", "the location could not be determined")
-			continue
-		}
-		if err := probeWritable(spec.dir); err != nil {
-			add(spec.name, "FAIL", fmt.Sprintf("%s (%v)", spec.dir, err))
-		} else {
-			add(spec.name, "PASS", spec.dir)
-		}
+	if menu := userPrograms(); menu == "" {
+		add("Start Menu writable", "FAIL", "APPDATA is not set")
+	} else if err := probeWritable(menu); err != nil {
+		add("Start Menu writable", "FAIL", fmt.Sprintf("%s (%v)", redactUserPaths(menu), err))
+	} else {
+		add("Start Menu writable", "PASS", redactUserPaths(menu))
 	}
+	// The checker is running, so the bundled binaries execute on this machine. Saying so explicitly
+	// turns "it worked" into a recorded observation, which is the whole point of a report a tester
+	// sends back.
+	add("bundled checker runs", "PASS", "this report was produced by the bundled executable")
+	return checks
+}
 
-	// --- the release, if one was named ----------------------------------------------------------
+// directoryChecks judge one proposed installation directory, as the user typed it.
+//
+// The raw argument matters. resolveTree() applies filepath.Abs, which makes a relative path absolute
+// and quietly strips a trailing dot or space -- exactly the shapes this check exists to refuse. Judging
+// the resolved form reported all three as usable, which the acceptance run caught.
+func directoryChecks(root string) []check {
+	var checks []check
+	add := func(name, status, detail string) { checks = append(checks, check{name, status, detail}) }
+
+	if root == "" {
+		add("installation directory", "FAIL", "no directory was given")
+		return checks
+	}
+	add("proposed directory", "INFO", redactUserPaths(root))
+	verdict := JudgeInstallRoot(root)
+	if verdict.OK {
+		add("directory is usable", "PASS", verdict.Reason)
+	} else {
+		add("directory is usable", "FAIL", verdict.Reason)
+	}
+	return checks
+}
+
+// runtimeChecks answer what is true right now about the port and the release on disk.
+func runtimeChecks(tree layout.Tree, releaseID string) []check {
+	var checks []check
+	add := func(name, status, detail string) { checks = append(checks, check{name, status, detail}) }
+
 	id := releaseID
 	if id == "" {
 		if active, err := tree.ActiveRelease(); err == nil {
@@ -186,36 +233,52 @@ func cmdPreflight(tree layout.Tree, releaseID, reportPath string) int {
 		if err != nil {
 			add("release directory", "FAIL", err.Error())
 		} else if res, err := release.Verify(dir); err != nil {
-			add("payload integrity", "FAIL", err.Error())
+			add("program integrity", "FAIL", err.Error())
 		} else if !res.OK() {
-			add("payload integrity", "FAIL", res.Summary())
+			add("program integrity", "FAIL", res.Summary())
 		} else {
-			add("payload integrity", "PASS", res.Summary())
+			add("program integrity", "PASS", res.Summary())
 			checks = append(checks, payloadServableChecks(dir)...)
 		}
 		if exe := releaseServerExe(tree, id); exe == "" {
 			add("bundled server present", "FAIL", serverExeName+" is not in the release")
 		} else if out, err := runServerVersion(exe); err != nil {
-			add("bundled server runs", "FAIL", fmt.Sprintf("%s: %v", exe, err))
+			add("bundled server runs", "FAIL", fmt.Sprintf("%s: %v", redactUserPaths(exe), err))
 		} else {
 			add("bundled server runs", "PASS", strings.TrimSpace(out))
 		}
 	}
+	return append(checks, portChecks(tree, id)...)
+}
 
-	// --- the port -------------------------------------------------------------------------------
-	checks = append(checks, portChecks(tree, id)...)
+func cmdPreflight(tree layout.Tree, stage preflightStage, rawRoot, releaseID, reportPath string) int {
+	if !stage.valid() {
+		fmt.Fprintf(os.Stderr, "error: unknown preflight stage %q\n", stage)
+		return exitUsage
+	}
 
-	// --- report ---------------------------------------------------------------------------------
+	var checks []check
+	if stage == stageMachine || stage == stageAll {
+		checks = append(checks, machineChecks()...)
+	}
+	if stage == stageDirectory || stage == stageAll {
+		checks = append(checks, directoryChecks(rawRoot)...)
+	}
+	if stage == stageRuntime || stage == stageAll {
+		checks = append(checks, runtimeChecks(tree, releaseID)...)
+	}
+
 	blocking := 0
 	for _, c := range checks {
 		if c.blocking() {
 			blocking++
 		}
 	}
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "CivicWorkDesk Windows RC1 -- installation preflight\n\n")
+	fmt.Fprintf(&b, "CivicWorkDesk Windows -- installation preflight (%s)\n\n", stage)
 	fmt.Fprintf(&b, "collected       : %s\n", time.Now().Format(time.RFC3339))
-	fmt.Fprintf(&b, "install root    : %s\n", tree.Root)
+	fmt.Fprintf(&b, "install root    : %s\n", redactUserPaths(tree.Root))
 	fmt.Fprintf(&b, "canonical origin: %s/\n\n", canonicalOrigin)
 	fmt.Fprintf(&b, "STATUS: [PASS] [PRESENT] [NOT PRESENT] [IN USE] [INFO] [FAIL]\n")
 	fmt.Fprintf(&b, "NOT PRESENT and INFO are not failures. FAIL and IN USE stop the installation.\n\n")
@@ -224,7 +287,7 @@ func cmdPreflight(tree layout.Tree, releaseID, reportPath string) int {
 	}
 	fmt.Fprintf(&b, "\nblocking problems: %d\n", blocking)
 	if blocking == 0 {
-		fmt.Fprintf(&b, "RESULT: PASS -- this machine can run CivicWorkDesk RC1.\n")
+		fmt.Fprintf(&b, "RESULT: PASS\n")
 	} else {
 		fmt.Fprintf(&b, "RESULT: BLOCKED -- see the [FAIL] and [IN USE] lines above.\n")
 	}

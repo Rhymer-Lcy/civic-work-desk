@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"civicworkdesk/windows/internal/layout"
+	"civicworkdesk/windows/internal/redact"
 	"civicworkdesk/windows/internal/serverstate"
 	"civicworkdesk/windows/internal/winproc"
 )
@@ -304,6 +305,10 @@ func runServerVersion(exe string) (string, error) {
 	}
 	return "the bundled executable runs and reports its own usage", nil
 }
+
+// redactUserPaths keeps the account name out of a preflight report, which is written to the Desktop
+// and forwarded by an ordinary colleague. See internal/redact for what it does and does not touch.
+func redactUserPaths(text string) string { return redact.Paths(text) }
 
 func probeWritable(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
