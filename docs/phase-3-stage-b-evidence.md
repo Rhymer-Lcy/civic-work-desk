@@ -1,17 +1,19 @@
 # Phase 3 Stage B — evidence and provenance
 
-> **Phase 3 is not complete.** The final installed form has not been validated on the physical
-> workstation. Section C below is deliberately empty.
+> **Phase 3 is SIGNED OFF.** The final installed form was validated on the physical workstation;
+> section C carries that evidence, and `docs/phase-3-final-signoff.md` is the authoritative
+> closeout. This document is retained in full as the engineering record — including every defect
+> found along the way, all of which are repaired rather than outstanding.
 
 Three kinds of evidence appear in this project, and they are worth very different amounts. This
 document keeps them apart, because the expensive mistake is not measuring the wrong thing — it is
 carrying a measurement across a boundary where it stopped being true.
 
-| Class | What it is                                                | What it can support                                 |
-| ----- | --------------------------------------------------------- | --------------------------------------------------- |
-| **A** | RC1.1, measured on the physical UOS workstation           | claims about BusyBox behaviour **on the target**    |
-| **B** | Stage B, measured on the Windows/WSL2 development machine | claims about the **deployment logic**               |
-| **C** | the FINAL installed form on the physical workstation      | claims that Phase 3 is **done** — not yet collected |
+| Class | What it is                                                | What it can support                              |
+| ----- | --------------------------------------------------------- | ------------------------------------------------ |
+| **A** | RC1.1, measured on the physical UOS workstation           | claims about BusyBox behaviour **on the target** |
+| **B** | Stage B, measured on the Windows/WSL2 development machine | claims about the **deployment logic**            |
+| **C** | the FINAL installed form on the physical workstation      | claims that Phase 3 is **done** — collected      |
 
 A statement of the form "it works on UOS" may rest only on A or C. Nothing in B can establish it.
 
@@ -447,16 +449,20 @@ plain `mv` with no shape assertion — are each caught by the assertion written 
 
 ## C. Final installed-form physical-target evidence
 
-**NOT YET COLLECTED. Phase 3 cannot be signed off until it is.**
+**COLLECTED. Phase 3 is signed off.** The validated release is **`2026.09.23-5`**, sha256
+`969a2a74bb3e893ef7e794729578383620f0d819e6ce74bd1e2cfb43f370e5bf`, together with its acceptance
+kit, sha256 `ac77a6e58eebb214acf16707d2a7e67a3aca2b98a36f8e55823822fee3680b30`. Those exact bytes
+are frozen and were not rebuilt for closeout. The returned evidence is transcribed under
+`docs/phase-3-evidence/` and summarised in `docs/phase-3-final-signoff.md`.
 
-**The candidate is release `2026.09.23-4`**, together with its acceptance kit. Both SHA-256
-values and the exact commands are in
+Historical note, kept because it explains the release-id sequence: at the time this section was
+written the candidate was `2026.09.23-4`, and its SHA-256 and commands were in
 `docs/uos-final-acceptance.md`, which is the single place the digests are written — each bound to its
 actual archive by a check in `archive-tests.mjs`, so neither can go stale unnoticed, and a digest from
 a superseded build appearing there is itself a failure. No digest is copied into this document for
 that reason.
 
-Three earlier ids exist in the repository and **none was delivered**. Each was superseded by a real
+Four earlier ids exist in the repository and **none was delivered**. Each was superseded by a real
 change, every one of them found by examining the artifact rather than the plan:
 
 | id             | superseded because                                                                  |
@@ -464,12 +470,13 @@ change, every one of them found by examining the artifact rather than the plan:
 | `2026.09.23-1` | the `busybox wget -T` segfault fix (§B.4) changed the runtime                       |
 | `2026.09.23-2` | the desktop template had its own explanatory comment placeholder-substituted (§B.5) |
 | `2026.09.23-3` | the six defects an independent artifact audit found (§B.9)                          |
+| `2026.09.23-4` | the two installer state-machine defects an independent audit reproduced (§B.10)     |
 
 Every artifact and every checksum sidecar is kept. The id was bumped rather than reused each time,
-so returned evidence can never be matched against the wrong build — four ids in one day is untidy,
-and far cheaper than one ambiguous id.
+so returned evidence can never be matched against the wrong build — five ids in one day is untidy,
+and far cheaper than one ambiguous id. `2026.09.23-5` is the one that was tested.
 
-What must come back:
+What came back:
 
 1. the completed `RESULT_TEMPLATE.md`;
 2. `civic-work-desk-final-results-<time>.txt` from `collect-results.sh`;
@@ -479,17 +486,24 @@ What must come back:
 4. the full output of `port-conflict-test.sh`;
 5. screenshots **only** for failures.
 
-### C.1 The two gaps that block Phase-3 closure
+### C.1 The two gaps that blocked Phase-3 closure — both now closed
 
-Neither blocks Stage-B implementation; both block sign-off.
+Both blocked sign-off, and both were closed by the final physical round: the browser-platform probe
+returned a full result (service-worker registrations 1, a Workbox precache for the canonical origin,
+`crypto.subtle` an object, `crypto.randomUUID` a function), and the workstation was physically
+rebooted with the application still operational afterwards — the latter as a **manual tester
+observation**, which is how it is reported everywhere. The table below is the record of what they
+were.
 
-| Gap                                                                      | Status                           | Closes when                                                            |
-| ------------------------------------------------------------------------ | -------------------------------- | ---------------------------------------------------------------------- |
-| Full workstation reboot: persistence and launcher behaviour              | **N/A** — not performed in RC1.1 | physically tested, or argued non-blocking under the final architecture |
-| Browser-platform evidence: service-worker registration and Cache Storage | **not measured**                 | the browser-platform JSON (item 3 of the list above) is returned       |
+| Gap                                                                      | Status at RC1.1                  | Resolved by the final round                                                                                                   |
+| ------------------------------------------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Full workstation reboot: persistence and launcher behaviour              | **N/A** — not performed in RC1.1 | **CLOSED** — physically rebooted, application operational after it; a manual tester observation, no automated persistence log |
+| Browser-platform evidence: service-worker registration and Cache Storage | **not measured**                 | **CLOSED** — registrations 1, Workbox precache present for the canonical origin                                               |
 
-Recording these as N/A rather than as passes is the point. No application code was added to expose
-those values; they are read once, by hand, in the browser console, and that is stated in the manual.
+Recording them as N/A rather than as passes, for as long as that was the truth, is the point: the
+second column is what was known at RC1.1, the third is what the final physical round returned. No
+application code was added to expose those values; they are read once, by hand, in the browser console,
+and that is stated in the manual.
 
 ### C.2 How returned evidence must be audited
 
