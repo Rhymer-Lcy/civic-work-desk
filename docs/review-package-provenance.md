@@ -417,7 +417,23 @@ full gate run is consistent with contention on this machine, and that is an asso
 diagnosis. What is now on the record is the test names, so a third occurrence can be compared against
 these two rather than starting again.
 
-### The Phase-3 package of record
+### `civic-work-desk-phase-3-20260923-235106-f39f3b20ab71.zip` — the package of record
 
-Appended below once produced. Both this failing package and the clean one are kept; neither is
-deleted, and the failing one is the more useful of the two for anyone investigating the e2e flake.
+digest `2dcfb7a426235e6a9825272d4b257007917c7ca1d76499d3a9aa4bad2322fe56`
+
+**All ten gates passed.** 328 entries, 4,083,475 bytes. Repository review verifier 21/21; package
+consistency audit PASS with 35 archives and 35 checksums present.
+
+Final Phase-3 checks over the ZIP's own bytes: **23/23** — sidecar matches, every member CRC verifies,
+no duplicate entries, no `node_modules`, no `_private_reference/`, no `.env`, no nested ZIP, no test
+output, no browser-profile file, no forbidden content across 279 text members, the closeout documents
+and evidence all present, and the summary states the sign-off, quotes both frozen digests and discloses
+the artifact's pre-validation metadata.
+
+The load-bearing check: the frozen release and acceptance kit **inside** the package carry exactly
+`969a2a74…4e5bf` and `ac77a6e5…3680b30`, and their packaged sidecars agree. The packager also re-verifies
+both digests before writing anything and refuses to build if either disagrees — so a rebuilt artifact
+cannot reach a review package under a validated digest.
+
+Both this package and the failing one above are kept. Neither is deleted, and the failing one is the
+more useful of the two for anyone investigating the e2e flake.
