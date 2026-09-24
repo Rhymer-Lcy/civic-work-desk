@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"civicworkdesk/windows/internal/layout"
+	"civicworkdesk/windows/internal/redact"
 	"civicworkdesk/windows/internal/release"
 	"civicworkdesk/windows/internal/serverstate"
 	"civicworkdesk/windows/internal/winproc"
@@ -55,7 +56,7 @@ func cmdStatus() int {
 	if ids, err := tree.InstalledReleases(); err == nil {
 		fmt.Printf("  已安装版本   : %v\n", ids)
 	}
-	fmt.Printf("  规范地址     : %s/\n", canonicalOrigin)
+	fmt.Printf("  固定访问地址 : %s/\n", canonicalOrigin)
 	fmt.Println()
 
 	// Report the three questions separately, because they have different answers and conflating them is
@@ -67,13 +68,13 @@ func cmdStatus() int {
 	probe := serverstate.ProbeHealth(canonicalOrigin)
 	switch {
 	case !occupied:
-		fmt.Println("  服务         : 未运行")
+		fmt.Println("  本地服务     : 未运行")
 	case probe.Err != nil:
-		fmt.Printf("  服务         : 端口被占用，但不是政务工作记录台（%v）\n", probe.Err)
+		fmt.Printf("  本地服务     : 端口被占用，但不是政务工作记录台（%v）\n", probe.Err)
 	default:
-		fmt.Printf("  服务         : 正在运行  发布版本 %s  PID %d\n",
+		fmt.Printf("  本地服务     : 正在运行  程序版本 %s  PID %d\n",
 			probe.Health.ReleaseID, probe.Health.PID)
-		fmt.Printf("  服务安装目录 : %s\n", probe.Health.InstallRoot)
+		fmt.Printf("  服务安装目录 : %s\n", redact.Paths(probe.Health.InstallRoot))
 		fmt.Printf("  启动时间     : %s\n", probe.Health.StartedAt)
 	}
 
@@ -92,9 +93,11 @@ func cmdStatus() int {
 	if releaseID != "" {
 		if dir, derr := tree.Release(releaseID); derr == nil {
 			if res, verr := release.Verify(dir); verr != nil {
-				fmt.Printf("  发布完整性   : 无法校验（%v）\n", verr)
+				fmt.Printf("  程序完整性   : 无法校验（%v）\n", verr)
+			} else if res.OK() {
+				fmt.Printf("  程序完整性   : 校验通过（%s）\n", res.Summary())
 			} else {
-				fmt.Printf("  发布完整性   : %s\n", res.Summary())
+				fmt.Printf("  程序完整性   : 校验未通过（%s）\n", res.Summary())
 			}
 		}
 	}
@@ -125,11 +128,11 @@ func cmdStop() int {
 	state, err := serverstate.Read(tree.State())
 	if err != nil {
 		if serverstate.PortOccupied(canonicalHostPort) {
-			fmt.Println("端口 8765 上有程序在监听，但没有本安装启动的服务记录。")
-			fmt.Println("程序不会去结束一个无法证明归属的进程。")
+			fmt.Println("端口 8765 上有程序在监听，但没有本安装启动的本地服务记录。")
+			fmt.Println("程序不会强行结束无法确认归属的进程。")
 			return exitOK
 		}
-		fmt.Println("服务未在运行。")
+		fmt.Println("本地服务未在运行。")
 		return exitOK
 	}
 
@@ -148,7 +151,7 @@ func cmdStop() int {
 			// and Clear treats absence as success, so doing it here is a safe belt-and-braces.
 			waitUntilExited(state.Identity.PID, 5*time.Second)
 			_ = serverstate.Clear(tree.State())
-			fmt.Println("服务已停止。")
+			fmt.Println("本地服务已停止。")
 			return exitOK
 		}
 	}
@@ -159,21 +162,22 @@ func cmdStop() int {
 	// stopped, and it is.
 	if !winproc.Alive(state.Identity.PID) {
 		_ = serverstate.Clear(tree.State())
-		fmt.Println("服务未在运行。")
+		fmt.Println("本地服务未在运行。")
 		return exitOK
 	}
 
 	// The process is alive and the graceful path did not work. Terminate -- but only with proof,
 	// re-checked inside Terminate immediately before the kill.
 	if err := winproc.Terminate(state.Identity, tree.Root, releaseID); err != nil {
-		fail("无法停止服务，并且程序拒绝在无法证明归属的情况下结束进程。\n"+
-			"这是刻意的：错杀一个无关进程的代价比留下一个服务大得多。", err)
+		fail("无法停止本地服务。\n\n"+
+			"程序不会强行结束无法确认归属的进程。\n"+
+			"这是安全设计：无法确认进程归属时，不执行强制终止操作。", err)
 		return exitInternal
 	}
 	if err := serverstate.Clear(tree.State()); err != nil {
 		fmt.Fprintf(os.Stderr, "警告: %v\n", err)
 	}
-	fmt.Println("服务已停止。")
+	fmt.Println("本地服务已停止。")
 	return exitOK
 }
 

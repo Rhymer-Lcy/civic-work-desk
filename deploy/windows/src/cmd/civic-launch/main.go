@@ -28,6 +28,7 @@ import (
 
 	"civicworkdesk/windows/internal/httpserve"
 	"civicworkdesk/windows/internal/layout"
+	"civicworkdesk/windows/internal/redact"
 	"civicworkdesk/windows/internal/serverstate"
 	"civicworkdesk/windows/internal/winproc"
 )
@@ -79,7 +80,8 @@ func fail(userText string, detail error) {
 	if detail != nil {
 		fmt.Fprintf(os.Stderr, "\n技术细节: %v\n", detail)
 	}
-	fmt.Fprintln(os.Stderr, "\n如果反复出现，请从开始菜单运行“收集诊断信息”，把生成的 txt 发回。")
+	fmt.Fprintln(os.Stderr,
+		"\n如问题仍然存在，请运行“收集诊断信息”，并将生成的诊断文件（TXT）反馈给维护人员。")
 }
 
 func resolve() (layout.Tree, string, error) {
@@ -116,7 +118,7 @@ func cmdOpen() int {
 			if h, werr := serverstate.WaitUntilHealthy(canonicalOrigin, tree.Root, releaseID, healthTimeout); werr == nil {
 				return openBrowser(canonicalOrigin, h.ReleaseID)
 			}
-			fail("程序正在启动中，请稍等几秒后再点一次。", err)
+			fail("程序正在启动中，请稍候几秒后重试。", err)
 			return exitBusy
 		}
 		fail("无法获取启动锁。", err)
@@ -135,15 +137,15 @@ func cmdOpen() int {
 		switch {
 		case probe.Err == nil && probe.Health.Application == "civic-work-desk":
 			fail(fmt.Sprintf(
-				"端口 %s 上已经有另一个 CivicWorkDesk 在运行，但它不属于当前这个安装。\n"+
-					"（它的安装目录是 %s，发布版本 %s。）\n"+
-					"请先关闭那一个，或直接使用它。",
-				canonicalHostPort, probe.Health.InstallRoot, probe.Health.ReleaseID), nil)
+				"端口 %s 上已有另一个政务工作记录台在运行，但它不属于当前这个安装。\n"+
+					"（它的安装目录是 %s，程序版本 %s。）\n"+
+					"请关闭那一个，或直接使用它。",
+				canonicalHostPort, redact.Paths(probe.Health.InstallRoot), probe.Health.ReleaseID), nil)
 		default:
 			fail(fmt.Sprintf(
 				"端口 %s 已被其他程序占用，政务工作记录台无法启动。\n\n"+
-					"程序不会去结束占用它的进程，也不会改用其他端口：\n"+
-					"应用的数据是绑定在这个地址上的，换端口等于打开一个空白的新应用。\n\n"+
+					"程序不会强行结束无法确认归属的进程，也不会改用其他端口。\n"+
+					"更换端口会改变浏览器来源，原有记录不会在新的来源下显示。\n\n"+
 					"请关闭占用该端口的程序后重试。", canonicalHostPort), probe.Err)
 		}
 		return exitPortBusy
@@ -225,8 +227,8 @@ func startServer(tree layout.Tree, releaseID string) error {
 func openBrowser(origin, releaseID string) int {
 	if err := winproc.OpenInDefaultBrowser(origin + "/"); err != nil {
 		fail(fmt.Sprintf(
-			"本地服务已就绪（发布版本 %s），但无法自动打开浏览器。\n"+
-				"请手动在浏览器地址栏输入： %s/", releaseID, origin), err)
+			"本地服务已就绪（程序版本 %s），但无法自动打开浏览器。\n"+
+				"请在浏览器地址栏手动输入固定访问地址： %s/", releaseID, origin), err)
 		return exitInternal
 	}
 	return exitOK

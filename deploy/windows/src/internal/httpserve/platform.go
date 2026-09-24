@@ -77,24 +77,24 @@ const platformHTML = `<!doctype html>
 </head>
 <body>
 <h1>CivicWorkDesk 浏览器平台检查</h1>
-<p class="sub">这个页面只做测量，不改动你的记录，也不注册自己的 Service Worker。发布版本 <code>__RELEASE_ID__</code></p>
+<p class="sub">这个页面只做测量，不改动你的记录，也不注册自己的 Service Worker。程序版本 <code>__RELEASE_ID__</code></p>
 
 <table id="results"><tbody></tbody></table>
 
 <section>
   <h2 style="font-size:16px;margin:0 0 8px">离线检查（需要手动一步）</h2>
-  <p style="margin:0 0 8px">上面的检查都不需要断网。真正要确认的是：<b>服务停掉之后，应用是否还能打开</b>。</p>
+  <p style="margin:0 0 8px">上面的检查都不需要断网。真正要确认的是：<b>本地服务停止之后，应用是否还能打开</b>。</p>
   <ol style="margin:0 0 8px;padding-left:22px">
     <li>先正常打开一次“政务工作记录台”，等页面完全加载；</li>
-    <li>开始菜单 → 政务工作记录台 → <b>停止服务</b>；</li>
+    <li>开始菜单 → 政务工作记录台 → 维护工具 → <b>停止本地服务</b>；</li>
     <li>回到应用页面按 <kbd>Ctrl</kbd>+<kbd>R</kbd> 刷新。</li>
   </ol>
-  <p style="margin:0"><b>页面仍能打开</b>＝离线缓存生效；<b>页面打不开</b>＝请把这个结果一并回报。</p>
+  <p style="margin:0"><b>页面仍能打开</b>＝离线缓存生效；<b>页面打不开</b>＝请将该结果一并反馈。</p>
 </section>
 
 <section>
-  <h2 style="font-size:16px;margin:0 0 8px">回报</h2>
-  <p style="margin:0 0 8px">点“复制全部结果”，粘贴到聊天窗口发回即可。</p>
+  <h2 style="font-size:16px;margin:0 0 8px">反馈</h2>
+  <p style="margin:0 0 8px">点“复制全部结果”，将结果反馈给维护人员即可。</p>
   <button id="copy">复制全部结果</button>
   <button id="save">另存为 txt</button>
   <textarea id="text" readonly></textarea>
@@ -128,7 +128,7 @@ const platformHTML = `<!doctype html>
   }
 
   function render() {
-    var lines = ['CivicWorkDesk 浏览器平台检查', '发布版本: __RELEASE_ID__',
+    var lines = ['CivicWorkDesk 浏览器平台检查', '程序版本: __RELEASE_ID__',
                  '采集时间: ' + new Date().toISOString(), ''];
     rows.forEach(function (r) {
       lines.push('[' + r.tag + '] ' + r.name + ': ' + r.value);
