@@ -217,7 +217,7 @@ export default tseslint.config(
      * missing element is one of the outcomes I am measuring", and turning each into a named no-op would
      * add noise without adding meaning.
      */
-    files: ['scripts/windows/acceptance-rc1-browser.mjs'],
+    files: ['scripts/windows/acceptance-browser.mjs'],
     languageOptions: {
       globals: { ...globals.node, ...globals.browser },
     },

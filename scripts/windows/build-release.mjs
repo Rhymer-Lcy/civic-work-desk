@@ -68,7 +68,7 @@ function arg(name, fallback) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-const releaseId = arg('--release-id', '2026.09.24-win-rc1');
+const releaseId = arg('--release-id', '2026.09.24-win-rc2');
 const skipInstaller = process.argv.includes('--skip-installer');
 
 /* Must agree with layout.ReleaseIDPattern in the Go module. A release id becomes a directory name, and
@@ -155,7 +155,25 @@ console.log(
 );
 
 /* ------------------------------------------------------------------ 2. build the Go binaries */
-console.log('2. building the Windows binaries');
+/* ------------------------------------------------------- 1b. icon and Windows resource objects
+ *
+ * The icon is checked rather than regenerated: it is a committed artefact, and silently rebuilding it
+ * during a release would let the committed file and the shipped one drift apart. The resource objects
+ * ARE generated here, because they embed the release id in their version block and so belong to the
+ * build rather than to the tree.
+ */
+console.log('2. icon and Windows resources');
+run(process.execPath, [join(ROOT, 'scripts', 'windows', 'generate-ico.mjs'), '--check'], {
+  cwd: ROOT,
+});
+run(
+  process.execPath,
+  [join(ROOT, 'scripts', 'windows', 'generate-winres.mjs'), '--release-id', releaseId],
+  { cwd: ROOT },
+);
+console.log('   icon verified against its generator; resource objects written');
+
+console.log('3. building the Windows binaries');
 const goExe = join(GO_ROOT, 'bin', 'go.exe');
 if (!existsSync(goExe)) fatal(`${goExe} is not present; set CIVIC_GOROOT to a Go 1.27 tree`);
 
@@ -204,7 +222,7 @@ for (const binary of SERVER_BINARIES) {
 }
 
 /* ------------------------------------------------------------------ 3. assemble the payload */
-console.log('3. assembling the release payload');
+console.log('4. assembling the release payload');
 const payloadName = `civic-work-desk-windows-x64-${releaseId}`;
 const payload = join(ROOT, 'release', 'windows', payloadName);
 rmSync(payload, { recursive: true, force: true });
@@ -279,6 +297,8 @@ const version = [
   `canonicalOrigin=http://127.0.0.1:8765`,
   `server=civic-server (Go net/http, standard library only)`,
   `goToolchain=${GO_VERSION}`,
+  `goBuildFlags=-trimpath -buildvcs=false -ldflags="-s -w"; CGO_ENABLED=0 GOOS=windows GOARCH=amd64`,
+  `windowsResources=hand-written COFF (.syso): icon + VERSIONINFO, no external resource tool`,
   `installerToolchain=${INNO_VERSION}`,
   `nodeRequired=NO`,
   `pythonRequired=NO`,
@@ -318,7 +338,7 @@ console.log(`   payload shape: ${shape.join(', ')}`);
 /* ------------------------------------------------------------------ 5. the installer */
 let setupPath = null;
 if (!skipInstaller) {
-  console.log('4. compiling the installer');
+  console.log('5. compiling the installer');
   if (!existsSync(ISCC)) fatal(`${ISCC} is not present; set CIVIC_ISCC or pass --skip-installer`);
   const outDir = join(ROOT, 'release', 'windows');
   const setupBase = `CivicWorkDesk-Windows-x64-${releaseId.replace(/-win-/, '-')}-Setup`;
@@ -431,7 +451,7 @@ writeFileSync(
   readFileSync(join(payload, 'VERSION')),
 );
 console.log('');
-console.log(`5. provenance written to release/windows/provenance/ (payload manifest and VERSION)`);
+console.log(`6. provenance written to release/windows/provenance/ (payload manifest and VERSION)`);
 
 console.log('');
 console.log('summary');

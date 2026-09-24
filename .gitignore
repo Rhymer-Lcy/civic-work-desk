@@ -82,6 +82,11 @@ release/*.tar.gz
 # itself belongs in a GitHub Release where it can be downloaded and checksum-verified. The acceptance
 # reports are tracked deliberately -- they are the record of what was measured.
 release/windows/.build/
+
+# Generated Windows resource objects. They embed the release id in their version block, so they belong
+# to a build rather than to the tree; scripts/windows/generate-winres.mjs writes them from the committed
+# icon. Nothing opaque is committed.
+deploy/windows/src/cmd/*/rsrc_windows_amd64.syso
 release/windows/civic-work-desk-windows-x64-*/
 release/windows/*.exe
 release/windows/*.log
@@ -89,7 +94,7 @@ release/windows/*.log
 # The acceptance reports carry the operator's account name and machine paths, so they follow the same rule
 # as tester-collected probe output: reviewed and transcribed into docs/ deliberately, never committed raw.
 # Their measured results are in docs/phase-4-windows-rc1.md.
-release/windows/acceptance-rc1-*.txt
+release/windows/acceptance-*.txt
 
 # The tester instructions beside the installer are a build-derived copy of
 # deploy/windows/installer/README-测试说明.txt. Tracking both copies is how they drift apart; the source is

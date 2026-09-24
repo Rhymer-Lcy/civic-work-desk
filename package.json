@@ -47,9 +47,12 @@
     "verify:uos": "npm run lint:uos && npm run test:uos && npm run test:uos:archive",
     "test:windows": "node scripts/windows/run-go-tests.mjs",
     "build:windows": "node scripts/windows/build-release.mjs",
-    "accept:windows": "node scripts/windows/acceptance-rc1.mjs",
-    "accept:windows:browser": "node scripts/windows/acceptance-rc1-browser.mjs",
-    "verify:windows": "npm run test:windows && npm run build:windows"
+    "accept:windows": "node scripts/windows/acceptance-deploy.mjs",
+    "accept:windows:browser": "node scripts/windows/acceptance-browser.mjs",
+    "verify:windows": "npm run test:windows && npm run audit:copy && npm run build:windows",
+    "audit:copy": "node scripts/copy-audit.mjs",
+    "scan:release": "node scripts/windows/scan-release-artifact.mjs",
+    "accept:windows:ux": "node scripts/windows/acceptance-rc2-ux.mjs"
   },
   "dependencies": {
     "date-fns": "4.4.0",

@@ -2,7 +2,7 @@
 /**
  * Windows RC1 acceptance on the development workstation, driven from the ACTUAL installer bytes.
  *
- *   node scripts/windows/acceptance-rc1.mjs [--keep]
+ *   node scripts/windows/acceptance-deploy.mjs [--release-id <id>] [--keep]
  *
  * ## What this is and is not
  *
@@ -25,13 +25,16 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const RELEASE_ID = '2026.09.24-win-rc1';
-const SETUP = join(
-  ROOT,
-  'release',
-  'windows',
-  `CivicWorkDesk-Windows-x64-2026.09.24-rc1-Setup.exe`,
-);
+function argValue(name, fallback) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+// The suite is release-agnostic: the same checks have to pass for every candidate, and hard-coding one
+// id is how a suite quietly stops covering the thing being shipped.
+const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc2');
+const SETUP_BASE = `CivicWorkDesk-Windows-x64-${RELEASE_ID.replace('-win-', '-')}-Setup`;
+const SETUP = join(ROOT, 'release', 'windows', `${SETUP_BASE}.exe`);
 const INSTALL_ROOT = join(
   process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
   'CivicWorkDesk',
@@ -267,8 +270,14 @@ check(existsSync(START_MENU), 'per-user Start Menu folder created', START_MENU);
 const shortcuts = existsSync(START_MENU) ? readdirSync(START_MENU).sort() : [];
 info('shortcuts', shortcuts.join(', '));
 check(shortcuts.includes('政务工作记录台.lnk'), 'main shortcut named 政务工作记录台');
-check(shortcuts.includes('收集诊断信息.lnk'), 'diagnostics shortcut present');
-check(shortcuts.includes('停止服务.lnk'), 'stop shortcut present');
+// RC2 moved the maintenance actions one level down, so that "stop the local service" no longer sits
+// beside the application as though it were an ordinary thing to do. The grouping itself is asserted in
+// acceptance-rc2-ux.mjs; what matters here is that both are still REACHABLE.
+const maintenanceDir = join(START_MENU, '维护工具');
+const maintenance = existsSync(maintenanceDir) ? readdirSync(maintenanceDir).sort() : [];
+info('维护工具', maintenance.join(', ') || '(absent)');
+check(maintenance.includes('收集诊断信息.lnk'), 'diagnostics shortcut present (维护工具)');
+check(maintenance.includes('停止本地服务.lnk'), 'stop shortcut present (维护工具)');
 
 // The shortcut must point at the stable bin\ target, not into a release directory that an upgrade
 // would replace -- otherwise a pinned icon breaks on the next version.
@@ -536,7 +545,12 @@ check(
   'the refusal names the reason it refused',
   refusalText.split(/\r?\n/).find((l) => /refusing/.test(l)) ?? '(no reason line)',
 );
-check(/拒绝/.test(refusalText), 'the refusal is also stated in Chinese for the user');
+// RC2 replaced RC1's developer-facing sentence with the canonical safety statement from
+// docs/copy-style-zh-CN.md, so that is what must appear.
+check(
+  /程序不会强行结束无法确认归属的进程/.test(refusalText),
+  'the refusal states the canonical safety guarantee in Chinese',
+);
 check(await portOpen(), 'the real server is still running -- the refusal cost nothing');
 victim.kill();
 
@@ -678,7 +692,7 @@ sh(bin('civic-launch.exe'), ['stop']);
 section('12. upgrade and rollback');
 // A second release built by copying the first: this exercises the pointer machinery without pretending
 // the payload changed.
-const NEXT_ID = '2026.09.24-win-rc1a';
+const NEXT_ID = RELEASE_ID + 'a'; // a synthetic sibling release, for the pointer machinery only
 const nextDir = join(INSTALL_ROOT, 'releases', NEXT_ID);
 rmSync(nextDir, { recursive: true, force: true });
 sh('powershell', [
@@ -719,7 +733,7 @@ rmSync(nextDir, { recursive: true, force: true });
 
 // Failure before activation must leave the current version usable. Corrupt a staged release and confirm
 // activation refuses without touching current.txt.
-const BROKEN_ID = '2026.09.24-win-rc1b';
+const BROKEN_ID = RELEASE_ID + 'b'; // deliberately tampered, to prove activation refuses it
 const brokenDir = join(INSTALL_ROOT, 'releases', BROKEN_ID);
 rmSync(brokenDir, { recursive: true, force: true });
 sh('powershell', [
@@ -825,7 +839,7 @@ if (failures === 0) {
 }
 
 writeFileSync(
-  join(outDir, `acceptance-rc1-${RELEASE_ID}.txt`),
+  join(outDir, `acceptance-deploy-${RELEASE_ID}.txt`),
   [
     'CivicWorkDesk Windows RC1 -- development-workstation acceptance',
     '',

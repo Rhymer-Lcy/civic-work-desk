@@ -56,7 +56,6 @@ console.log('');
 
 // gofmt and vet first: a formatting or vet failure is cheaper to see before the tests scroll past.
 for (const [label, args] of [
-  ['gofmt', ['fmt', './...']],
   ['vet', ['vet', './...']],
   ['test', ['test', './...', '-count=1']],
 ]) {
@@ -71,16 +70,26 @@ for (const [label, args] of [
   }
 }
 
-// `go fmt` rewrites files rather than reporting, so confirm nothing changed: a formatting drift that the
-// command silently repaired would otherwise pass the gate and then show up as an unexpected diff.
-const diff = spawnSync('git', ['diff', '--name-only', '--', 'deploy/windows/src'], {
-  encoding: 'utf8',
-});
-const rewritten = (diff.stdout ?? '').trim();
-if (rewritten) {
+// `go fmt` rewrites files rather than reporting, so the gate has to notice that it rewrote something.
+//
+// Comparing against `git diff` was the obvious way and the wrong one: it reports every uncommitted
+// edit under deploy/windows/src, so any work in progress failed the gate with a message about
+// formatting. `gofmt -l` answers the actual question — which files are not formatted — without
+// touching anything and without caring what is committed.
+const unformatted = spawnSync(
+  join(GO_ROOT, 'bin', process.platform === 'win32' ? 'gofmt.exe' : 'gofmt'),
+  ['-l', '.'],
+  {
+    cwd: SRC,
+    env,
+    encoding: 'utf8',
+  },
+);
+const drifted = (unformatted.stdout ?? '').trim();
+if (drifted) {
   console.error('');
-  console.error('error: go fmt rewrote these files; commit the formatting before gating on it:');
-  console.error(rewritten);
+  console.error('error: these files are not gofmt-clean:');
+  console.error(drifted);
   process.exit(1);
 }
 

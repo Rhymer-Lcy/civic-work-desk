@@ -2,9 +2,9 @@
 /**
  * Browser-side acceptance for the Windows RC1, against the INSTALLED origin.
  *
- *   node scripts/windows/acceptance-rc1-browser.mjs
+ *   node scripts/windows/acceptance-browser.mjs [--release-id <id>]
  *
- * Requires the RC1 to be installed (scripts/windows/acceptance-rc1.mjs --keep leaves it in place).
+ * Requires the release under test to be installed (acceptance-deploy.mjs --keep leaves it in place).
  *
  * ## Why this is separate from the installer acceptance
  *
@@ -32,18 +32,21 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const RELEASE_ID = '2026.09.24-win-rc1';
+function argValue(name, fallback) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+// The suite is release-agnostic: the same checks have to pass for every candidate, and hard-coding one
+// id is how a suite quietly stops covering the thing being shipped.
+const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc2');
+const SETUP_BASE = `CivicWorkDesk-Windows-x64-${RELEASE_ID.replace('-win-', '-')}-Setup`;
 const ORIGIN = 'http://127.0.0.1:8765';
 const INSTALL_ROOT = join(
   process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
   'CivicWorkDesk',
 );
-const SETUP = join(
-  ROOT,
-  'release',
-  'windows',
-  'CivicWorkDesk-Windows-x64-2026.09.24-rc1-Setup.exe',
-);
+const SETUP = join(ROOT, 'release', 'windows', `${SETUP_BASE}.exe`);
 const WORK = join(tmpdir(), 'civic-rc1-browser-acceptance');
 const PROFILE = join(WORK, 'chromium-profile');
 const DOWNLOADS = join(WORK, 'downloads');
@@ -176,7 +179,7 @@ async function ensureServer() {
 
 if (!existsSync(bin('civic-launch.exe'))) {
   console.error(
-    'error: the RC1 is not installed. Run: node scripts/windows/acceptance-rc1.mjs --keep',
+    'error: the release is not installed. Run: node scripts/windows/acceptance-deploy.mjs --keep',
   );
   process.exit(2);
 }
@@ -631,6 +634,109 @@ info(
 );
 
 // ---------------------------------------------------------------------------------------------------
+// Phase 4b: relocation -- the program moves, the records do not
+// ---------------------------------------------------------------------------------------------------
+section('4b. reinstalling to a DIFFERENT directory');
+// This is the claim the documentation makes when it tells a user how to change the installation
+// location: program files and browser data are independent, because the origin is what holds the
+// records. Asserting it is the only way that advice is safe to give.
+const RELOCATED = 'D:' + String.fromCharCode(92) + 'CivicWorkDesk-Relocated';
+const dFixed = sh('powershell', [
+  '-NoProfile',
+  '-Command',
+  '(Get-Volume -DriveLetter D -ErrorAction SilentlyContinue).DriveType',
+]);
+if (!/Fixed/.test(dFixed.stdout ?? '')) {
+  record('INFO', 'relocation to another fixed drive', 'no writable fixed D: drive; not simulated');
+} else {
+  await context.close();
+  sh(bin('civic-launch.exe'), ['stop']);
+  const uninstall2 = sh(join(INSTALL_ROOT, 'unins000.exe'), [
+    '/VERYSILENT',
+    '/SUPPRESSMSGBOXES',
+    '/NORESTART',
+  ]);
+  await sleep(2500);
+  check(
+    uninstall2.status === 0,
+    'uninstalled from the default location',
+    `code ${uninstall2.status}`,
+  );
+
+  rmSync(RELOCATED, { recursive: true, force: true });
+  const moved = sh(SETUP, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', `/DIR=${RELOCATED}`]);
+  check(
+    moved.status === 0 && existsSync(join(RELOCATED, 'current.txt')),
+    'reinstalled to a different directory',
+    `${RELOCATED} (code ${moved.status})`,
+  );
+  check(
+    !existsSync(join(INSTALL_ROOT, 'current.txt')),
+    'the old location is gone -- there is one installation, not two',
+  );
+
+  sh(join(RELOCATED, 'bin', 'civic-launch.exe'), ['open']);
+  for (let i = 0; i < 60; i += 1) {
+    try {
+      const r = await fetch(`${ORIGIN}/__civic/health`);
+      if (r.ok) break;
+    } catch {
+      /* not up yet */
+    }
+    await sleep(300);
+  }
+  const relocatedHealth = await (await fetch(`${ORIGIN}/__civic/health`)).json();
+  check(
+    relocatedHealth.installRoot.toLowerCase() === RELOCATED.toLowerCase(),
+    'the relocated installation serves',
+    relocatedHealth.installRoot,
+  );
+  check(
+    relocatedHealth.canonicalOrigin === ORIGIN,
+    'the canonical origin is unchanged by the move',
+    relocatedHealth.canonicalOrigin,
+  );
+
+  context = await chromium.launchPersistentContext(PROFILE, {
+    headless: true,
+    acceptDownloads: true,
+    downloadsPath: DOWNLOADS,
+    viewport: { width: 1400, height: 900 },
+  });
+  page = await context.newPage();
+  watchExternal(page);
+  await page.goto(`${ORIGIN}/#/work`);
+  await page.getByRole('navigation', { name: '主导航' }).waitFor({ timeout: 30_000 });
+  const movedText = await settledBodyText(page);
+  check(
+    movedText.includes(`${MARKER}-甲`) && movedText.includes(`${MARKER}-乙`),
+    'the records are still there after the program moved to another drive',
+    'program path and browser origin are independent',
+  );
+
+  // Put it back where the remaining phases expect it.
+  await context.close();
+  sh(join(RELOCATED, 'bin', 'civic-launch.exe'), ['stop']);
+  sh(join(RELOCATED, 'unins000.exe'), ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
+  await sleep(2500);
+  rmSync(RELOCATED, { recursive: true, force: true });
+  sh(SETUP, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
+  await ensureServer();
+  context = await chromium.launchPersistentContext(PROFILE, {
+    headless: true,
+    acceptDownloads: true,
+    downloadsPath: DOWNLOADS,
+    viewport: { width: 1400, height: 900 },
+  });
+  page = await context.newPage();
+  watchExternal(page);
+  check(
+    existsSync(join(INSTALL_ROOT, 'current.txt')),
+    'restored to the default location for the remaining phases',
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------
 // Phase 5: restore from the backup taken in phase 2
 // ---------------------------------------------------------------------------------------------------
 section('5. restore from the JSON backup');
@@ -772,7 +878,7 @@ console.log(
 );
 
 writeFileSync(
-  join(ROOT, 'release', 'windows', `acceptance-rc1-browser-${RELEASE_ID}.txt`),
+  join(ROOT, 'release', 'windows', `acceptance-browser-${RELEASE_ID}.txt`),
   [
     'CivicWorkDesk Windows RC1 -- browser-side acceptance at the installed origin',
     '',
