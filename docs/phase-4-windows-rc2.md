@@ -154,6 +154,12 @@ A custom directory stays verbatim: it identifies nobody, and losing it would mak
 installations RC2 added support for impossible to diagnose. A separate `install root kind` line says
 whether the installation is in the default place, which redaction would otherwise hide.
 
+> **RETRACTED in RC3.** "It identifies nobody" is false — a user may install to `D:\张三\政务工作记录台`
+> or `D:\某单位\李某\CivicWorkDesk`, and a report cannot promise to carry no account name while printing
+> those. RC3 masks a non-default root to `D:\<CUSTOM_INSTALL_ROOT>` and reports the path's
+> characteristics instead. See [phase-4-windows-rc3.md](phase-4-windows-rc3.md) §4.
+> This paragraph is left in place because it records what RC2 actually shipped.
+
 Still absent, and asserted: work records, site-storage contents, cookies, history, passwords, document
 contents, the control-token value (reported as _present_ only), and any build-machine or workspace path.
 
@@ -175,17 +181,27 @@ artifact rather than what a rebuild yields. The build refuses to overwrite an ex
 
 ## 7. What was measured
 
-| Suite                                                                                                                | Checks               | Failed |
-| -------------------------------------------------------------------------------------------------------------------- | -------------------- | ------ |
-| [acceptance-deploy.mjs](../scripts/windows/acceptance-deploy.mjs) — installer, HTTP, lifecycle, process identity     | 118                  | 0      |
-| [acceptance-rc2-ux.mjs](../scripts/windows/acceptance-rc2-ux.mjs) — paths, icons, shortcuts, menu, diagnostics, copy | 131                  | 0      |
-| [acceptance-browser.mjs](../scripts/windows/acceptance-browser.mjs) — Chromium at the origin, incl. relocation       | 70                   | 0      |
-| Go unit tests                                                                                                        | 68                   | 0      |
-| Vitest                                                                                                               | 330                  | 0      |
-| Chromium E2E                                                                                                         | 96                   | 0      |
-| Cross-browser (Firefox, WebKit)                                                                                      | 21 passed, 1 skipped | 0      |
-| Accessibility                                                                                                        | 14                   | 0      |
-| Release-artifact privacy scan                                                                                        | 31 files, 0 findings | 0      |
+| Suite                                                                                                                                                         | Checks               | Failed |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ------ |
+| [acceptance-deploy.mjs](../scripts/windows/acceptance-deploy.mjs) — installer, HTTP, lifecycle, process identity                                              | 118                  | 0      |
+| [acceptance-ux.mjs](../scripts/windows/acceptance-ux.mjs) — paths, icons, shortcuts, menu, diagnostics, copy (ran as `acceptance-rc2-ux.mjs`; renamed in RC3) | 131                  | 0      |
+| [acceptance-browser.mjs](../scripts/windows/acceptance-browser.mjs) — Chromium at the origin, incl. relocation                                                | 70                   | 0      |
+| Go unit tests                                                                                                                                                 | 68                   | 0      |
+| Vitest                                                                                                                                                        | 330                  | 0      |
+| Chromium E2E                                                                                                                                                  | 96                   | 0      |
+| Cross-browser (Firefox, WebKit)                                                                                                                               | 21 passed, 1 skipped | 0      |
+| Accessibility                                                                                                                                                 | 14                   | 0      |
+| Release-artifact privacy scan                                                                                                                                 | 31 files, 0 findings | 0      |
+
+> **Correction added during RC3 (2026-09-24).** The "Chromium E2E — 96, 0 failed" row above does **not**
+> reproduce. Re-running the identical gate (`npm run test:e2e`) four times gives **94 passed, 2 failed**
+> every time, on inputs that are provably unchanged: `dist/` rebuilds byte-identical to this release's
+> own payload (23/23 application files), `src/`, `public/` and `tests/` last changed in `64b8e3e` — long
+> before RC2 — and the Playwright browser builds date from 2026-09-21, before either candidate was built.
+> The two failures are therefore pre-existing and were present when RC2 was published; the zero recorded
+> here could not be reproduced and should not be relied on. Details and evidence:
+> [phase-4-windows-rc3.md](phase-4-windows-rc3.md). Neither failure involves Windows deployment, and
+> neither indicates a product defect.
 
 ### Defects RC2's own acceptance found and fixed
 
