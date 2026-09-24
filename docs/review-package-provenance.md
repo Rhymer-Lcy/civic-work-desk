@@ -342,10 +342,15 @@ suite. Neither archive's e2e result means anything and neither should be cited.
 **The `…-002025-…` e2e failure is unexplained and did not reproduce.** It ran 136 s, so tests really
 executed. Between that run and the next, `npm run test:e2e` standalone passed **96/96** on the same
 `dist/`, and the immediately following `review:package` passed all ten gates including e2e at 126 s.
-The packager truncates captured gate output, so the log does not name the failing test — meaning the
-cause is not established, and calling it "flaky" is a description of the observation, not a diagnosis.
-Recorded rather than dismissed: if e2e fails again inside the packager, the first thing to fix is the
-output truncation, so the next occurrence names itself.
+At the time I wrote that the packager truncates captured gate output and that this was why the log did
+not name the failing test. **That was wrong, and the correction matters more than the original note:**
+the packager captures the whole block. What truncated the output was my own extraction — I printed a
+9,000-character slice of `VERIFY_LOG.txt` and read its end as the end of the gate's output. The log had
+the answer in it the whole time.
+
+So the honest statement about this run is narrower: the failure was real, it was not reproduced, and I
+did not look far enough into the evidence I already had. Cause still not established; "flaky" remains a
+description of the observation, not a diagnosis.
 
 ## Stage-B.1 gate runs (2026-09-23, UTC+8)
 
@@ -382,3 +387,37 @@ Build reproducibility held again: the gate run's `npm run build` replaced `dist/
 Release ids `-1` through `-4` and every sidecar are preserved. Five release ids in one day is untidy;
 each was superseded by a defect found in the artifact rather than in the plan, and a reused id would
 be worse than an untidy list — returned evidence could then be matched against the wrong build.
+
+## Phase-3 closeout packages (2026-09-23, UTC+8)
+
+### `civic-work-desk-phase-3-20260923-234202-b1544f31d582.zip`
+
+digest `64e0faeeacf7596db773605193b4284a3bd7a7f9ecd36dea29044e6d334bdf78`
+
+**FAIL: e2e.** The first Phase-3-named package. Kept, because this is the **second** occurrence of the
+unexplained e2e gate failure and the second occurrence is worth more than the first.
+
+This time the log named both failures, because the block really is captured in full — 274 lines:
+
+| Test                                                                              | Assertion                                                                          |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `phase-2-ux.spec.ts:293` settings › a section index reaches the destructive block | `getByRole('heading', { name: /回收站/ })` — element(s) not found                  |
+| `smoke.spec.ts:200` (chromium-mobile) ledger › free of horizontal overflow        | `getByText('台账中的示范事项').first()` — locator resolved 23 times, never visible |
+
+Both are visibility assertions. The second is the more informative: the element **was** found, twenty-
+three times, and never became visible — which is a timing shape, not a missing-element shape.
+
+Neither reproduced. `npm run test:e2e` standalone immediately afterwards passed **96/96**, including
+both of these tests (`smoke.spec.ts:191` in 704 ms), and the preceding gate runs today passed e2e
+repeatedly. No application or test code changed in this closeout — it is documentation, evidence and
+packaging only.
+
+What is **not** claimed: a cause. Two load-sensitive visibility assertions failing together under a
+full gate run is consistent with contention on this machine, and that is an association, not a
+diagnosis. What is now on the record is the test names, so a third occurrence can be compared against
+these two rather than starting again.
+
+### The Phase-3 package of record
+
+Appended below once produced. Both this failing package and the clean one are kept; neither is
+deleted, and the failing one is the more useful of the two for anyone investigating the e2e flake.
