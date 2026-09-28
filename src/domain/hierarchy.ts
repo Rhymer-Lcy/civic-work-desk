@@ -364,7 +364,11 @@ export function describeHierarchyRefusal(reason: HierarchyRefusal): string {
 export class HierarchyError extends Error {
   override readonly name = 'HierarchyError';
   readonly reason:
-    HierarchyRefusal | 'has-live-descendants' | 'parent-in-trash' | 'has-descendants';
+    | HierarchyRefusal
+    | 'has-live-descendants'
+    | 'parent-in-trash'
+    | 'has-descendants'
+    | 'not-in-trash';
 
   constructor(reason: HierarchyError['reason'], message?: string) {
     super(message ?? (isRefusal(reason) ? describeHierarchyRefusal(reason) : reason));

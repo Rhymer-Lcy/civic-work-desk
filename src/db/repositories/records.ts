@@ -1,10 +1,17 @@
 import { ABSENT_DATE } from '@/domain/dates';
+import { HierarchyError } from '@/domain/hierarchy';
 import type { AnyRecord, HonorRecord, ProgressEntry, WorkRecord } from '@/domain/types';
 import { anyRecordSchema, progressEntrySchema } from '@/domain/validation';
 import { newId, nowInstant } from '@/utils/clock';
 import { withDatabase, withMutation } from '../client';
 import type { CivicWorkDeskDatabase } from '../schema';
 import type { InvalidRow } from '../invalid-row';
+import {
+  assertCanCreateUnder,
+  assertNoLiveDescendants,
+  assertNothingNamesAsParent,
+  assertParentIsLive,
+} from './work-hierarchy';
 
 /**
  * Record and progress-entry persistence.
@@ -135,9 +142,25 @@ async function assertReferencesResolve(
   }
 }
 
-export async function createWorkRecord(input: NewWorkRecordInput): Promise<WorkRecord> {
-  const record = buildWorkRecord(input);
+export interface CreateWorkOptions {
+  /**
+   * Create the record as a sub-task of this work record (Phase 5). The parent must exist, be a live
+   * work record, and sit at level 1 or 2; that is checked in the same transaction as the insert, so a
+   * parent trashed or moved in another tab a moment earlier refuses the write instead of being built on.
+   */
+  readonly parentWorkId?: string | null;
+}
+
+export async function createWorkRecord(
+  input: NewWorkRecordInput,
+  options: CreateWorkOptions = {},
+): Promise<WorkRecord> {
+  const record: WorkRecord = {
+    ...buildWorkRecord(input),
+    parentWorkId: options.parentWorkId ?? null,
+  };
   await withMutation('createWorkRecord', ['records', 'categories', 'groups'], async (db) => {
+    await assertCanCreateUnder(db, record.parentWorkId);
     await assertReferencesResolve(db, record);
     await db.records.add(record);
   });
@@ -200,6 +223,9 @@ export async function updateRecord(
  */
 export async function softDeleteRecord(id: string): Promise<void> {
   await withMutation('softDeleteRecord', ['records'], async (db) => {
+    // A task with live sub-tasks is never trashed on its own: the caller must choose to take the
+    // subtree with it or to move the sub-tasks first (see `./work-hierarchy`).
+    await assertNoLiveDescendants(db, id);
     const stamp = nowInstant();
     await db.records.update(id, { deletedAt: stamp, updatedAt: stamp });
   });
@@ -207,6 +233,10 @@ export async function softDeleteRecord(id: string): Promise<void> {
 
 export async function restoreRecord(id: string): Promise<void> {
   await withMutation('restoreRecord', ['records'], async (db) => {
+    const row = await db.records.get(id);
+    const parsed = row === undefined ? null : anyRecordSchema.safeParse(row);
+    // Restoring a sub-task under a parent that is still in the trash would hide it from every view.
+    if (parsed?.success === true) await assertParentIsLive(db, parsed.data);
     await db.records.update(id, { deletedAt: null, updatedAt: nowInstant() });
   });
 }
@@ -258,6 +288,8 @@ async function detachHonorReferences(
  */
 export async function purgeRecord(id: string): Promise<PurgeOutcome> {
   return withMutation('purgeRecord', ['records', 'progressEntries'], async (db) => {
+    // A purge must never leave a sub-task naming a parent that no longer exists.
+    await assertNothingNamesAsParent(db, id);
     const progressPurged = await db.progressEntries.where('recordId').equals(id).count();
     await db.progressEntries.where('recordId').equals(id).delete();
     const target = await db.records.get(id);
@@ -306,6 +338,32 @@ export async function purgeAllDeleted(): Promise<PurgeOutcome> {
     const doomedWork = new Set(
       rows.filter((row) => row.deletedAt !== null && row.kind === 'work').map((row) => row.id),
     );
+
+    /*
+     * Parents and children in the trash go together. A trashed record that still has a *live* child
+     * cannot go: purging it would leave that child naming a parent that no longer exists. The
+     * application's own operations never produce that state (a record with live sub-tasks is not
+     * trashed on its own), so it can only come from an imported archive — and then the honest answer
+     * is to refuse and say which, not to purge around it.
+     */
+    const doomedSet = new Set(doomed);
+    const stranded = rows.filter(
+      (row) =>
+        row.kind === 'work' &&
+        row.deletedAt === null &&
+        row.parentWorkId !== null &&
+        doomedSet.has(row.parentWorkId),
+    );
+    if (stranded.length > 0) {
+      throw new HierarchyError(
+        'has-live-descendants',
+        `回收站中有任务仍带有 ${String(stranded.length)} 项未删除的下级任务` +
+          `（${stranded
+            .slice(0, 3)
+            .map((row) => `「${row.title}」`)
+            .join('、')}），清空回收站会使它们失去上级。请先移动或删除这些下级任务。`,
+      );
+    }
 
     let progressPurged = 0;
     for (const id of doomed) {
