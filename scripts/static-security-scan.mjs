@@ -155,7 +155,68 @@ const RULES = [
     allow: [/^docs[/\\]/],
     appliesToDist: true,
   },
+  /*
+   * Phase 5. The reference prototype a friend maintains loads Tencent Beacon and reports page views
+   * and referrers. Its design is a reference for this product and its code is not, so the three ways
+   * that kind of code reaches the network are forbidden outright, in source and in the bundle.
+   */
+  {
+    id: 'beacon-api',
+    description: 'navigator.sendBeacon(...)',
+    reason: 'The browser API analytics libraries use to report on page unload.',
+    pattern: /\bsendBeacon\s*\(/g,
+    samples: ['navigator.sendBeacon(url, body)'],
+    scope: /\.(tsx?|jsx?|mjs|cjs|html)$/,
+    allow: [/^docs[/\\]/, /^tests[/\\]/],
+    appliesToDist: true,
+  },
+  {
+    id: 'cn-analytics-host',
+    description: 'Tencent, Baidu and other Chinese analytics or reporting hosts',
+    reason: 'Zero third-party telemetry; the reference prototype reported to beacon.cdn.qq.com.',
+    pattern:
+      /(?:\b[a-z0-9-]+\.)*qq\.com\b|\bhm\.baidu\.com\b|\bcnzz\.com\b|\bumeng\.com\b|\b51\.la\b|\bgrowingio\b|\bsensorsdata\b/gi,
+    samples: ['https://beacon.cdn.qq.com/sdk/beacon.js', 'https://hm.baidu.com/hm.js?x'],
+    scope: /\.(tsx?|jsx?|mjs|cjs|html|css|json)$/,
+    allow: [/^docs[/\\]/, /^_private_reference[/\\]/, /^tests[/\\]/],
+    appliesToDist: true,
+  },
+  {
+    id: 'dynamic-remote-load',
+    description:
+      'A remote URL assigned to .src, fetched, opened, or a tracking pixel (new Image())',
+    reason: 'How a loader injects a remote SDK at run time without any <script> tag in the HTML.',
+    pattern:
+      /\.src\s*=\s*["'`]https?:\/\/|(?:\bfetch|\.open)\(\s*["'`](?:GET["'`]\s*,\s*["'`])?https?:\/\/|\bnew\s+Image\s*\(\s*\)/g,
+    samples: [
+      "script.src = 'https://beacon.cdn.qq.com/sdk/4.5.9/beacon_web.min.js'",
+      "fetch('https://example.invalid/report')",
+      "xhr.open('GET', 'https://example.invalid/report')",
+      'const pixel = new Image()',
+    ],
+    scope: /\.(tsx?|jsx?|mjs|cjs|html)$/,
+    allow: [/^docs[/\\]/, /^tests[/\\]/],
+    appliesToDist: true,
+  },
 ];
+
+/**
+ * Every rule that declares `samples` must match each of them, or the scan refuses to run.
+ *
+ * A rule whose pattern cannot fire reports PASS forever; that is how an absence check quietly stops
+ * checking. The samples are planted positives, verified on every run before anything is scanned.
+ */
+function selfTest() {
+  const broken = [];
+  for (const rule of RULES) {
+    for (const sample of rule.samples ?? []) {
+      rule.pattern.lastIndex = 0;
+      if (!rule.pattern.test(sample)) broken.push(`${rule.id}: ${sample}`);
+    }
+    rule.pattern.lastIndex = 0;
+  }
+  return broken;
+}
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -203,6 +264,12 @@ function scan(files) {
 
 function main() {
   const asJson = process.argv.includes('--json');
+  const broken = selfTest();
+  if (broken.length > 0) {
+    console.error('SELF-TEST FAILED — these rules do not match their own samples:');
+    for (const line of broken) console.error(`  ${line}`);
+    process.exit(2);
+  }
   const targets = ['src', 'scripts', 'tests', 'public', 'index.html', 'dist'];
   const files = [];
   for (const target of targets) {
