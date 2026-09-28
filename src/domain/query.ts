@@ -251,6 +251,29 @@ export function runQuery(
   return sortRecords(filtered, query.sort, verdictOf);
 }
 
+/**
+ * One collator for every title comparison.
+ *
+ * `a.localeCompare(b, 'zh-Hans-CN')` is specified to behave exactly like
+ * `new Intl.Collator('zh-Hans-CN').compare(a, b)`, so this changes no order. What it changes is cost:
+ * the date sort used to compare day keys with `localeCompare(b)` in the *default* locale and break ties
+ * with `localeCompare(b, 'zh-Hans-CN')`, and alternating locales inside one comparator made the engine
+ * rebuild its collator on every switch — 84 ms to sort 4,902 records, against 1.5 ms for this form
+ * (Phase 5, `tests/perf/`; the order was identical).
+ */
+const TITLE_COLLATOR = new Intl.Collator('zh-Hans-CN');
+
+/**
+ * Compare two day keys: `YYYY-MM-DD`, or `''` for a record with no structured date.
+ *
+ * Code-unit order is chronological order for this fixed-width, zero-padded, ASCII-only format, and it
+ * is also what `localeCompare` produced for it — digits and a hyphen at the same positions collate the
+ * same way in every locale — so the substitution is exact, not approximate.
+ */
+function compareDayKeys(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export function sortRecords(
   records: readonly AnyRecord[],
   sort: SortKey,
@@ -273,14 +296,14 @@ export function sortRecords(
       case 'date-asc':
       case 'date-desc': {
         if (undated(a) !== undated(b)) return undated(a) ? 1 : -1;
-        const cmp = dayKey(a).localeCompare(dayKey(b));
+        const cmp = compareDayKeys(dayKey(a), dayKey(b));
         const primary = sort === 'date-asc' ? cmp : -cmp;
-        return primary !== 0 ? primary : a.title.localeCompare(b.title, 'zh-Hans-CN');
+        return primary !== 0 ? primary : TITLE_COLLATOR.compare(a.title, b.title);
       }
       case 'urgency': {
         const cmp = byUrgency(a, b);
         if (cmp !== 0) return cmp;
-        return dayKey(a).localeCompare(dayKey(b));
+        return compareDayKeys(dayKey(a), dayKey(b));
       }
       case 'overdue-desc': {
         const oa = isWorkRecord(a) ? overdueDays(verdictOf(a)) : 0;
@@ -288,7 +311,7 @@ export function sortRecords(
         return ob - oa;
       }
       case 'title-asc':
-        return a.title.localeCompare(b.title, 'zh-Hans-CN');
+        return TITLE_COLLATOR.compare(a.title, b.title);
       case 'updated-desc':
         return b.updatedAt.localeCompare(a.updatedAt);
     }
