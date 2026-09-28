@@ -42,10 +42,13 @@ static scan now forbids that class of dependency (phase-5 record §15).
 1. **Decomposition visible on the work surface.** The 任务结构 view (phase-5 record §11): levels, connector
    lines, child progress and a quick 添加下级任务, built on first-class records rather than the reference's
    flat array.
-2. **Calendar context beside the work list.** From 80 rem, 工作 gains the month calendar the dashboard
-   already has, wired to the canonical query's day filter (`onDay`) — the same filter, the same chip, the
-   same clear action. It stays on the **right**, as on 概览: one layout rule across views, and the main
-   column first in reading and tab order. The group panel is not added; groups are already a filter.
+2. **Calendar context beside the work list.** 工作 gains the month calendar the dashboard already has,
+   wired to the canonical query's day filter (`onDay`) — the same filter, the same chip, the same clear
+   action. From 80 rem it sits in the **right-hand** column, as on 概览: one layout rule across views, and
+   the main column first in reading and tab order. Below 80 rem it follows the list, again as on 概览,
+   so it never pushes the work itself down. (Corrected during implementation: the first draft said the
+   calendar would appear only from 80 rem; hiding it below that would have left an empty 侧边信息
+   landmark on phones.) The group panel is not added; groups are already a filter.
 3. **Information density.** Hierarchy rows reuse the list's row height (`--row-h`) and cell padding tokens;
    a node carries its level, status, title, urgency and child progress on one line at desktop widths, and
    wraps rather than truncating what matters on a phone.
@@ -83,4 +86,4 @@ widths; semantic markup. The adoptions above were chosen so that none of these m
 
 At 1366×768, 1920×1080 and a phone viewport: the brand and destinations do not move between routes; the
 structure view never scrolls horizontally on a phone; every level is readable without colour; the calendar
-column appears on 工作 only from 80 rem and never displaces the list below the fold on a laptop.
+sits beside the list on 工作 from 80 rem and after it below that, and never displaces the list.

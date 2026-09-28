@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ListTree, Plus, Rows3 } from 'lucide-react';
 import { usePrimaryAction } from '@/app/primary-action-context';
 import { useData } from '@/app/store/data-store';
 import { WORK_LEVEL_LABELS_ZH, descendantsOf } from '@/domain/hierarchy';
@@ -27,8 +26,9 @@ import type { RecordQuery } from '@/domain/query';
 import { isWorkRecord } from '@/domain/types';
 import type { ProgressEntry, WorkRecord } from '@/domain/types';
 import { readPreference, writePreference } from '@/services/storage/persistence';
-import { Button, ConfirmDialog, EmptyState } from '@/components/common';
-import { PageHeader } from '@/components/layout/AppShell';
+import { Card, ConfirmDialog } from '@/components/common';
+import { PageHeader, SplitLayout } from '@/components/layout/AppShell';
+import { MonthCalendar } from '../calendar/MonthCalendar';
 import { FilterBar } from './FilterBar';
 import { MoveWorkDialog } from './MoveWorkDialog';
 import { TaskStructure } from './TaskStructure';
@@ -38,6 +38,8 @@ import type { WorkCardHierarchy } from './WorkCard';
 import { WorkRecordDialog } from './WorkRecordDialog';
 import type { WorkDraft } from './work-draft';
 import { useRecordActions } from './use-record-actions';
+import { LoadMore, ViewSwitch, WorkEmptyState } from './WorkPageParts';
+import type { WorkView } from './WorkPageParts';
 import styles from './WorkPage.module.css';
 
 /**
@@ -55,8 +57,6 @@ import styles from './WorkPage.module.css';
  */
 
 const PAGE_SIZE = 30;
-
-type WorkView = 'list' | 'structure';
 
 function initialView(): WorkView {
   return readPreference('workView') === 'structure' ? 'structure' : 'list';
@@ -138,10 +138,11 @@ export function WorkPage(): ReactNode {
   }, []);
   usePrimaryAction('新增记录', openCreate);
 
-  const liveTotal = useMemo(
-    () => data.records.filter((record) => isWorkRecord(record) && record.deletedAt === null).length,
+  const liveWork = useMemo(
+    () => data.records.filter((record) => isWorkRecord(record) && record.deletedAt === null),
     [data.records],
   );
+  const liveTotal = liveWork.length;
 
   const chooseView = (next: WorkView): void => {
     setView(next);
@@ -197,91 +198,120 @@ export function WorkPage(): ReactNode {
     <>
       <PageHeader title="工作" description="日常工作记录：状态、时限、对接与进展。" />
 
-      <FilterBar
-        query={query}
-        onChange={(next) => {
-          setQuery(next);
-          setVisible(PAGE_SIZE);
-        }}
-        categories={data.categories}
-        groups={data.groups}
-        units={units}
-        years={years}
-        resultCount={results.length}
-        undatedCount={undated}
-      />
+      {/*
+       * Phase 5: the calendar beside the list, adopted from the reference prototype's context column
+       * (docs/phase-5-visual-delta.md). It drives the one query's existing day filter, so a selected
+       * day appears as the same 日期 chip and clears the same way. Right-hand, as on 概览, and after the
+       * list on narrow screens, so it never pushes the work itself down.
+       */}
+      <SplitLayout
+        main={
+          <>
+            <FilterBar
+              query={query}
+              onChange={(next) => {
+                setQuery(next);
+                setVisible(PAGE_SIZE);
+              }}
+              categories={data.categories}
+              groups={data.groups}
+              units={units}
+              years={years}
+              resultCount={results.length}
+              undatedCount={undated}
+            />
 
-      <ViewSwitch view={view} onChoose={chooseView} />
+            <ViewSwitch view={view} onChoose={chooseView} />
 
-      {results.length === 0 ? (
-        <WorkEmptyState
-          liveTotal={liveTotal}
-          onCreate={openCreate}
-          onClear={() => {
-            setQuery({ ...EMPTY_QUERY, kind: 'work', sort: query.sort });
-            setVisible(PAGE_SIZE);
-          }}
-        />
-      ) : view === 'structure' ? (
-        <>
-          {filtered ? (
-            <p className={styles.structureHint}>
-              筛选时显示符合条件的任务及其上级任务；标有「上下文」的上级任务本身未匹配筛选条件。
-            </p>
-          ) : null}
-          <TaskStructure
-            forest={forest.slice(0, visible)}
-            index={index}
-            today={data.today}
-            filtered={filtered}
-            onEdit={openEdit}
-            onAddChild={openAddChild}
-            onMove={setMoveTarget}
-          />
-        </>
-      ) : (
-        <>
-          <div className={styles.columns} aria-hidden="true">
-            <span>状态</span>
-            <span>事项</span>
-            <span>业务分类</span>
-            <span>对接单位</span>
-            <span>日期</span>
-            <span className={styles.columnsRight}>时限</span>
-            <span />
-          </div>
-          <ul className={styles.list}>
-            {results.slice(0, visible).map((record) => (
-              <li key={record.id}>
-                <WorkCard
-                  record={record}
-                  hierarchy={cardHierarchy(index, record, data.today)}
+            {results.length === 0 ? (
+              <WorkEmptyState
+                liveTotal={liveTotal}
+                onCreate={openCreate}
+                onClear={() => {
+                  setQuery({ ...EMPTY_QUERY, kind: 'work', sort: query.sort });
+                  setVisible(PAGE_SIZE);
+                }}
+              />
+            ) : view === 'structure' ? (
+              <>
+                {filtered ? (
+                  <p className={styles.structureHint}>
+                    筛选时显示符合条件的任务及其上级任务；标有「上下文」的上级任务本身未匹配筛选条件。
+                  </p>
+                ) : null}
+                <TaskStructure
+                  forest={forest.slice(0, visible)}
+                  index={index}
                   today={data.today}
-                  categories={data.categories}
-                  groups={data.groups}
-                  progress={progressByRecord.get(record.id) ?? []}
-                  progressCount={data.progressCountByRecord.get(record.id) ?? 0}
+                  filtered={filtered}
                   onEdit={openEdit}
                   onAddChild={openAddChild}
                   onMove={setMoveTarget}
-                  onDelete={requestDelete}
-                  onAddProgress={actions.addProgress}
-                  onEditProgress={actions.editProgress}
-                  onDeleteProgress={actions.removeProgress}
                 />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+              </>
+            ) : (
+              <>
+                <div className={styles.columns} aria-hidden="true">
+                  <span>状态</span>
+                  <span>事项</span>
+                  <span>业务分类</span>
+                  <span>对接单位</span>
+                  <span>日期</span>
+                  <span className={styles.columnsRight}>时限</span>
+                  <span />
+                </div>
+                <ul className={styles.list}>
+                  {results.slice(0, visible).map((record) => (
+                    <li key={record.id}>
+                      <WorkCard
+                        record={record}
+                        hierarchy={cardHierarchy(index, record, data.today)}
+                        today={data.today}
+                        categories={data.categories}
+                        groups={data.groups}
+                        progress={progressByRecord.get(record.id) ?? []}
+                        progressCount={data.progressCountByRecord.get(record.id) ?? 0}
+                        onEdit={openEdit}
+                        onAddChild={openAddChild}
+                        onMove={setMoveTarget}
+                        onDelete={requestDelete}
+                        onAddProgress={actions.addProgress}
+                        onEditProgress={actions.editProgress}
+                        onDeleteProgress={actions.removeProgress}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
 
-      <LoadMore
-        visible={visible}
-        total={results.length > 0 ? shownCount : 0}
-        unit={view === 'structure' ? ' 个顶层任务' : ''}
-        onMore={() => {
-          setVisible((value) => value + PAGE_SIZE);
-        }}
+            <LoadMore
+              visible={visible}
+              total={results.length > 0 ? shownCount : 0}
+              unit={view === 'structure' ? ' 个顶层任务' : ''}
+              onMore={() => {
+                setVisible((value) => value + PAGE_SIZE);
+              }}
+            />
+          </>
+        }
+        aside={
+          <Card
+            title="日历"
+            headingLevel={3}
+            description="点选日期，只看当天的工作；再点一次取消。"
+          >
+            <MonthCalendar
+              records={liveWork}
+              selected={query.onDay}
+              onSelect={(day) => {
+                setQuery({ ...query, onDay: day });
+                setVisible(PAGE_SIZE);
+              }}
+              today={data.today}
+            />
+          </Card>
+        }
       />
 
       <WorkRecordDialog
@@ -344,107 +374,5 @@ export function WorkPage(): ReactNode {
         }}
       />
     </>
-  );
-}
-
-function ViewSwitch({
-  view,
-  onChoose,
-}: {
-  readonly view: WorkView;
-  readonly onChoose: (view: WorkView) => void;
-}): ReactNode {
-  return (
-    <div className={styles.viewSwitch} role="group" aria-label="工作视图">
-      <Button
-        size="sm"
-        variant="secondary"
-        icon={<Rows3 size={14} />}
-        aria-pressed={view === 'list'}
-        onClick={() => {
-          onChoose('list');
-        }}
-      >
-        列表
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        icon={<ListTree size={14} />}
-        aria-pressed={view === 'structure'}
-        onClick={() => {
-          onChoose('structure');
-        }}
-      >
-        任务结构
-      </Button>
-    </div>
-  );
-}
-
-/**
- * "Nothing matches" and "nothing exists" are different answers and need different offers (audit
- * E-1). The live count is the discriminator: with records present, the useful action is to relax the
- * filter, not to create another record.
- */
-function WorkEmptyState({
-  liveTotal,
-  onCreate,
-  onClear,
-}: {
-  readonly liveTotal: number;
-  readonly onCreate: () => void;
-  readonly onClear: () => void;
-}): ReactNode {
-  if (liveTotal === 0) {
-    return (
-      <EmptyState
-        title="还没有工作记录"
-        description="登记第一条事项后，这里会按时限与状态列出全部工作。"
-        action={
-          /*
-           * Deliberately not labelled 新增记录: that is the shell's action, and two buttons with the
-           * same label on one screen is the "several equally prominent actions" problem in miniature.
-           * This one names the step instead, and matches the first-run page.
-           */
-          <Button variant="primary" icon={<Plus size={16} />} onClick={onCreate}>
-            新增第一条记录
-          </Button>
-        }
-      />
-    );
-  }
-  return (
-    <EmptyState
-      title="没有符合当前筛选条件的记录"
-      description={`本机共有 ${String(liveTotal)} 条工作记录，当前筛选条件将它们全部排除了。`}
-      action={
-        <Button variant="secondary" onClick={onClear}>
-          清除全部筛选
-        </Button>
-      }
-    />
-  );
-}
-
-function LoadMore({
-  visible,
-  total,
-  unit,
-  onMore,
-}: {
-  readonly visible: number;
-  readonly total: number;
-  readonly unit: string;
-  readonly onMore: () => void;
-}): ReactNode {
-  if (visible >= total) return null;
-  return (
-    <div className={styles.more}>
-      <Button variant="secondary" onClick={onMore}>
-        继续加载（已显示 {visible} / {total}
-        {unit}）
-      </Button>
-    </div>
   );
 }
