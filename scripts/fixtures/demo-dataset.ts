@@ -48,6 +48,11 @@ export interface DemoWork {
   readonly progress?: readonly { readonly on?: string; readonly note: string }[];
   /** Moved to the Trash after creation, so the Trash and the restore path have content. */
   readonly trashed?: boolean;
+  /**
+   * Phase 5: index into `DEMO_WORK` of this record's parent task. Parents always come earlier in the
+   * array, so the generator can create them first and pass the real id.
+   */
+  readonly parentIndex?: number;
 }
 
 export interface DemoHonor {
@@ -405,6 +410,56 @@ export const DEMO_WORK: readonly DemoWork[] = [
     status: 'todo',
     remark: '录入测试遗留，移入回收站。',
     trashed: true,
+  },
+
+  /*
+   * Phase 5: a three-level decomposition (indices 26–30). One 1级任务 with two 2级子任务, one of which
+   * has two 3级子任务; states and deadlines mixed; one sub-task overdue; and the title 起草会议方案
+   * used twice, in different branches, so paths and ids — not titles — have to tell them apart.
+   */
+  {
+    title: '筹备第三季度对外交流工作会议',
+    occurred: '2026-09-10',
+    status: 'in-progress',
+    requirement: '会议方案、会场、参会名单与材料全部落实',
+    reportDeadline: '2026-09-30',
+    category: 'meetingsAndEvents',
+    unit: '市外事办公室综合处',
+    contact: '陈雅琴',
+    phone: '138-0013-8021',
+  },
+  {
+    title: '起草会议方案',
+    occurred: '2026-09-11',
+    status: 'completed',
+    reportDeadline: '2026-09-14',
+    completedOn: '2026-09-14',
+    category: 'documentsAndDrafting',
+    parentIndex: 26,
+  },
+  {
+    title: '联系会场与接待保障',
+    occurred: '2026-09-12',
+    status: 'in-progress',
+    completionDeadline: '2026-09-25',
+    category: 'hostingAndVisits',
+    unit: '示范会议中心',
+    parentIndex: 26,
+  },
+  {
+    title: '确认示范会场档期',
+    occurred: '2026-09-13',
+    status: 'completed',
+    completedOn: '2026-09-16',
+    parentIndex: 28,
+  },
+  {
+    title: '起草会议方案',
+    occurred: '2026-09-14',
+    status: 'todo',
+    reportDeadline: '2026-09-18',
+    remark: '会场方案（与总体方案同名，属于另一分支）。',
+    parentIndex: 28,
   },
 ];
 

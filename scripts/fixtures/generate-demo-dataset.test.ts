@@ -82,23 +82,30 @@ describe('generate the Phase-2 demo dataset', () => {
 
     const createdIds: string[] = [];
     for (const item of DEMO_WORK) {
-      const record = await createWorkRecord({
-        title: item.title,
-        occurredOn: dateValue(item.occurred),
-        status: item.status,
-        statusLabel: item.statusLabel ?? '',
-        requirement: item.requirement ?? '',
-        reportDeadline: plain(item.reportDeadline),
-        completionDeadline: plain(item.completionDeadline),
-        completedOn: plain(item.completedOn),
-        categoryId: item.category === undefined ? null : (CATEGORY_KEYS[item.category] ?? null),
-        groupId: item.group === undefined ? null : (GROUP_KEYS[item.group] ?? null),
-        longTerm: item.longTerm ?? false,
-        counterpartUnit: item.unit ?? '',
-        counterpartContact: item.contact ?? '',
-        counterpartPhone: item.phone ?? '',
-        remark: item.remark ?? '',
-      });
+      const record = await createWorkRecord(
+        {
+          title: item.title,
+          occurredOn: dateValue(item.occurred),
+          status: item.status,
+          statusLabel: item.statusLabel ?? '',
+          requirement: item.requirement ?? '',
+          reportDeadline: plain(item.reportDeadline),
+          completionDeadline: plain(item.completionDeadline),
+          completedOn: plain(item.completedOn),
+          categoryId: item.category === undefined ? null : (CATEGORY_KEYS[item.category] ?? null),
+          groupId: item.group === undefined ? null : (GROUP_KEYS[item.group] ?? null),
+          longTerm: item.longTerm ?? false,
+          counterpartUnit: item.unit ?? '',
+          counterpartContact: item.contact ?? '',
+          counterpartPhone: item.phone ?? '',
+          remark: item.remark ?? '',
+        },
+        {
+          // Phase 5: through the same repository check every real sub-task passes.
+          parentWorkId:
+            item.parentIndex === undefined ? null : (createdIds[item.parentIndex] ?? null),
+        },
+      );
       createdIds.push(record.id);
       for (const entry of item.progress ?? []) {
         await addProgressEntry({
@@ -134,6 +141,12 @@ describe('generate the Phase-2 demo dataset', () => {
 
     // The fixture is only useful if it is a *complete, restorable* archive.
     expect(envelope.backupFormatVersion).toBe(3);
+    expect(envelope.schemaVersion).toBe(2);
+    expect(
+      envelope.payload.records.filter(
+        (record) => record.kind === 'work' && record.parentWorkId !== null,
+      ),
+    ).toHaveLength(DEMO_WORK.filter((item) => item.parentIndex !== undefined).length);
     expect(envelope.completeness).toBe('complete');
     expect(envelope.omittedInvalidRowIds).toEqual([]);
     expect(envelope.counts.workRecords).toBe(DEMO_WORK.length);

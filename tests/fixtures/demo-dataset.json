@@ -1,11 +1,11 @@
 {
   "application": "civic-work-desk",
   "backupFormatVersion": 3,
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "exportedAt": "2026-09-22T04:00:00.000Z",
   "counts": {
-    "records": 31,
-    "workRecords": 26,
+    "records": 36,
+    "workRecords": 31,
     "honorRecords": 5,
     "progressEntries": 13,
     "categories": 13,
@@ -13,7 +13,7 @@
   },
   "completeness": "complete",
   "omittedInvalidRowIds": [],
-  "dataRevision": 48,
+  "dataRevision": 53,
   "payload": {
     "records": [
       {
@@ -23,6 +23,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "中非经贸博览会配套活动方案报审",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-02"
@@ -57,6 +58,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "与圣保罗市友好城市结好二十周年纪念活动筹备",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-08-18"
@@ -91,6 +93,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "省人大代表建议第 072 号办理答复",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-07-10"
@@ -124,6 +127,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "重点外资项目走访服务台账更新",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-22"
@@ -158,6 +162,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "外事礼品管理办法修订征求意见",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-16"
@@ -191,6 +196,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "第四季度外事接待计划编制",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-20"
@@ -225,6 +231,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "涉外突发事件应急预案桌面演练",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-10-12"
@@ -258,6 +265,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "援外培训班学员接待与课程协调",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "range",
           "start": "2026-10-08",
@@ -291,6 +299,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "对口援建项目年度验收材料准备",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "text",
           "text": "待定（11 月前）"
@@ -323,6 +332,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "外事干部涉外礼仪专题培训",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-11"
@@ -357,6 +367,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "上半年外事工作总结报告",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-07-02"
@@ -391,6 +402,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "国际友城青少年书画交流展布展",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-08-06"
@@ -424,6 +436,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "涉外企业用工政策宣讲会",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-08"
@@ -457,6 +470,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "外事系统安全保密自查",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-01"
@@ -490,6 +504,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "外事接待经费决算核对",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-14"
@@ -523,6 +538,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "统战对象走访联系（涉外侨务口）",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-05"
@@ -555,6 +571,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "友城合作项目库年度维护",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-06-15"
@@ -587,6 +604,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "涉外法律服务需求调研",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-05-20"
@@ -620,6 +638,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "境外展会参展补贴申报（已取消）",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-04-11"
@@ -652,6 +671,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "外事考核指标填报（三季度）",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-19"
@@ -685,6 +705,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "群众来信办理：涉外婚姻登记咨询答复",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-13"
@@ -719,6 +740,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "涉外舆情监测与研判周报",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-21"
@@ -751,6 +773,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "外事车辆与会议室调度规则修订",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-08-28"
@@ -784,6 +807,7 @@
         "deletedAt": null,
         "kind": "work",
         "title": "涉非投资合作政策汇编（长期）",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-03-04"
@@ -816,6 +840,7 @@
         "deletedAt": "2026-09-21T09:00:00.000Z",
         "kind": "work",
         "title": "已撤销的重复登记记录",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-03"
@@ -848,6 +873,7 @@
         "deletedAt": "2026-09-21T09:00:00.000Z",
         "kind": "work",
         "title": "误填的测试记录（待清理）",
+        "parentWorkId": null,
         "occurredOn": {
           "kind": "plain",
           "date": "2026-09-04"
@@ -878,6 +904,177 @@
         "createdAt": "2026-09-21T09:00:00.000Z",
         "updatedAt": "2026-09-21T09:00:00.000Z",
         "deletedAt": null,
+        "kind": "work",
+        "title": "筹备第三季度对外交流工作会议",
+        "parentWorkId": null,
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-10"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "会议方案、会场、参会名单与材料全部落实",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-30"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-meetings-events",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "市外事办公室综合处",
+        "counterpartContact": "陈雅琴",
+        "counterpartPhone": "138-0013-8021",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0043",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "起草会议方案",
+        "parentWorkId": "test-id-0042",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-11"
+        },
+        "status": "completed",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-14"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "plain",
+          "date": "2026-09-14"
+        },
+        "categoryId": "cat-documents-drafting",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "",
+        "counterpartContact": "",
+        "counterpartPhone": "",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0044",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "联系会场与接待保障",
+        "parentWorkId": "test-id-0042",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-12"
+        },
+        "status": "in-progress",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "plain",
+          "date": "2026-09-25"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": "cat-hosting-visits",
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "示范会议中心",
+        "counterpartContact": "",
+        "counterpartPhone": "",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0045",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "确认示范会场档期",
+        "parentWorkId": "test-id-0044",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-13"
+        },
+        "status": "completed",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "absent"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "plain",
+          "date": "2026-09-16"
+        },
+        "categoryId": null,
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "",
+        "counterpartContact": "",
+        "counterpartPhone": "",
+        "remark": "",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0046",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
+        "kind": "work",
+        "title": "起草会议方案",
+        "parentWorkId": "test-id-0044",
+        "occurredOn": {
+          "kind": "plain",
+          "date": "2026-09-14"
+        },
+        "status": "todo",
+        "statusLabel": "",
+        "requirement": "",
+        "reportDeadline": {
+          "kind": "plain",
+          "date": "2026-09-18"
+        },
+        "completionDeadline": {
+          "kind": "absent"
+        },
+        "completedOn": {
+          "kind": "absent"
+        },
+        "categoryId": null,
+        "groupId": null,
+        "longTerm": false,
+        "counterpartUnit": "",
+        "counterpartContact": "",
+        "counterpartPhone": "",
+        "remark": "会场方案（与总体方案同名，属于另一分支）。",
+        "legacyResidue": null
+      },
+      {
+        "id": "test-id-0047",
+        "createdAt": "2026-09-21T09:00:00.000Z",
+        "updatedAt": "2026-09-21T09:00:00.000Z",
+        "deletedAt": null,
         "kind": "honor",
         "title": "中非经贸合作服务先进集体",
         "awardedOn": {
@@ -895,7 +1092,7 @@
         "legacyResidue": null
       },
       {
-        "id": "test-id-0043",
+        "id": "test-id-0048",
         "createdAt": "2026-09-21T09:00:00.000Z",
         "updatedAt": "2026-09-21T09:00:00.000Z",
         "deletedAt": null,
@@ -916,7 +1113,7 @@
         "legacyResidue": null
       },
       {
-        "id": "test-id-0044",
+        "id": "test-id-0049",
         "createdAt": "2026-09-21T09:00:00.000Z",
         "updatedAt": "2026-09-21T09:00:00.000Z",
         "deletedAt": null,
@@ -937,7 +1134,7 @@
         "legacyResidue": null
       },
       {
-        "id": "test-id-0045",
+        "id": "test-id-0050",
         "createdAt": "2026-09-21T09:00:00.000Z",
         "updatedAt": "2026-09-21T09:00:00.000Z",
         "deletedAt": null,
@@ -958,7 +1155,7 @@
         "legacyResidue": null
       },
       {
-        "id": "test-id-0046",
+        "id": "test-id-0051",
         "createdAt": "2026-09-21T09:00:00.000Z",
         "updatedAt": "2026-09-21T09:00:00.000Z",
         "deletedAt": null,
@@ -1270,6 +1467,6 @@
   "checksum": {
     "algorithm": "sha-256",
     "scope": "envelope",
-    "value": "c63073038ad5069f519ee110ca97791fd9db0fa8f7d36519236c24dca77ff8e6"
+    "value": "d48ae5b44b132f86280f0c14986b3710109e6605be62a88a0c72d59a8d6b6db3"
   }
 }
