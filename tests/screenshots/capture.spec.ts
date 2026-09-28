@@ -19,7 +19,8 @@ import { confirmWithPhrase } from '../e2e/helpers';
  *   - **the clock is pinned** to the fixture's `DEMO_NOW`, so overdue / due-today / upcoming states
  *     are fixed rather than depending on the day the capture runs;
  *   - **the data comes from a sealed v3 archive** (`tests/fixtures/demo-dataset.json`), imported
- *     through the application's own canonical-restore path, so it is the same 31 records every time;
+ *     through the application's own canonical-restore path, so it is the same 36 records every time
+ *     (31 until Phase 5 added a three-level task hierarchy);
  *   - **fonts are the system stack** and no animation is in flight, since captures wait for the
  *     network-idle state and an explicit settle.
  *
@@ -132,13 +133,20 @@ test.describe('review screenshots', () => {
       ['1366', 'work', 'work-1366'],
       ['1920', 'work', 'work-1920'],
       ['1440', 'honors', 'honors-1440'],
+      ['1366', 'ledger', 'ledger-1366'],
       ['1920', 'ledger', 'ledger-1920'],
       ['2560', 'ledger', 'ledger-2560'],
+      ['1366', 'reports', 'reports-1366'],
       ['1440', 'reports', 'reports-1440'],
+      ['1920', 'reports', 'reports-1920'],
+      ['1366', 'settings', 'settings-1366'],
       ['1440', 'settings', 'settings-1440'],
+      ['1920', 'settings', 'settings-1920'],
       ['390', 'dashboard', 'dashboard-mobile-390'],
       ['390', 'work', 'work-mobile-390'],
       ['390', 'ledger', 'ledger-mobile-390'],
+      ['390', 'reports', 'reports-mobile-390'],
+      ['390', 'settings', 'settings-mobile-390'],
     ];
 
     for (const [size, route, name] of shots) {
@@ -164,6 +172,33 @@ test.describe('review screenshots', () => {
     await page.getByRole('button', { name: '新增记录' }).first().click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await shoot(page, 'edit-form-1440');
+  });
+
+  test('task structure (Phase 5)', async ({ page }) => {
+    await page.setViewportSize(VIEWPORTS['1366']);
+    await loadDemoData(page, 'work');
+    await page
+      .getByRole('group', { name: '工作视图' })
+      .getByRole('button', { name: '任务结构' })
+      .click();
+    await expect(page.getByRole('list', { name: '任务结构' })).toBeVisible();
+    await shoot(page, 'work-structure-1366');
+
+    await page.setViewportSize(VIEWPORTS['1920']);
+    await shoot(page, 'work-structure-1920');
+
+    await page.setViewportSize(VIEWPORTS['390']);
+    await shoot(page, 'work-structure-mobile-390');
+
+    // A filter that matches only a 3级子任务: its two ancestors appear as labelled context.
+    await page.setViewportSize(VIEWPORTS['1366']);
+    await page.getByRole('searchbox').fill('确认示范会场档期');
+    await shoot(page, 'work-structure-filtered-1366');
+
+    await page.getByRole('searchbox').fill('');
+    await page.getByRole('button', { name: '调整层级：确认示范会场档期' }).click();
+    await expect(page.getByRole('dialog', { name: '调整层级' })).toBeVisible();
+    await shoot(page, 'work-structure-move-1366');
   });
 
   test('filtered-empty state', async ({ page }) => {
