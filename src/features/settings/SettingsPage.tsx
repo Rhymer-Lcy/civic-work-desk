@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useData } from '@/app/store/data-store';
+import { InPageLink } from '@/components/common';
 import { PageHeader } from '@/components/layout/AppShell';
 import { AppearanceSection } from './AppearanceSection';
 import { DataSection } from './DataSection';
@@ -32,53 +33,57 @@ export function SettingsPage(): ReactNode {
          * JavaScript, they are reachable by keyboard in document order, and they put the wide
          * viewport's spare width to a use that is not decoration. Hidden below 80rem, where the
          * single column is short enough to scroll and the index would just be more to scroll past.
+         *
+         * `InPageLink` rather than a bare `href="#…"`: the application routes on the fragment, and a
+         * plain anchor set `location.hash` to the section id, which the router read as an unknown route
+         * and answered with 概览. The jump is done in place and focus lands on the section.
          */}
         <nav className={styles.index} aria-label="设置分区">
           <ul className={styles.indexList}>
             {SECTIONS.map((section) => (
               <li key={section.id}>
-                <a className={styles.indexLink} href={`#${section.id}`}>
+                <InPageLink className={styles.indexLink} targetId={section.id}>
                   {section.label}
-                </a>
+                </InPageLink>
               </li>
             ))}
           </ul>
         </nav>
 
         <div className={styles.sections}>
-          <div id="settings-app" className={styles.anchor}>
+          <div id="settings-app" className={styles.anchor} tabIndex={-1}>
             <AppearanceSection
               key={`${data.settings.appTitle}|${data.settings.appSubtitle}|${String(data.settings.backupReminderDays)}`}
               settings={data.settings}
             />
           </div>
-          <div id="settings-taxonomy" className={styles.anchor}>
+          <div id="settings-taxonomy" className={styles.anchor} tabIndex={-1}>
             <TaxonomySection
               categories={data.categories}
               groups={data.groups}
               records={data.records}
             />
           </div>
-          <div id="settings-options" className={styles.anchor}>
+          <div id="settings-options" className={styles.anchor} tabIndex={-1}>
             <OptionsSection settings={data.settings} />
           </div>
-          <div id="settings-data" className={styles.anchor}>
+          <div id="settings-data" className={styles.anchor} tabIndex={-1}>
             <DataSection records={data.records} meta={data.meta} health={data.backupHealth} />
           </div>
-          <div id="settings-install" className={styles.anchor}>
+          <div id="settings-install" className={styles.anchor} tabIndex={-1}>
             <InstallSection />
           </div>
-          <div id="settings-diagnostics" className={styles.anchor}>
+          <div id="settings-diagnostics" className={styles.anchor} tabIndex={-1}>
             <DiagnosticsSection
               integrity={data.integrity}
               relationalIssues={data.relationalIssues}
               settings={data.settings}
             />
           </div>
-          <div id="settings-trash" className={styles.anchor}>
+          <div id="settings-trash" className={styles.anchor} tabIndex={-1}>
             <TrashSection records={data.records} />
           </div>
-          <div id="settings-danger" className={styles.anchor}>
+          <div id="settings-danger" className={styles.anchor} tabIndex={-1}>
             <DangerSection recordCount={data.records.length} />
           </div>
         </div>

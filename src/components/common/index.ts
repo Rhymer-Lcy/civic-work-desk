@@ -6,6 +6,7 @@ export { DateValueInput } from './DateValueInput';
 export { Dialog } from './Dialog';
 export { Field, FieldGroup } from './Field';
 export type { FieldIds } from './Field';
+export { InPageLink } from './InPageLink';
 export { fieldControlClass, fieldRowClass } from './field-classes';
 export { CountBadge, HonorBadge, LongTermBadge, StatusBadge, UrgencyBadge } from './StatusBadge';
 export { ToastProvider } from './Toast';

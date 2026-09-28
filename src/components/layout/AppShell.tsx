@@ -11,7 +11,7 @@ import {
 import { useCurrentPrimaryAction } from '@/app/primary-action-context';
 import { ROUTES, ROUTE_LABELS_ZH, routeHref } from '@/app/router';
 import type { RouteId } from '@/app/router';
-import { Button } from '@/components/common';
+import { Button, InPageLink } from '@/components/common';
 import styles from './AppShell.module.css';
 
 /**
@@ -71,9 +71,14 @@ export function AppShell({ title, route, onNavigate, banner, children }: AppShel
 
   return (
     <div className={`${styles.shell} ${VIEW_WIDTH_CLASS[route]}`}>
-      <a className="skip-link" href="#main">
+      {/*
+       * Focus-only: `<main>` is always on screen, so the jump moves the keyboard and screen-reader
+       * position without scrolling. A plain `href="#main"` was read by the hash router as an unknown
+       * route and sent the user to 概览 instead (see `InPageLink`).
+       */}
+      <InPageLink className="skip-link" targetId="main" jump="focus-only">
         跳到主要内容
-      </a>
+      </InPageLink>
 
       <header className={`${styles.bar} app-header safe-top`}>
         <div className={styles.barInner}>

@@ -290,6 +290,14 @@ test.describe('settings', () => {
     await expect(index.getByRole('link', { name: '危险操作' })).toBeVisible();
 
     await index.getByRole('link', { name: '回收站' }).click();
-    await expect(page.getByRole('heading', { name: /回收站/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /回收站/ })).toBeInViewport();
+    /*
+     * The heading alone is not enough. Until 2026-09-29 the link set `location.hash` to its section
+     * id and the router answered with 概览, and this test still passed whenever the heading was checked
+     * in the moment before that re-render. Reaching the section means still being on Settings.
+     */
+    await expect(page).toHaveURL(/#\/settings$/);
+    await expect(page.getByRole('heading', { level: 1, name: '设置', exact: true })).toBeVisible();
+    await expect(page.locator('#settings-trash')).toBeFocused();
   });
 });

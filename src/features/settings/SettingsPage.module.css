@@ -19,6 +19,15 @@
   scroll-margin-top: calc(var(--header-height) + var(--space-4));
 }
 
+/*
+ * A section receives focus only as the destination of an index jump, so a screen reader continues
+ * from there. It is a container, not a control, so it carries no ring — the same rule as `<main>`;
+ * the section heading scrolled to the top of the view is the visible landing point.
+ */
+.anchor:focus {
+  outline: none;
+}
+
 @media (min-width: 80rem) {
   .layout {
     grid-template-columns: 13rem minmax(0, 1fr);
