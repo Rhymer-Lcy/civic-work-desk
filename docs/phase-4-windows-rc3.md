@@ -296,6 +296,15 @@ the neighbouring tests already do. It is **not applied here**, because RC3's sco
 and test-suite behaviour, and because choosing between fixing the selector and fixing the reset helper
 is a call for whoever owns that suite.
 
+> **Correction, 2026-09-29 (UTC+8, Phase 5).** Both attributions above were tested before any fix and
+> neither held as written. The phone-width ledger failure was real, but its intermittency came from
+> `navigate()` returning before the route committed, so the assertion usually matched the card on 工作;
+> the selector was the second half. The settings-index failure was **not** a harness defect: the index
+> used `href="#settings-*"`, the hash router read each id as an unknown route and rendered 概览 (5 of 5),
+> and the skip link `#main` did the same from every route. `gotoApp` isolation held over 30 iterations.
+> The fixes are `82c01d0` (test-only) and `e1b5d7e` (`fix(app)`); the evidence is in
+> [phase-5-product-evolution.md](phase-5-product-evolution.md) §0. The RC3 artifact is unaffected.
+
 ## 9. Unchanged by RC3
 
 - **The UOS release.** `civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz` still digests to
