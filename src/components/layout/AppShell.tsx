@@ -42,12 +42,12 @@ const ROUTE_ICONS: Readonly<Record<RouteId, typeof LayoutDashboard>> = Object.fr
 });
 
 /**
- * How wide each view may grow.
+ * How wide each view's content may grow.
  *
- * A data table and a settings form want opposite things from a 2560 px screen, so they no longer
- * share one `max-width`. Applied as a class on the shell root, which sets `--view-max` for both the
- * navigation and `main` — that is what keeps the left edge of the content aligned with the left edge
- * of the navigation as the measure changes between routes.
+ * A data table and a settings form want opposite things from a 2560 px screen, so they do not share
+ * one `max-width`. Applied as a class on the shell root, which sets `--view-max` for `main` and the
+ * banner. The application bar deliberately does **not** read it: it uses `--shell-max`, which is the
+ * same on every route, so the brand and the destinations stay put when the view changes (Phase 5).
  */
 const VIEW_WIDTH_CLASS: Readonly<Record<RouteId, string>> = Object.freeze({
   dashboard: styles.viewStandard,
@@ -82,7 +82,7 @@ export function AppShell({ title, route, onNavigate, banner, children }: AppShel
 
       <header className={`${styles.bar} app-header safe-top`}>
         <div className={styles.barInner}>
-          <p className={styles.brand}>
+          <p className={styles.brand} data-shell-part="brand">
             <span aria-hidden="true" className={styles.brandMark} />
             <span className={styles.brandText}>{title}</span>
           </p>
@@ -118,13 +118,17 @@ export function AppShell({ title, route, onNavigate, banner, children }: AppShel
             </ul>
           </nav>
 
-          {primary ? (
-            <div className={styles.barAction}>
+          {/*
+           * Rendered on every route. Without a primary action it is an empty, role-less `div`: it holds
+           * the column open so nothing to its left moves, and exposes nothing to assistive technology.
+           */}
+          <div className={styles.barAction} data-shell-part="action-slot">
+            {primary ? (
               <Button variant="primary" icon={<Plus size={16} />} onClick={primary.onActivate}>
                 {primary.label}
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </header>
 

@@ -141,13 +141,21 @@
    * C-1 and L-2). The replacement is not a bigger number: it is a **measure per view**, because a
    * table and a form want opposite things from a wide screen.
    *
-   *   --view-max      set per route on the shell; `main` and the navigation both honour it, so the
-   *                   left edge of the content always lines up with the left edge of the nav.
+   *   --view-max      set per route on the shell and honoured by `main` (and the banner above it):
+   *                   the content measure, which is allowed to differ between views.
+   *   --shell-max     the application bar's own width, identical on every route. Until Phase 5 the bar
+   *                   also read `--view-max`, so switching route moved the brand and every navigation
+   *                   item by up to 190 px (docs/phase-5-product-evolution.md §1). It equals the widest
+   *                   content measure, so no view's content is ever wider than the chrome above it.
+   *   --shell-action-width  the slot reserved for the view's primary action (新增记录 / 新增荣誉),
+   *                   kept at the same width when a view has no primary action.
    *   --measure-prose an explicit cap for running text, so nothing above grows a 200-character line.
    *
    * The per-route values live in `AppShell.module.css`, next to the class that applies them.
    */
   --view-max: 1440px;
+  --shell-max: 1920px;
+  --shell-action-width: 8rem;
   --view-pad: clamp(1rem, 1.8vw, 2.25rem);
   --measure-prose: 72ch;
   --sidebar-width: 20rem;

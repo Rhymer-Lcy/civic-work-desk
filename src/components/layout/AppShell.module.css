@@ -1,9 +1,14 @@
 /*
- * Shell layout.
+ * Shell layout: two width systems.
  *
- * `--view-max` is set here, per route, and read by both the navigation bar and `main`. Keeping it on
- * one ancestor is what guarantees the two stay aligned: a nav that measured 1440 while the ledger
- * measured 1920 would put the table's first column 240 px left of the first nav item.
+ * `--view-max` is set here, per route, and read by `main` and the banner — the content measure, which
+ * differs because a table and a form want different things from a wide screen.
+ *
+ * The application bar reads `--shell-max` instead, which does not change with the route. Phase 2 had
+ * the bar read `--view-max` too, to keep the first content column under the first navigation item; the
+ * price was a bar whose centred row changed width on every route change, so the brand and all six
+ * destinations jumped sideways by up to 190 px under the pointer (docs/phase-5-product-evolution.md §1).
+ * A wide view's content now lines up with the bar, and a narrower one is centred beneath it.
  */
 .shell {
   display: contents;
@@ -26,7 +31,7 @@
   --view-max: 1920px;
 }
 
-/* ---- one chrome band ---- */
+/* ---- one chrome band, with a fixed coordinate frame ---- */
 .bar {
   position: sticky;
   top: 0;
@@ -37,10 +42,16 @@
 }
 
 .barInner {
-  display: flex;
+  /*
+   * `brand | navigation | action slot` as a grid rather than a flex row that shares out free space.
+   * The action column has a fixed width whether or not the view has a primary action, so its presence
+   * or absence cannot move anything, and the navigation starts at the same x on every route.
+   */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) var(--shell-action-width);
   align-items: center;
-  gap: var(--space-5);
-  max-width: var(--view-max);
+  column-gap: var(--space-5);
+  max-width: var(--shell-max);
   margin: 0 auto;
   padding: 0 var(--view-pad);
   min-height: var(--header-height);
@@ -50,7 +61,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex: none;
   min-width: 0;
 }
 
@@ -76,7 +86,6 @@
 
 /* ---- navigation ---- */
 .nav {
-  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -133,9 +142,15 @@
   color: var(--brand-700);
 }
 
+/*
+ * The primary-action slot. Always rendered; empty on views without a primary action, and then it is a
+ * plain `div` with no role, no text and nothing focusable, so it reserves space without adding anything
+ * to the accessibility tree.
+ */
 .barAction {
-  flex: none;
-  margin-left: auto;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .banner {
@@ -265,23 +280,29 @@
  * abbreviating them to icons would be exactly the legacy defect this navigation replaced.
  */
 @media (max-width: 60rem) {
+  /*
+   * The fixed coordinate frame is a desktop property. On a phone the navigation line scrolls
+   * horizontally by design, so its items are expected to move; the slot shrinks to its content.
+   */
   .barInner {
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'brand action'
+      'nav nav';
     gap: var(--space-2);
     padding-top: var(--space-2);
   }
 
   .brand {
-    flex: 1 1 auto;
+    grid-area: brand;
   }
 
   .barAction {
-    order: 2;
+    grid-area: action;
   }
 
   .nav {
-    order: 3;
-    flex: 1 0 100%;
+    grid-area: nav;
   }
 
   .navList {
