@@ -32,8 +32,8 @@ import type {
 
 export const DATABASE_NAME = 'civic-work-desk';
 
-/** Bumped only alongside a migration in `./migrations`. */
-export const SCHEMA_VERSION = 1;
+/** Bumped only alongside a new `db.version(n)` block below. */
+export const SCHEMA_VERSION = 2;
 
 /** Singleton row keys. */
 export const SETTINGS_KEY = 'app';
@@ -77,4 +77,32 @@ export function applyVersions(db: Dexie): void {
     settings: 'key',
     meta: 'key',
   });
+
+  /*
+   * v2 — Phase 5, the three-level work hierarchy.
+   *
+   * `parentWorkId` is indexed because every hierarchy write looks children up by parent inside its
+   * transaction. A null key is simply absent from an IndexedDB index, so top-level tasks cost nothing.
+   *
+   * The upgrade gives every work row that lacks the field `parentWorkId: null` — every pre-Phase-5 task
+   * becomes a top-level task — and touches nothing else. Honours, progress, taxonomy, settings and meta
+   * are left as they are; a work row that is invalid for some other reason gets the new field and stays
+   * exactly as invalid as it was. The migration adds a field, it does not repair, so corruption that was
+   * visible in Diagnostics before the upgrade is still visible after it.
+   */
+  db.version(2)
+    .stores({
+      records: 'id, kind, deletedAt, updatedAt, categoryId, groupId, status, parentWorkId',
+    })
+    .upgrade(async (tx) => {
+      await tx
+        .table('records')
+        .toCollection()
+        .modify((row: unknown) => {
+          if (row === null || typeof row !== 'object') return;
+          const record = row as Record<string, unknown>;
+          if (record['kind'] !== 'work' || 'parentWorkId' in record) return;
+          record['parentWorkId'] = null;
+        });
+    });
 }

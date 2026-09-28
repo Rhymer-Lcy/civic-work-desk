@@ -42,10 +42,17 @@ const entityBaseShape = {
   deletedAt: isoInstantSchema.nullable(),
 };
 
+/**
+ * A work record as schema v2 stores it.
+ *
+ * `parentWorkId` is required-but-nullable: a stored work row without the key is not a top-level task,
+ * it is a row the v1 → v2 migration never reached, and it is reported rather than silently read as one.
+ */
 export const workRecordSchema = z.object({
   ...entityBaseShape,
   kind: z.literal('work'),
   title: textField,
+  parentWorkId: z.string().min(1).nullable(),
   occurredOn: dateValueSchema,
   status: workStatusSchema,
   statusLabel: textField,
@@ -77,9 +84,32 @@ export const honorRecordSchema = z.object({
   relatedWorkId: z.string().min(1).nullable(),
   remark: textField,
   legacyResidue: legacyResidueSchema,
+  /*
+   * An honour never takes part in the work hierarchy. Declared so that a row carrying the key is
+   * *rejected* and reported, instead of having the key silently stripped by the default object parse —
+   * which would make a damaged row look clean and drop the evidence from every backup.
+   */
+  parentWorkId: z.undefined().optional(),
 });
 
 export const anyRecordSchema = z.discriminatedUnion('kind', [workRecordSchema, honorRecordSchema]);
+
+/**
+ * Schema v1 record shapes, for reading backups written before Phase 5.
+ *
+ * Identical to v2 except that a work record has **no** `parentWorkId` — and must not have one: a file
+ * that declares schema 1 cannot carry hierarchy, so a v1 work row with the key is refused rather than
+ * having the key stripped. `migrateRecordsV1ToV2` then adds `parentWorkId: null`, after the file's
+ * checksum has been verified against the records as they were received.
+ */
+export const workRecordSchemaV1 = workRecordSchema
+  .omit({ parentWorkId: true })
+  .extend({ parentWorkId: z.undefined().optional() });
+
+export const anyRecordSchemaV1 = z.discriminatedUnion('kind', [
+  workRecordSchemaV1,
+  honorRecordSchema,
+]);
 
 export const progressEntrySchema = z.object({
   id: z.string().min(1),

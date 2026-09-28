@@ -533,7 +533,7 @@ function buildCollectContext(
 
 /** Build a full preview. Performs no writes and mutates nothing the caller owns. */
 export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan> {
-  const { format, rows, envelope } = detectSource(input.parsed);
+  const { format, rows, envelope, received } = detectSource(input.parsed);
   const strategy = resolveStrategy(input.mode, format);
   const context = buildCollectContext(input, strategy, envelope);
   const acc = emptyAccumulator();
@@ -545,7 +545,8 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
   }
 
   const { accepted, acceptedProgress, rejected, conflicts, warnings, duplicateIdsInSource } = acc;
-  const checksum = envelope ? await verifyChecksum(envelope) : null;
+  // Verified against the file as received, before any record-schema migration changed its bytes.
+  const checksum = received ? await verifyChecksum(received) : null;
   const identicalConflicts = conflicts.filter((c) => c.identical).length;
 
   // Only a canonical envelope carries taxonomy and settings, so only it can restore them.
@@ -586,7 +587,7 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
     requiresCompletenessAcknowledgement:
       strategy === 'canonical-restore' && completeness === 'unknown-legacy',
     checksum,
-    countsConsistent: envelope ? countsAreConsistent(envelope) : null,
+    countsConsistent: received ? countsAreConsistent(received) : null,
     summary: {
       sourceRows: rows.length,
       acceptedWork: accepted.filter((r) => r.kind === 'work').length,

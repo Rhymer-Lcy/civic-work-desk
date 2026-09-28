@@ -28,6 +28,14 @@ interface EntityBase {
 export interface WorkRecord extends EntityBase {
   readonly kind: 'work';
   readonly title: string;
+  /**
+   * The work record this one decomposes, or null for a top-level task (Phase 5, schema v2).
+   *
+   * The only hierarchy field. A record's level (1级任务 / 2级子任务 / 3级子任务) is *derived* from the
+   * chain of parents and never stored, so a re-parent cannot leave a stale level behind. At most three
+   * levels; see `@/domain/hierarchy` for every rule and `docs/phase-5-product-evolution.md` §4.
+   */
+  readonly parentWorkId: string | null;
   /** The date the item arose / was logged. Legacy `date`. */
   readonly occurredOn: DateValue;
   /** Canonical state. Drives every count, filter and urgency calculation. */

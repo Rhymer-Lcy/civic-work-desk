@@ -1,3 +1,5 @@
+import { validateHierarchy } from './hierarchy';
+import type { HierarchyIssueKind } from './hierarchy';
 import type { AnyRecord, BusinessCategory, ProgressEntry, WorkGroup } from './types';
 
 /**
@@ -21,8 +23,8 @@ import type { AnyRecord, BusinessCategory, ProgressEntry, WorkGroup } from './ty
  *
  *   - **a soft-deleted record still satisfies a reference.** The row exists, it is carried in
  *     backups, and restoring it restores the relationship. Only permanent deletion breaks a link.
- *   - **a null reference is always valid.** `categoryId`, `groupId` and `relatedWorkId` are all
- *     optional by design; absence is a state, not damage.
+ *   - **a null reference is always valid.** `categoryId`, `groupId`, `relatedWorkId` and
+ *     `parentWorkId` are all optional by design; absence is a state, not damage.
  */
 
 export type IntegrityIssueKind =
@@ -33,7 +35,9 @@ export type IntegrityIssueKind =
   | 'orphan-progress'
   | 'dangling-category'
   | 'dangling-group'
-  | 'dangling-related-work';
+  | 'dangling-related-work'
+  /* Phase 5: the work hierarchy (see `./hierarchy`). */
+  | HierarchyIssueKind;
 
 export interface IntegrityIssue {
   readonly kind: IntegrityIssueKind;
@@ -122,6 +126,13 @@ export function validateRelationalIntegrity(state: RelationalState): IntegrityIs
     }
   }
 
+  /*
+   * The work hierarchy, over the same complete set of records: a parent must exist and be a work
+   * record, no record may be its own ancestor, and no path may be longer than three levels. A
+   * soft-deleted parent satisfies the reference, exactly as a soft-deleted related work record does.
+   */
+  issues.push(...validateHierarchy(records));
+
   return issues;
 }
 
@@ -138,6 +149,10 @@ const KIND_LABELS: Readonly<Record<IntegrityIssueKind, string>> = Object.freeze(
   'dangling-category': '记录引用了不存在的业务分类',
   'dangling-group': '记录引用了不存在的归属分组',
   'dangling-related-work': '荣誉引用了不存在的工作记录',
+  'dangling-parent-work': '工作记录引用了不存在的上级任务',
+  'parent-is-not-work': '工作记录的上级不是工作记录',
+  'work-hierarchy-cycle': '任务层级形成循环',
+  'work-hierarchy-too-deep': '任务层级超过 3 级',
 });
 
 export function describeIntegrityKind(kind: IntegrityIssueKind): string {

@@ -25,6 +25,12 @@ export interface SyntheticArchive {
 export interface SyntheticOptions {
   readonly workCount: number;
   readonly seed?: number;
+  /**
+   * Arrange the work records into a three-level hierarchy (default true). Parents are assigned by
+   * position and consume no random numbers, so every other field is identical with and without it —
+   * which is what lets a measurement taken before Phase 5 be compared with one taken after.
+   */
+  readonly withHierarchy?: boolean;
 }
 
 /** mulberry32: small, fast, and reproducible across engines. */
@@ -87,6 +93,9 @@ export function buildSyntheticArchive(options: SyntheticOptions): SyntheticArchi
   const stamp = '2026-09-01T00:00:00.000Z';
   const records: AnyRecord[] = [];
   const progressEntries: ProgressEntry[] = [];
+  const withHierarchy = options.withHierarchy ?? true;
+  let lastRoot: string | null = null;
+  let lastLevel2: string | null = null;
 
   for (let index = 0; index < options.workCount; index += 1) {
     const statusRoll = random();
@@ -95,9 +104,24 @@ export function buildSyntheticArchive(options: SyntheticOptions): SyntheticArchi
         ? 'completed'
         : (WORK_STATUSES[Math.floor(random() * WORK_STATUSES.length)] ?? 'todo');
     const id = `syn-work-${pad(index, 5)}`;
+    /*
+     * Six of every ten records are top-level, three are 2级子任务 of the latest top-level task, one is a
+     * 3级子任务 of the latest 2级子任务: 60 / 30 / 10 per cent.
+     */
+    const slot = index % 10;
+    const parentWorkId = !withHierarchy
+      ? null
+      : slot <= 5
+        ? null
+        : slot <= 8
+          ? lastRoot
+          : lastLevel2;
+    if (withHierarchy && slot <= 5) lastRoot = id;
+    if (withHierarchy && slot >= 6 && slot <= 8) lastLevel2 = id;
     const work: WorkRecord = {
       id,
       kind: 'work',
+      parentWorkId,
       createdAt: stamp,
       updatedAt: stamp,
       deletedAt: random() < 0.02 ? stamp : null,

@@ -361,4 +361,104 @@ test.describe('critical flows on this engine', () => {
       await context.setOffline(false);
     }
   });
+
+  test('a schema-v1 store written by the previous build is upgraded in place', async ({ page }) => {
+    /*
+     * A real IndexedDB upgrade in this engine, not in fake-indexeddb. The database is created at the
+     * version Dexie's `version(1)` maps to (10), with the v1 stores and indexes, from a same-origin page
+     * that does not run the application; then the application opens it and must apply the v2 upgrade.
+     */
+    await page.route('**/__seed-v1', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>seed</title>' }),
+    );
+    await page.goto('/__seed-v1');
+    await page.evaluate(async () => {
+      await new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('civic-work-desk', 10);
+        open.onupgradeneeded = () => {
+          const db = open.result;
+          const stores: Record<string, string[]> = {
+            records: ['kind', 'deletedAt', 'updatedAt', 'categoryId', 'groupId', 'status'],
+            progressEntries: ['recordId', 'createdAt'],
+            categories: ['sortOrder'],
+            groups: ['sortOrder'],
+          };
+          for (const [name, indexes] of Object.entries(stores)) {
+            const store = db.createObjectStore(name, { keyPath: 'id' });
+            for (const index of indexes) store.createIndex(index, index);
+          }
+          db.createObjectStore('settings', { keyPath: 'key' });
+          db.createObjectStore('meta', { keyPath: 'key' });
+        };
+        open.onerror = () => {
+          reject(open.error ?? new Error('open failed'));
+        };
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction('records', 'readwrite');
+          const none = { kind: 'absent' };
+          tx.objectStore('records').put({
+            id: 'v1-work',
+            kind: 'work',
+            title: '升级前写入的示范事项',
+            occurredOn: { kind: 'plain', date: '2026-09-01' },
+            status: 'todo',
+            statusLabel: '',
+            requirement: '',
+            reportDeadline: none,
+            completionDeadline: none,
+            completedOn: none,
+            categoryId: null,
+            groupId: null,
+            longTerm: false,
+            counterpartUnit: '',
+            counterpartContact: '',
+            counterpartPhone: '',
+            remark: '',
+            legacyResidue: null,
+            createdAt: '2026-09-01T00:00:00.000Z',
+            updatedAt: '2026-09-01T00:00:00.000Z',
+            deletedAt: null,
+          });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => {
+            reject(tx.error ?? new Error('write failed'));
+          };
+        };
+      });
+    });
+
+    await openApp(page, 'work');
+    await expect(page.getByRole('article', { name: '升级前写入的示范事项' })).toBeVisible();
+
+    const stored = await page.evaluate(
+      () =>
+        new Promise<{ version: number; parent: unknown; hasKey: boolean }>((resolve, reject) => {
+          const open = indexedDB.open('civic-work-desk');
+          open.onerror = () => {
+            reject(open.error ?? new Error('open failed'));
+          };
+          open.onsuccess = () => {
+            const db = open.result;
+            const request = db.transaction('records').objectStore('records').get('v1-work');
+            request.onsuccess = () => {
+              const row = request.result as Record<string, unknown>;
+              resolve({
+                version: db.version,
+                parent: row['parentWorkId'],
+                hasKey: 'parentWorkId' in row,
+              });
+              db.close();
+            };
+          };
+        }),
+    );
+    expect(stored).toEqual({ version: 20, parent: null, hasKey: true });
+
+    await goToRoute(page, '设置');
+    await expect(page.getByText('v2', { exact: true })).toBeVisible();
+  });
 });

@@ -1,7 +1,8 @@
 import { describeIssues } from '@/domain/validation';
-import { backupEnvelopeSchema } from '../backup/envelope';
+import { backupEnvelopeSchema, backupEnvelopeSchemaV1 } from '../backup/envelope';
 import { checkCompatibility, migrateEnvelope } from '../backup/compatibility';
-import type { BackupEnvelope } from '../backup/envelope';
+import { migrateEnvelopeRecordsV1ToV2 } from '../backup/schema-migration';
+import type { BackupEnvelope, BackupEnvelopeV1, ReceivedEnvelope } from '../backup/envelope';
 
 /**
  * Source detection: what kind of file is this, and may this build read it?
@@ -35,13 +36,20 @@ export class ImportParseError extends Error {
 export interface DetectedSource {
   readonly format: SourceFormat;
   readonly rows: readonly unknown[];
+  /** The envelope in the current record schema: what the import plans and writes from. */
   readonly envelope: BackupEnvelope | null;
+  /**
+   * The envelope exactly as the file declared it, before any record-schema migration. The checksum and
+   * the declared counts are verified against this — they describe the file, not what this build made of
+   * it. Identical to `envelope` for a file already in the current schema.
+   */
+  readonly received: ReceivedEnvelope | null;
 }
 
 /** Identify the shape of a parsed JSON document. Throws when nothing recognisable is found. */
 export function detectSource(parsed: unknown): DetectedSource {
   if (Array.isArray(parsed)) {
-    return { format: 'legacy-array', rows: parsed, envelope: null };
+    return { format: 'legacy-array', rows: parsed, envelope: null, received: null };
   }
   if (parsed === null || typeof parsed !== 'object') {
     throw new ImportParseError('文件内容不是备份数据（既不是数组，也不是对象）。');
@@ -66,7 +74,16 @@ export function detectSource(parsed: unknown): DetectedSource {
     }
 
     const migrated = migrateEnvelope(obj);
-    const result = backupEnvelopeSchema.safeParse(migrated);
+    /*
+     * The record shape follows the declared schema. A schema-1 file (written before Phase 5) is read
+     * with the schema-1 record shape — which refuses a `parentWorkId` it could not have written — and
+     * migrated only after the checksum has been checked against it as received (see
+     * `../backup/schema-migration`).
+     */
+    const result =
+      migrated['schemaVersion'] === 1
+        ? backupEnvelopeSchemaV1.safeParse(migrated)
+        : backupEnvelopeSchema.safeParse(migrated);
     if (!result.success) {
       throw new ImportParseError(
         '这是 CivicWorkDesk 备份文件，但内容未通过校验，已拒绝导入。',
@@ -88,7 +105,12 @@ export function detectSource(parsed: unknown): DetectedSource {
       throw new ImportParseError('该备份的完整性声明自相矛盾，已拒绝导入。', [contradiction]);
     }
 
-    return { format: 'civic-envelope', rows: result.data.payload.records, envelope: result.data };
+    const received: ReceivedEnvelope = result.data;
+    const envelope: BackupEnvelope =
+      migrated['schemaVersion'] === 1
+        ? migrateEnvelopeRecordsV1ToV2(received as BackupEnvelopeV1)
+        : (received as BackupEnvelope);
+    return { format: 'civic-envelope', rows: envelope.payload.records, envelope, received };
   }
 
   const works = obj['works'];
@@ -101,6 +123,7 @@ export function detectSource(parsed: unknown): DetectedSource {
       format: Array.isArray(honors) ? 'legacy-split' : 'legacy-versioned',
       rows,
       envelope: null,
+      received: null,
     };
   }
   throw new ImportParseError('无法识别的备份格式：未找到 works 数组或 CivicWorkDesk 信封。');
@@ -126,7 +149,7 @@ function attachHonorCategory(row: unknown): unknown {
  * `unknown-legacy` is exempt: it describes a v1 archive, whose format had no omission list at all, so
  * an empty list there is the absence of evidence rather than a claim of completeness.
  */
-function completenessContradiction(envelope: BackupEnvelope): string | null {
+function completenessContradiction(envelope: ReceivedEnvelope): string | null {
   const omitted = envelope.omittedInvalidRowIds.length;
   if (envelope.completeness === 'complete' && omitted > 0) {
     return (

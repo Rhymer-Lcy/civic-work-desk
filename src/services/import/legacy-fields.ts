@@ -446,6 +446,8 @@ export function buildWork(input: WorkBuildInput): {
     id,
     kind: 'work',
     title,
+    // The prototype had no hierarchy: every row it wrote is a top-level task.
+    parentWorkId: null,
     occurredOn,
     status: status.status,
     statusLabel: status.label,

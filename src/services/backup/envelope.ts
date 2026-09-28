@@ -3,6 +3,7 @@ import { SCHEMA_VERSION } from '@/db/schema';
 import { BACKUP_FORMAT_VERSION } from './compatibility';
 import {
   anyRecordSchema,
+  anyRecordSchemaV1,
   businessCategorySchema,
   progressEntrySchema,
   workGroupSchema,
@@ -114,9 +115,25 @@ export const backupEnvelopeSchema = z.object({
   payload: backupPayloadSchema,
 });
 
+/**
+ * The same envelope as written by a schema-1 build (before Phase 5): identical except for the record
+ * shape, which is read with `anyRecordSchemaV1`. Used only to read a file **as received**, so that its
+ * checksum and counts are verified against exactly what it contains before its records are migrated.
+ */
+export const backupPayloadSchemaV1 = backupPayloadSchema.extend({
+  records: z.array(anyRecordSchemaV1),
+});
+
+export const backupEnvelopeSchemaV1 = backupEnvelopeSchema.extend({
+  payload: backupPayloadSchemaV1,
+});
+
 export type BackupCounts = z.infer<typeof backupCountsSchema>;
 export type BackupPayload = z.infer<typeof backupPayloadSchema>;
 export type BackupEnvelope = z.infer<typeof backupEnvelopeSchema>;
+export type BackupEnvelopeV1 = z.infer<typeof backupEnvelopeSchemaV1>;
+/** An envelope exactly as it was read from a file, in whichever record schema it declares. */
+export type ReceivedEnvelope = BackupEnvelope | BackupEnvelopeV1;
 export type EnvelopeChecksum = z.infer<typeof checksumSchema>;
 
 export interface BackupInput {
@@ -135,7 +152,15 @@ export function envelopeIsVerifiedComplete(envelope: BackupEnvelope): boolean {
   return envelope.completeness === 'complete' && envelope.omittedInvalidRowIds.length === 0;
 }
 
-export function countEntities(input: BackupInput): BackupCounts {
+/** What counting needs: the record kinds and the size of each collection. */
+export interface CountableContent {
+  readonly records: readonly { readonly kind: 'work' | 'honor' }[];
+  readonly progressEntries: readonly unknown[];
+  readonly categories: readonly unknown[];
+  readonly groups: readonly unknown[];
+}
+
+export function countEntities(input: CountableContent): BackupCounts {
   let workRecords = 0;
   let honorRecords = 0;
   for (const record of input.records) {
@@ -257,7 +282,7 @@ export async function buildEnvelope(
  * The rule is therefore simply "everything except the digest", which needs no per-field judgement
  * when a field is added later.
  */
-export function checksumMaterial(envelope: BackupEnvelope): string {
+export function checksumMaterial(envelope: ReceivedEnvelope): string {
   const rest: Record<string, unknown> = { ...envelope };
   delete rest['checksum'];
   return canonicalJson(rest);
@@ -279,7 +304,7 @@ export type ChecksumVerdict = 'match' | 'mismatch' | 'absent' | 'unverifiable';
  * The scope is read from the file: a v1/v2 archive's digest covers only its payload, and verifying
  * it against the wider v3 material would report every older file as corrupt.
  */
-export async function verifyChecksum(envelope: BackupEnvelope): Promise<ChecksumVerdict> {
+export async function verifyChecksum(envelope: ReceivedEnvelope): Promise<ChecksumVerdict> {
   if (envelope.checksum.value === null) return 'absent';
   const material =
     envelope.checksum.scope === 'envelope'
@@ -291,14 +316,8 @@ export async function verifyChecksum(envelope: BackupEnvelope): Promise<Checksum
 }
 
 /** Counts declared in the envelope must match the payload it carries. */
-export function countsAreConsistent(envelope: BackupEnvelope): boolean {
-  const actual = countEntities({
-    records: envelope.payload.records,
-    progressEntries: envelope.payload.progressEntries,
-    categories: envelope.payload.categories,
-    groups: envelope.payload.groups,
-    settings: envelope.payload.settings,
-  });
+export function countsAreConsistent(envelope: ReceivedEnvelope): boolean {
+  const actual = countEntities(envelope.payload);
   return canonicalJson(actual) === canonicalJson(envelope.counts);
 }
 

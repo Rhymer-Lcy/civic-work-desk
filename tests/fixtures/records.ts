@@ -34,6 +34,7 @@ export function freeText(text: string): DateValue {
 export interface WorkOverrides {
   id?: string;
   title?: string;
+  parentWorkId?: string | null;
   occurredOn?: DateValue;
   status?: WorkStatus;
   statusLabel?: string;
@@ -58,6 +59,7 @@ export function makeWork(overrides: WorkOverrides = {}): WorkRecord {
     id: overrides.id ?? nextId('work'),
     kind: 'work',
     title: overrides.title ?? '示范工作事项',
+    parentWorkId: overrides.parentWorkId ?? null,
     occurredOn: overrides.occurredOn ?? plain('2026-09-01'),
     status: overrides.status ?? 'todo',
     statusLabel: overrides.statusLabel ?? '',

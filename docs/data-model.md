@@ -1,17 +1,18 @@
 # Data model
 
-Database: IndexedDB, name `civic-work-desk`, accessed through Dexie. Schema version **1**.
+Database: IndexedDB, name `civic-work-desk`, accessed through Dexie. Schema version **2** (Phase 5;
+v1 → v2 added the work hierarchy — see [Migrations](#migrations)).
 
 ## Stores
 
-| Store             | Primary key | Indexes                                                             | Contents                              |
-| ----------------- | ----------- | ------------------------------------------------------------------- | ------------------------------------- |
-| `records`         | `id`        | `kind`, `deletedAt`, `updatedAt`, `categoryId`, `groupId`, `status` | work + honour records                 |
-| `progressEntries` | `id`        | `recordId`, `createdAt`                                             | progress notes                        |
-| `categories`      | `id`        | `sortOrder`                                                         | business categories                   |
-| `groups`          | `id`        | `sortOrder`                                                         | fixed / long-term / supervised groups |
-| `settings`        | `key`       | —                                                                   | one row, key `app`                    |
-| `meta`            | `key`       | —                                                                   | one row, key `app`                    |
+| Store             | Primary key | Indexes                                                                                  | Contents                              |
+| ----------------- | ----------- | ---------------------------------------------------------------------------------------- | ------------------------------------- |
+| `records`         | `id`        | `kind`, `deletedAt`, `updatedAt`, `categoryId`, `groupId`, `status`, `parentWorkId` (v2) | work + honour records                 |
+| `progressEntries` | `id`        | `recordId`, `createdAt`                                                                  | progress notes                        |
+| `categories`      | `id`        | `sortOrder`                                                                              | business categories                   |
+| `groups`          | `id`        | `sortOrder`                                                                              | fixed / long-term / supervised groups |
+| `settings`        | `key`       | —                                                                                        | one row, key `app`                    |
+| `meta`            | `key`       | —                                                                                        | one row, key `app`                    |
 
 **Indexing is deliberately narrow.** Only identity, lifecycle and referential fields are indexed;
 filtering happens in the domain query engine over an in-memory snapshot. Two reasons:
@@ -102,6 +103,7 @@ way its author wrote it. It is display-only — every calculation uses `status`.
 | `id`                                    | `string` (UUID for new records) | `id`                                |
 | `kind`                                  | `'work'`                        | derived from `category`             |
 | `title`                                 | `string`                        | `title`                             |
+| `parentWorkId`                          | `string \| null` (v2)           | — (the prototype had no hierarchy)  |
 | `occurredOn`                            | `DateValue`                     | `date`                              |
 | `status`                                | `WorkStatus`                    | `done`                              |
 | `statusLabel`                           | `string`                        | `done`, verbatim                    |
@@ -122,7 +124,17 @@ way its author wrote it. It is display-only — every calculation uses `status`.
 ### `HonorRecord`
 
 `title`, `awardedOn`, `honorType`, `level`, `issuingOrg`, `documentNo`, `personalRole`,
-`evidenceLocation`, `relatedWorkId`, `remark`, plus the audit fields.
+`evidenceLocation`, `relatedWorkId`, `remark`, plus the audit fields. **No** `parentWorkId`: an honour
+never takes part in the work hierarchy, and its schema rejects the key rather than stripping it.
+
+### The work hierarchy (schema v2)
+
+A sub-task is an ordinary `WorkRecord` whose `parentWorkId` names another work record. Level 1 is a
+top-level task; a record's level is its parent's plus one; the maximum is 3 (1级任务 / 2级子任务 /
+3级子任务). **The level is derived and never stored.** Sibling order is derived from the view's sort, not
+stored either. The rules — existence, work-only parents, no cycles, at most three levels — live in
+`src/domain/hierarchy.ts` and are enforced at the write boundary and by the relational validator below.
+Design and rationale: [phase-5-product-evolution.md](phase-5-product-evolution.md) §4–§10.
 
 Honours are a **separate shape**, not a work record with a flag. In the legacy model every honour
 field sat unused on all 178 work rows and every deadline field sat unused on the honour rows.
@@ -249,17 +261,21 @@ One definition, in `src/domain/integrity.ts`, over plain arrays — no IndexedDB
 The same function answers: may this archive be restored exactly? is the live database valid? may a
 backup of it be called complete? would this merge leave a valid state?
 
-| invariant                                                                   | kinds reported          |
-| --------------------------------------------------------------------------- | ----------------------- |
-| every progress entry points to an existing record                           | `orphan-progress`       |
-| every non-null work `categoryId` points to an existing category             | `dangling-category`     |
-| every non-null work `groupId` points to an existing group                   | `dangling-group`        |
-| every non-null honour `relatedWorkId` points to an existing **work** record | `dangling-related-work` |
-| record / progress / category / group ids are unique                         | `duplicate-*-id`        |
+| invariant                                                                   | kinds reported            |
+| --------------------------------------------------------------------------- | ------------------------- |
+| every progress entry points to an existing record                           | `orphan-progress`         |
+| every non-null work `categoryId` points to an existing category             | `dangling-category`       |
+| every non-null work `groupId` points to an existing group                   | `dangling-group`          |
+| every non-null honour `relatedWorkId` points to an existing **work** record | `dangling-related-work`   |
+| record / progress / category / group ids are unique                         | `duplicate-*-id`          |
+| every non-null `parentWorkId` points to an existing record                  | `dangling-parent-work`    |
+| … and that record is a **work** record                                      | `parent-is-not-work`      |
+| no work record is its own ancestor (a self-parent included)                 | `work-hierarchy-cycle`    |
+| no path in the work hierarchy is longer than three levels                   | `work-hierarchy-too-deep` |
 
 Two deliberate non-violations: a **soft-deleted** record still satisfies a reference (the row exists and
 is carried in backups, so restoring it restores the relationship), and a **null** reference is always
-valid (all three are optional by design).
+valid (all four are optional by design).
 
 Phase 1.2 applied these rules only when restoring an archive. The live database was free to reach a
 state its own backups could not restore — see the hard-delete policy below — and the application would
@@ -339,6 +355,22 @@ leave flags and records out of step.
 bump — but it does need an explicit backfill, which `ensureSeedData()` performs for a row written by
 an earlier build. The alternative is `undefined` leaking into arithmetic, which is how a revision
 counter silently becomes `NaN`.
+
+### v1 → v2 (Phase 5)
+
+`db.version(2)` adds a `parentWorkId` index to `records` and an upgrade that sets `parentWorkId = null` on
+every row that is an object with `kind === 'work'` and no such key. Nothing else is touched: honours,
+progress, taxonomy, settings and meta rows are left as they are, and a work row that was invalid for any
+other reason gets the field and stays exactly as invalid — the migration adds a field, it does not
+repair. Proven from a real v1 database in `tests/integration/schema-v2-migration.test.ts`, and in
+Chromium, Firefox and WebKit by the cross-engine suite.
+
+Backups carry the same change through the envelope's `schemaVersion`, which is now 2;
+`backupFormatVersion` stays 3 because the envelope itself did not change. A schema-1 file is validated in
+the schema-1 record shape (which refuses a `parentWorkId` it could not have written), its checksum and
+counts are verified as received, and only then are its work records given `parentWorkId: null`
+(`src/services/backup/schema-migration.ts`). A build that predates schema 2 refuses a schema-2 file
+before reading its payload, with its own "newer schema" message.
 
 ### Backup format versions are bounded at both ends
 

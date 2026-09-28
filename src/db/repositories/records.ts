@@ -60,10 +60,16 @@ export async function getRecord(id: string): Promise<AnyRecord | null> {
   });
 }
 
-/** Fields a caller supplies when creating a work record; the rest are derived. */
+/**
+ * Fields a caller supplies when creating a work record; the rest are derived.
+ *
+ * `parentWorkId` is not one of them: a record is created as a top-level task here, and placing one in
+ * the hierarchy goes through the hierarchy operations, which check the projected tree in the same
+ * transaction as the write.
+ */
 export type NewWorkRecordInput = Omit<
   WorkRecord,
-  'id' | 'kind' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'legacyResidue'
+  'id' | 'kind' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'legacyResidue' | 'parentWorkId'
 >;
 
 export type NewHonorRecordInput = Omit<
@@ -77,6 +83,7 @@ export function buildWorkRecord(input: NewWorkRecordInput): WorkRecord {
     ...input,
     id: newId(),
     kind: 'work',
+    parentWorkId: null,
     createdAt: stamp,
     updatedAt: stamp,
     deletedAt: null,
@@ -147,8 +154,12 @@ export async function createHonorRecord(input: NewHonorRecordInput): Promise<Hon
 }
 
 /** Patch a work record. `updatedAt` is always refreshed; identity fields cannot be patched. */
+/**
+ * A patch cannot move a record in the hierarchy. `parentWorkId` changes only through the hierarchy
+ * operations, which validate the projected tree; `updateRecord` refuses a patch that carries the key.
+ */
 export type WorkRecordPatch = Partial<
-  Omit<WorkRecord, 'id' | 'kind' | 'createdAt' | 'updatedAt' | 'deletedAt'>
+  Omit<WorkRecord, 'id' | 'kind' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'parentWorkId'>
 >;
 
 export type HonorRecordPatch = Partial<
@@ -163,6 +174,10 @@ export async function updateRecord(
     {
       const existing = await db.records.get(id);
       if (!existing) throw new Error(`record not found: ${id}`);
+      // The type forbids it; this is the guard for a caller that got around the type.
+      if (Object.hasOwn(patch, 'parentWorkId')) {
+        throw new Error('parentWorkId cannot be changed by an ordinary edit');
+      }
       const next = { ...existing, ...patch, updatedAt: nowInstant() } as AnyRecord;
       const parsed = anyRecordSchema.safeParse(next);
       if (!parsed.success) {
