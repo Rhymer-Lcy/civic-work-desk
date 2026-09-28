@@ -5,6 +5,7 @@ import { mapLegacyStatus } from '@/domain/status';
 import type { WorkStatus } from '@/domain/status';
 import type { HonorRecord, ProgressEntry, WorkRecord } from '@/domain/types';
 import { newId } from '@/utils/clock';
+import { canonicalJson } from '../backup/envelope';
 import type { MigrationWarning, WarningSeverity } from './legacy';
 
 /**
@@ -57,6 +58,8 @@ const KNOWN_FIELDS = new Set([
   'createdAt',
   'status',
   'time',
+  /* Phase 5: a flat sub-task array, turned into level-2 work records by `./legacy-subtasks`. */
+  'subtasks',
 ]);
 
 /** A warning before the row context (index, title) is attached by the orchestrator. */
@@ -168,11 +171,26 @@ export function resolveDateField(
   return { value: parsed.value, warning: null };
 }
 
+/**
+ * Preserve an unrecognised value losslessly: a scalar as its text, a structure as canonical JSON.
+ *
+ * Until Phase 5 this used `asString()`, which returns `''` for an array or an object, so an unknown
+ * structured field — a nested `subtasks` array, say — was dropped without a warning. An *empty* array or
+ * object still yields `''`: it carries nothing to adjudicate.
+ */
+export function residueText(value: unknown): string {
+  if (value !== null && typeof value === 'object') {
+    const empty = Array.isArray(value) ? value.length === 0 : Object.keys(value).length === 0;
+    return empty ? '' : canonicalJson(value);
+  }
+  return asString(value);
+}
+
 export function collectResidue(source: Record<string, unknown>): Record<string, string> | null {
   const residue: Record<string, string> = {};
   for (const [key, value] of Object.entries(source)) {
     if (KNOWN_FIELDS.has(key)) continue;
-    const text = asString(value);
+    const text = residueText(value);
     if (text.trim() !== '') residue[key] = text;
   }
   return Object.keys(residue).length > 0 ? residue : null;

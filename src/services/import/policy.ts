@@ -104,6 +104,23 @@ export function planBlockers(plan: ImportPlan): string[] {
     );
   }
 
+  /*
+   * Phase 5: the work hierarchy of the projected final state. Records that are each valid can together
+   * dangle, cycle or run past three levels — alone or combined with the destination — and a merge that
+   * wrote the valid part would leave a tree nobody previewed. Refused whole, before anything is written;
+   * the in-transaction preflight re-checks the same projection at commit time.
+   */
+  if (plan.hierarchyIssues.length > 0) {
+    blockers.push(
+      (plan.destinationHierarchyDamaged
+        ? '本机的任务层级当前本身已不自洽，请先在「设置 → 诊断」中处理再导入。'
+        : '') +
+        `按该预览导入后，任务层级将不自洽（${String(plan.hierarchyIssues.length)} 处）：` +
+        describeIntegrityIssues(plan.hierarchyIssues).join('；') +
+        '。为避免只写入其中一部分，本次导入已整体拒绝。',
+    );
+  }
+
   if (plan.strategy === 'merge' && plan.accepted.length === 0 && plan.conflicts.length === 0) {
     blockers.push('没有任何可导入的记录。');
   }

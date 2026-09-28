@@ -47,29 +47,7 @@ export function ImportPreview({
         </Panel>
       ) : null}
 
-      <dl className={styles.stats}>
-        <Stat label="文件格式" value={FORMAT_LABELS[plan.format]} />
-        {plan.completeness !== null ? (
-          <Stat label="完整性" value={COMPLETENESS_LABELS[plan.completeness]} />
-        ) : null}
-        <Stat label="源文件记录数" value={String(s.sourceRows)} />
-        <Stat label="将写入工作记录" value={String(s.acceptedWork)} />
-        <Stat label="将写入荣誉记录" value={String(s.acceptedHonors)} />
-        <Stat label="将写入进展" value={String(s.acceptedProgress)} />
-        {plan.strategy === 'merge' ? (
-          <Stat label="跳过（ID 已存在）" value={String(s.conflicts)} />
-        ) : (
-          <Stat label="将被替换的现有记录" value={String(plan.replacesExisting)} />
-        )}
-        <Stat label="进展 ID 冲突" value={String(s.progressCollisions)} />
-        <Stat label="引用无法解析" value={String(s.referenceRejections)} />
-        <Stat label="进展找不到记录" value={String(s.orphanProgress)} />
-        <Stat label="已拒绝" value={String(s.rejected)} />
-        <Stat label="迁移提示" value={String(s.warnings)} />
-        {plan.checksum !== null ? (
-          <Stat label="校验和" value={CHECKSUM_LABELS[plan.checksum]} />
-        ) : null}
-      </dl>
+      <PlanStats plan={plan} />
 
       {blockers.length > 0 ? (
         <Panel tone="danger">
@@ -225,6 +203,39 @@ const COMPLETENESS_LABELS: Readonly<Record<NonNullable<ImportPlan['completeness'
     incomplete: '不完整（不能用于完整还原）',
     'unknown-legacy': '未知（旧版 v1 备份）',
   });
+
+/** The counts a user checks before confirming, in the order the decision needs them. */
+function PlanStats({ plan }: { readonly plan: ImportPlan }): ReactNode {
+  const s = plan.summary;
+  return (
+    <dl className={styles.stats}>
+      <Stat label="文件格式" value={FORMAT_LABELS[plan.format]} />
+      {plan.completeness !== null ? (
+        <Stat label="完整性" value={COMPLETENESS_LABELS[plan.completeness]} />
+      ) : null}
+      <Stat label="源文件记录数" value={String(s.sourceRows)} />
+      <Stat label="将写入工作记录" value={String(s.acceptedWork)} />
+      {s.acceptedSubtasks > 0 ? (
+        <Stat label="其中下级任务" value={String(s.acceptedSubtasks)} />
+      ) : null}
+      <Stat label="将写入荣誉记录" value={String(s.acceptedHonors)} />
+      <Stat label="将写入进展" value={String(s.acceptedProgress)} />
+      {plan.strategy === 'merge' ? (
+        <Stat label="跳过（ID 已存在）" value={String(s.conflicts)} />
+      ) : (
+        <Stat label="将被替换的现有记录" value={String(plan.replacesExisting)} />
+      )}
+      <Stat label="进展 ID 冲突" value={String(s.progressCollisions)} />
+      <Stat label="引用无法解析" value={String(s.referenceRejections)} />
+      <Stat label="进展找不到记录" value={String(s.orphanProgress)} />
+      <Stat label="已拒绝" value={String(s.rejected)} />
+      <Stat label="迁移提示" value={String(s.warnings)} />
+      {plan.checksum !== null ? (
+        <Stat label="校验和" value={CHECKSUM_LABELS[plan.checksum]} />
+      ) : null}
+    </dl>
+  );
+}
 
 function Stat({ label, value }: { readonly label: string; readonly value: string }): ReactNode {
   return (

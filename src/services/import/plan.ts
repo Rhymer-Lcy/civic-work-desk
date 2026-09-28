@@ -9,6 +9,7 @@ import type { SourceFormat } from './detect';
 import type { BackupEnvelope, ChecksumVerdict } from '../backup/envelope';
 import { validateCanonicalIntegrity } from './integrity';
 import type { IntegrityIssue } from './integrity';
+import { assessProjectedHierarchy, placeLegacySubtasks } from './hierarchy-projection';
 import { isNormalisationFailure, normaliseLegacyRecord } from './legacy';
 import type { MigrationWarning } from './legacy';
 
@@ -122,6 +123,16 @@ export interface ImportPlan {
   /** Relational defects that make an exact restore impossible. Empty for a healthy envelope. */
   readonly integrityIssues: readonly IntegrityIssue[];
   /**
+   * Work-hierarchy defects in the **projected final state** of a merge or a legacy replace (Phase 5):
+   * a dangling or non-work parent, a cycle, or a path longer than three levels. Individually valid
+   * incoming records can form any of these together, or with the destination. Any entry refuses the
+   * whole import — a structurally invalid hierarchy is never partly applied. Always empty for a
+   * canonical restore, whose hierarchy is judged exactly in `integrityIssues`.
+   */
+  readonly hierarchyIssues: readonly IntegrityIssue[];
+  /** True when the destination already had hierarchy damage before this import was considered. */
+  readonly destinationHierarchyDamaged: boolean;
+  /**
    * Rows declined because a reference would not resolve in the projected final state.
    *
    * Reported rather than repaired: rewriting the reference to null would alter the user's data, and
@@ -172,6 +183,8 @@ export interface ImportSummary {
   readonly referenceRejections: number;
   /** Progress entries declined for having no record in the projected final state. */
   readonly orphanProgress: number;
+  /** Accepted work records that sit below another task (2级 / 3级), including legacy sub-tasks. */
+  readonly acceptedSubtasks: number;
 }
 
 /**
@@ -442,13 +455,33 @@ function collectFromLegacyRows(
         hint: outcome.record.title,
         reason: describeIssues(validated.error, 2).join('; '),
       });
+      placeLegacySubtasks({
+        subtasks: outcome.subtasks,
+        parentWillExist: false,
+        parentConflicted: false,
+        place: () => undefined,
+        reject: (hint, reason) => acc.rejected.push({ hint, reason }),
+      });
       continue;
     }
 
-    if (placeRecord(validated.data, context, acc)) {
+    const placed = placeRecord(validated.data, context, acc);
+    if (placed) {
       // The record is now in the projected state, so its notes resolve.
       for (const entry of outcome.progress) placeProgress(entry, context, acc);
     }
+
+    // Sub-tasks from a flat legacy `subtasks[]`: see `placeLegacySubtasks` for when they may land.
+    const conflict = acc.conflicts.find((entry) => entry.id === validated.data.id);
+    placeLegacySubtasks({
+      subtasks: outcome.subtasks,
+      parentWillExist: placed || conflict?.identical === true,
+      parentConflicted: conflict !== undefined,
+      place: (record) => {
+        placeRecord(record, context, acc);
+      },
+      reject: (hint, reason) => acc.rejected.push({ hint, reason }),
+    });
   }
 }
 
@@ -561,6 +594,9 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
   const exactness = assessExactness(strategy, envelope, acc);
   const { completeness, integrityIssues, exactRestorePossible } = exactness;
 
+  // The hierarchy of the state the write would leave behind (Phase 5).
+  const hierarchy = assessProjectedHierarchy(strategy, input.existing, accepted);
+
   return {
     format,
     mode: input.mode,
@@ -583,6 +619,8 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
     completeness,
     checksumScope: envelope?.checksum.scope ?? null,
     integrityIssues,
+    hierarchyIssues: hierarchy.issues,
+    destinationHierarchyDamaged: hierarchy.destinationDamaged,
     exactRestorePossible,
     requiresCompletenessAcknowledgement:
       strategy === 'canonical-restore' && completeness === 'unknown-legacy',
@@ -600,6 +638,9 @@ export async function buildImportPlan(input: BuildPlanInput): Promise<ImportPlan
       progressCollisions: acc.progressCollisions.length,
       referenceRejections: acc.referenceRejections.length,
       orphanProgress: acc.orphanProgress.length,
+      acceptedSubtasks: accepted.filter(
+        (record) => record.kind === 'work' && record.parentWorkId !== null,
+      ).length,
     },
   };
 }

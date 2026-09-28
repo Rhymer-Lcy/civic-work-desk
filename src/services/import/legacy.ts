@@ -1,4 +1,4 @@
-import type { AnyRecord, ProgressEntry } from '@/domain/types';
+import type { AnyRecord, ProgressEntry, WorkRecord } from '@/domain/types';
 import { newId, nowInstant } from '@/utils/clock';
 import {
   asString,
@@ -7,10 +7,12 @@ import {
   collectResidue,
   looksLikeHonor,
   normaliseProgress,
+  residueText,
   resolveAudit,
   resolveDateField,
   truncate,
 } from './legacy-fields';
+import { normaliseLegacySubtasks } from './legacy-subtasks';
 import type { NormaliseOptions } from './legacy-fields';
 
 /**
@@ -46,6 +48,11 @@ export interface MigrationWarning {
 export interface NormalisedRecord {
   readonly record: AnyRecord;
   readonly progress: readonly ProgressEntry[];
+  /**
+   * Level-2 work records made from the row's flat `subtasks[]` (Phase 5), each naming `record` as its
+   * parent. Placed only when `record` is, as progress notes are. Empty for an honour.
+   */
+  readonly subtasks: readonly WorkRecord[];
   readonly warnings: readonly MigrationWarning[];
 }
 
@@ -112,8 +119,17 @@ export function normaliseLegacyRecord(
   const audit = resolveAudit(source['createdAt'], stamp);
 
   if (looksLikeHonor(source)) {
-    const honor = buildHonor({ source, audit, id, title, awardedOn: dateField.value, residue });
-    return { record: honor, progress, warnings };
+    const kept = keepUnusableSubtasks(source, residue, 'honor');
+    if (kept.warning) push(kept.warning);
+    const honor = buildHonor({
+      source,
+      audit,
+      id,
+      title,
+      awardedOn: dateField.value,
+      residue: kept.residue,
+    });
+    return { record: honor, progress, subtasks: [], warnings };
   }
 
   const work = buildWork({
@@ -122,11 +138,47 @@ export function normaliseLegacyRecord(
     id,
     title,
     occurredOn: dateField.value,
-    residue,
+    residue: keepUnusableSubtasks(source, residue, 'work').residue,
     inferCategories,
   });
   work.warnings.forEach(push);
-  return { record: work.record, progress, warnings };
+  const subtasks = normaliseLegacySubtasks(source['subtasks'], work.record, stamp);
+  subtasks.warnings.forEach(push);
+  return { record: work.record, progress, subtasks: subtasks.records, warnings };
+}
+
+/**
+ * Keep a `subtasks` value that cannot become records in the row's residue.
+ *
+ * `subtasks` is a known field since Phase 5, so `collectResidue` no longer carries it: whatever does not
+ * turn into sub-task records must be put there explicitly or it would vanish. An honour cannot have
+ * sub-tasks at all (warned here); a work row's value is unusable only when it is not an array (warned by
+ * `normaliseLegacySubtasks`).
+ */
+function keepUnusableSubtasks(
+  source: Record<string, unknown>,
+  residue: Record<string, string> | null,
+  kind: 'work' | 'honor',
+): {
+  residue: Record<string, string> | null;
+  warning: Omit<MigrationWarning, 'sourceIndex' | 'recordTitle'> | null;
+} {
+  const raw = source['subtasks'];
+  if (kind === 'work' && Array.isArray(raw)) return { residue, warning: null };
+  const text = residueText(raw);
+  if (text.trim() === '') return { residue, warning: null };
+  return {
+    residue: { ...(residue ?? {}), subtasks: text },
+    warning:
+      kind === 'honor'
+        ? {
+            severity: 'warning',
+            field: 'subtasks',
+            message: 'an honour cannot have sub-tasks; kept in legacyResidue',
+            original: truncate(text),
+          }
+        : null,
+  };
 }
 
 export function isNormalisationFailure(
