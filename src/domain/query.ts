@@ -85,6 +85,26 @@ export const EMPTY_QUERY: RecordQuery = Object.freeze({
   includeDeleted: false,
 });
 
+/**
+ * True when anything narrows the result: a search term or any filter. `kind`, `sort` and
+ * `includeDeleted` are the view's own settings, not filters the user applied.
+ */
+export function queryHasFilter(query: RecordQuery): boolean {
+  return (
+    query.search.trim() !== '' ||
+    query.statusBucket !== 'all' ||
+    query.categoryId !== null ||
+    query.groupId !== null ||
+    query.unit !== null ||
+    query.honorLevel !== null ||
+    query.year !== null ||
+    query.month !== null ||
+    query.dateFrom !== null ||
+    query.dateTo !== null ||
+    query.onDay !== null
+  );
+}
+
 /** Which filters are active, for the "active filter chips" row and the clear-all affordance. */
 export interface ActiveFilter {
   readonly key: keyof RecordQuery;

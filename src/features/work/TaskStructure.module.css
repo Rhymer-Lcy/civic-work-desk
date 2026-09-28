@@ -1,0 +1,179 @@
+/*
+ * 任务结构 — an indented outline built from the list's own tokens.
+ *
+ * No new colour: levels are told apart by indentation, a connector line and the written level label,
+ * and the one accent is the same 3 px overdue edge the list uses. Rows use the list's `--row-h` and
+ * padding tokens, so the two views read at the same density.
+ */
+.tree,
+.children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.tree {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* The indent and the vertical connector belong to the list of children, not to each row. */
+.children {
+  margin-left: calc(var(--control-sm) / 2);
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--border-default);
+}
+
+.children[hidden] {
+  display: none;
+}
+
+.item {
+  position: relative;
+  min-width: 0;
+}
+
+/* The short horizontal stroke from the connector to each child row. Decoration only. */
+.children > .item::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--space-5));
+  top: calc(var(--row-h) / 2);
+  width: calc(var(--space-5) - var(--space-1));
+  border-top: 1px solid var(--border-default);
+}
+
+.node {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-height: var(--row-h);
+  padding: var(--space-1) var(--row-pad-x);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  min-width: 0;
+}
+
+.overdue {
+  box-shadow: inset 3px 0 0 var(--status-overdue);
+}
+
+.disclosure,
+.disclosureSpacer {
+  flex: none;
+  width: var(--control-sm);
+  height: var(--control-sm);
+}
+
+.disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-500);
+  cursor: pointer;
+}
+
+.disclosure:hover {
+  background: var(--surface-sunken);
+  color: var(--ink-900);
+}
+
+/* The level, in words. A top-level task's label carries slightly more weight than its sub-tasks'. */
+.level {
+  flex: none;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--ink-700);
+  white-space: nowrap;
+}
+
+.level[data-level='1'] {
+  border-color: var(--border-strong);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-900);
+}
+
+.title {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+
+/* A context row: shown only to explain a match below it. Muted, and labelled in words. */
+.context .title {
+  color: var(--ink-500);
+  font-weight: var(--weight-normal);
+}
+
+.contextTag {
+  flex: none;
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+  min-width: 0;
+}
+
+.meta:empty {
+  display: none;
+}
+
+.metaAlert {
+  color: var(--status-overdue);
+  font-weight: var(--weight-medium);
+}
+
+.metaNote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+/*
+ * On a phone the indent step halves and the actions take their own line, so a three-level outline
+ * never needs horizontal scrolling.
+ */
+@media (max-width: 40rem) {
+  .children {
+    margin-left: var(--space-2);
+    padding-left: var(--space-3);
+  }
+
+  .children > .item::before {
+    left: calc(-1 * var(--space-3));
+    width: calc(var(--space-3) - var(--space-1));
+  }
+
+  .actions {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}

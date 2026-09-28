@@ -77,6 +77,18 @@
   color: var(--ink-700);
   border-color: var(--border-strong);
 }
+
+/*
+ * A toggle's pressed state (Phase 5, 列表 / 任务结构). Deliberately not the primary style: the view's
+ * one primary action stays the only red button on screen. Marked three ways — border, text colour and
+ * weight — plus `aria-pressed`, so no single cue carries it alone.
+ */
+.secondary[aria-pressed='true'] {
+  background: var(--brand-050);
+  color: var(--brand-800);
+  border-color: var(--brand-700);
+  font-weight: var(--weight-semibold);
+}
 .secondary:hover:not(:disabled) {
   background: var(--surface-sunken);
   color: var(--ink-900);

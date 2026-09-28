@@ -18,8 +18,10 @@ declare const classes: {
   readonly "detailLabel": string;
   readonly "detailList": string;
   readonly "detailValue": string;
+  readonly "levelTag": string;
   readonly "notes": string;
   readonly "overdue": string;
+  readonly "parentPath": string;
   readonly "row": string;
   readonly "rowExpanded": string;
   readonly "summary": string;

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { createWorkRecord, gotoApp, navigate } from './helpers';
+import { addSubtask, createWorkRecord, gotoApp, navigate } from './helpers';
 
 /**
  * Automated accessibility checks.
@@ -110,6 +110,40 @@ test.describe('axe scans of stable UI states', () => {
     await gotoApp(page, 'settings');
     await page.getByRole('button', { name: '清空全部本机数据' }).click();
     await expect(page.getByRole('dialog', { name: '清空全部本机数据？' })).toBeVisible();
+    await scan(page);
+  });
+
+  test('task structure with three levels, and its two hierarchy dialogs', async ({ page }) => {
+    await gotoApp(page, 'work');
+    await createWorkRecord(page, { title: '无障碍示范一级任务', date: '2026-09-01' });
+    await addSubtask(page, '无障碍示范一级任务', '无障碍示范二级子任务');
+    await addSubtask(page, '无障碍示范二级子任务', '无障碍示范三级子任务');
+    await page
+      .getByRole('group', { name: '工作视图' })
+      .getByRole('button', { name: '任务结构' })
+      .click();
+    await expect(page.getByRole('list', { name: '任务结构' })).toBeVisible();
+    await scan(page);
+
+    await page.getByRole('button', { name: '调整层级：无障碍示范三级子任务' }).click();
+    await expect(page.getByRole('dialog', { name: '调整层级' })).toBeVisible();
+    await scan(page);
+    await page
+      .getByRole('dialog', { name: '调整层级' })
+      .getByRole('button', { name: '取消' })
+      .click();
+
+    await page
+      .getByRole('group', { name: '工作视图' })
+      .getByRole('button', { name: '列表' })
+      .click();
+    const card = page.getByRole('article', { name: '无障碍示范一级任务' });
+    await card
+      .getByRole('button', { name: /展开详情/ })
+      .first()
+      .click();
+    await card.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '删除带有下级任务的任务' })).toBeVisible();
     await scan(page);
   });
 

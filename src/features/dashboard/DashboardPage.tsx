@@ -7,6 +7,7 @@ import { invalidRowCount } from '@/db/snapshot';
 import type { RouteId } from '@/app/router';
 import { formatDateValue } from '@/domain/dates';
 import { describeVerdictWithSource, evaluateDeadline, isStaleBacklog } from '@/domain/deadlines';
+import { describePath, hierarchyContext, indexRecords } from '@/domain/hierarchy-summary';
 import { followUpList } from '@/domain/query';
 import { summarise } from '@/domain/reports';
 import { isWorkRecord } from '@/domain/types';
@@ -61,6 +62,8 @@ export function DashboardPage({
     [live, data.categories, data.today],
   );
   const followUp = useMemo(() => followUpList(live, { today: data.today }), [live, data.today]);
+  // A sub-task in the follow-up list names its parent, so it is identifiable out of context.
+  const index = useMemo(() => indexRecords(data.records), [data.records]);
 
   const dueToday = followUp.filter(
     (record) => evaluateDeadline(record, data.today).level === 'due-today',
@@ -187,7 +190,12 @@ export function DashboardPage({
                 ) : (
                   <ul className={styles.followList}>
                     {followUp.slice(0, 12).map((record) => (
-                      <FollowUpRow key={record.id} record={record} today={data.today} />
+                      <FollowUpRow
+                        key={record.id}
+                        record={record}
+                        today={data.today}
+                        path={describePath(hierarchyContext(index, record.id).ancestors)}
+                      />
                     ))}
                   </ul>
                 )}
@@ -374,9 +382,12 @@ function FirstRun({
 function FollowUpRow({
   record,
   today,
+  path,
 }: {
   readonly record: WorkRecord;
   readonly today: string;
+  /** Ancestor titles for a sub-task; empty for a top-level task. */
+  readonly path: string;
 }): ReactNode {
   const verdict = evaluateDeadline(record, today);
   return (
@@ -384,7 +395,12 @@ function FollowUpRow({
       <div className={styles.followMain}>
         <p className={styles.followTitle}>{record.title}</p>
         <p className={styles.followMeta}>
-          {[record.counterpartUnit, record.requirement, formatDateValue(record.occurredOn, '')]
+          {[
+            path === '' ? '' : `上级：${path}`,
+            record.counterpartUnit,
+            record.requirement,
+            formatDateValue(record.occurredOn, ''),
+          ]
             .filter((part) => part.trim() !== '')
             .join('　·　')}
         </p>

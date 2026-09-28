@@ -8,6 +8,9 @@ import {
   canMove,
   descendantsOf,
   describeHierarchyRefusal,
+  eligibleParents,
+  findHierarchyError,
+  HierarchyError,
   subtreeHeight,
   validateHierarchy,
 } from '@/domain/hierarchy';
@@ -235,5 +238,39 @@ describe('write-time verdicts', () => {
     ];
     for (const reason of reasons)
       expect(describeHierarchyRefusal(reason)).toMatch(/\p{Script=Han}/u);
+  });
+});
+
+describe('eligible parents', () => {
+  it('equals the set of targets canMove accepts, for every record', () => {
+    const trashed = '2026-09-01T00:00:00.000Z';
+    const records = [
+      ...tree(),
+      work('deep-root'),
+      work('deep-2', 'deep-root'),
+      work('gone', null, trashed),
+      work('broken', 'nowhere'),
+    ];
+    const index = buildHierarchyIndex(records);
+    for (const record of records) {
+      const expected = records
+        .filter((candidate) => canMove(index, record.id, candidate.id).ok)
+        .map((candidate) => candidate.id)
+        .sort();
+      const actual = eligibleParents(index, record.id)
+        .map((candidate) => candidate.id)
+        .sort();
+      expect(actual, `targets for ${record.id}`).toEqual(expected);
+    }
+  });
+});
+
+describe('findHierarchyError', () => {
+  it('finds a refusal inside a wrapper, and nothing else', () => {
+    const refusal = new HierarchyError('too-deep');
+    const wrapped = new Error('moveWorkRecord failed: …', { cause: refusal });
+    expect(findHierarchyError(wrapped)).toBe(refusal);
+    expect(findHierarchyError(new Error('other'))).toBeNull();
+    expect(refusal.message).toBe(describeHierarchyRefusal('too-deep'));
   });
 });

@@ -3,7 +3,10 @@ import type { ReactNode } from 'react';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { useRefresh } from '@/app/store/data-store';
 import { purgeAllDeleted } from '@/db/repositories/records';
+import { sameBatchDescendants } from '@/db/repositories/work-hierarchy';
 import { formatDateValue } from '@/domain/dates';
+import { WORK_LEVEL_LABELS_ZH, descendantsOf, findHierarchyError } from '@/domain/hierarchy';
+import { describePath, hierarchyContext, indexRecords } from '@/domain/hierarchy-summary';
 import { primaryDate } from '@/domain/types';
 import type { AnyRecord } from '@/domain/types';
 import { formatInstant } from '@/utils/clock';
@@ -34,6 +37,16 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
   const deleted = records
     .filter((record) => record.deletedAt !== null)
     .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
+  const index = indexRecords(records);
+
+  /*
+   * Phase 5: a purge takes a task's descendants with it — never leaves them naming a parent that no
+   * longer exists. The confirmation states how many, before anything happens.
+   */
+  const pendingDescendants =
+    pendingPurge !== null && pendingPurge.kind === 'work'
+      ? descendantsOf(index, pendingPurge.id)
+      : [];
 
   /*
    * How many honours a permanent deletion would unlink.
@@ -62,7 +75,7 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
 
   const pendingDetachCount =
     pendingPurge !== null && pendingPurge.kind === 'work'
-      ? countLinkedHonors([pendingPurge.id])
+      ? countLinkedHonors([pendingPurge.id, ...pendingDescendants.map((record) => record.id)])
       : 0;
 
   const deletedWorkIds = deleted.filter((record) => record.kind === 'work').map((r) => r.id);
@@ -84,7 +97,11 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
         'success',
       );
     } catch (cause) {
-      toast.show(cause instanceof Error ? cause.message : String(cause), 'error');
+      const refusal = findHierarchyError(cause);
+      toast.show(
+        refusal ? refusal.message : cause instanceof Error ? cause.message : String(cause),
+        'error',
+      );
     } finally {
       setBusy(false);
     }
@@ -129,6 +146,7 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
                   <span className={styles.itemMeta}>
                     {formatDateValue(primaryDate(record), '无日期')}　删除于{' '}
                     {record.deletedAt ? formatInstant(record.deletedAt) : '—'}
+                    {trashContext(index, record)}
                   </span>
                   <div className={styles.itemActions}>
                     <Button
@@ -141,6 +159,13 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
                     >
                       恢复
                     </Button>
+                    <RestoreWithBatch
+                      records={records}
+                      record={record}
+                      onRestore={(id) => {
+                        void actions.restoreSubtree(id).catch(() => undefined);
+                      }}
+                    />
                     <Button
                       size="sm"
                       variant="danger"
@@ -166,6 +191,15 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
           <>
             将永久删除 <strong>{pendingPurge?.title ?? ''}</strong>{' '}
             及其全部进展记录。此操作不可撤销。
+            {pendingDescendants.length > 0 ? (
+              <>
+                {' '}
+                <strong>
+                  它的 {pendingDescendants.length} 项下级任务（含各级）会一并被彻底删除；
+                  若其中有不在回收站中的任务，本次删除会被拒绝。
+                </strong>
+              </>
+            ) : null}
             {pendingDetachCount > 0 ? (
               <>
                 {' '}
@@ -183,8 +217,11 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
         }}
         onConfirm={() => {
           const target = pendingPurge;
+          const withDescendants = pendingDescendants.length > 0;
           setPendingPurge(null);
-          if (target) void actions.purge(target.id).catch(() => undefined);
+          if (!target) return;
+          if (withDescendants) void actions.purgeSubtree(target.id).catch(() => undefined);
+          else void actions.purge(target.id).catch(() => undefined);
         }}
       />
 
@@ -217,5 +254,43 @@ export function TrashSection({ records }: { readonly records: readonly AnyRecord
         }}
       />
     </>
+  );
+}
+
+/** 「 · 2级子任务 · 上级：…」 for a trashed sub-task, so its place in the tree is visible here too. */
+function trashContext(index: ReturnType<typeof indexRecords>, record: AnyRecord): string {
+  if (record.kind !== 'work') return '';
+  const context = hierarchyContext(index, record.id);
+  if (context.level === null || context.level === 1) return '';
+  return `　·　${WORK_LEVEL_LABELS_ZH[context.level]}　上级：${describePath(context.ancestors)}`;
+}
+
+/**
+ * 「连同下级一并恢复」, offered when descendants were trashed together with this record — the same
+ * `deletedAt` stamp — so that one click undoes exactly that deletion (docs/phase-5 §5).
+ */
+function RestoreWithBatch({
+  records,
+  record,
+  onRestore,
+}: {
+  readonly records: readonly AnyRecord[];
+  readonly record: AnyRecord;
+  readonly onRestore: (id: string) => void;
+}): ReactNode {
+  if (record.kind !== 'work') return null;
+  const batch = sameBatchDescendants(records, record.id).length;
+  if (batch === 0) return null;
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      icon={<RotateCcw size={14} />}
+      onClick={() => {
+        onRestore(record.id);
+      }}
+    >
+      连同 {batch} 项下级一并恢复
+    </Button>
   );
 }

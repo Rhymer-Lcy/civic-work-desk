@@ -112,6 +112,26 @@ export async function createWorkRecord(
   return options.title;
 }
 
+/** Expand a work record's row in the list, if it is not already expanded. Returns the row. */
+export async function expandWorkCard(page: Page, title: string): Promise<Locator> {
+  const card = page.getByRole('article', { name: title });
+  const toggle = card.getByRole('button', { name: /展开详情|收起详情/ }).first();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  return card;
+}
+
+/** Add a sub-task under `parentTitle` through its row's 添加下级任务 action (Phase 5). */
+export async function addSubtask(page: Page, parentTitle: string, title: string): Promise<void> {
+  const card = await expandWorkCard(page, parentTitle);
+  await card.getByRole('button', { name: '添加下级任务', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新增下级任务' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(`上级任务：${parentTitle}`)).toBeVisible();
+  await dialog.getByRole('textbox', { name: '事项', exact: true }).fill(title);
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog).toBeHidden();
+}
+
 /** Expand a `<details>` section by its summary text, if it is not already open. */
 export async function openSection(scope: Locator, label: string): Promise<void> {
   const summary = scope.locator('summary').filter({ hasText: label }).first();

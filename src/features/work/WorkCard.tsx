@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { ChevronDown, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, GitBranch, MessageSquarePlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { formatDateValue } from '@/domain/dates';
 import { describeVerdictWithSource, evaluateDeadline } from '@/domain/deadlines';
+import { MAX_WORK_DEPTH, WORK_LEVEL_LABELS_ZH } from '@/domain/hierarchy';
+import type { WorkLevel } from '@/domain/hierarchy';
 import type { BusinessCategory, ProgressEntry, WorkGroup, WorkRecord } from '@/domain/types';
 import { Button, CountBadge, LongTermBadge, StatusBadge, UrgencyBadge } from '@/components/common';
 import { ProgressPanel } from './ProgressPanel';
@@ -28,8 +30,27 @@ import styles from './WorkCard.module.css';
  * every collapsed row is what the Phase-1 rewrite removed on purpose.
  */
 
+/**
+ * Where a record sits in the task hierarchy, derived by the page (Phase 5). Nothing here is stored.
+ */
+export interface WorkCardHierarchy {
+  readonly level: WorkLevel | null;
+  /** Ancestor titles, top-level task first; empty for a top-level task. */
+  readonly path: string;
+  /** Title of a parent that is in the trash, when that is why the record shows at the top level. */
+  readonly parentInTrash: string | null;
+  /** 「下级任务 2/3 已完成」, or null when there are no sub-tasks. */
+  readonly progress: string | null;
+  readonly descendantsOverdue: number;
+  /** 「2026-09-25（事项）」, the nearest deadline still ahead among open sub-tasks. */
+  readonly nearestBelow: string | null;
+}
+
 export interface WorkCardProps {
   readonly record: WorkRecord;
+  readonly hierarchy: WorkCardHierarchy;
+  readonly onAddChild: (record: WorkRecord) => void;
+  readonly onMove: (record: WorkRecord) => void;
   readonly today: string;
   readonly categories: readonly BusinessCategory[];
   readonly groups: readonly WorkGroup[];
@@ -44,6 +65,9 @@ export interface WorkCardProps {
 
 export function WorkCard({
   record,
+  hierarchy,
+  onAddChild,
+  onMove,
   today,
   categories,
   groups,
@@ -82,9 +106,11 @@ export function WorkCard({
         </span>
 
         <span className={styles.colTitle}>
-          <span className={styles.title} id={`work-title-${record.id}`}>
-            {record.title}
-          </span>
+          {/*
+           * A sub-task says so on the row itself, with its path, so a search result that is a sub-task
+           * is understandable without opening it (docs/phase-5-product-evolution.md §8).
+           */}
+          <TitleWithContext record={record} hierarchy={hierarchy} />
           {record.longTerm ? <LongTermBadge /> : null}
           {progressCount > 0 ? <CountBadge value={progressCount} label="进展条数" /> : null}
         </span>
@@ -123,6 +149,7 @@ export function WorkCard({
             <Detail label="对接人" value={record.counterpartContact} />
             <Detail label="联系方式" value={record.counterpartPhone} />
           </DetailGroup>
+          <HierarchyDetails hierarchy={hierarchy} />
           <DetailGroup title="归属与分类">
             <Detail label="业务分类" value={categoryName ?? ''} />
             <Detail label="归属分组" value={groupName ?? ''} />
@@ -165,6 +192,12 @@ export function WorkCard({
           >
             编辑
           </Button>
+          <HierarchyActions
+            record={record}
+            hierarchy={hierarchy}
+            onAddChild={onAddChild}
+            onMove={onMove}
+          />
           <Button
             size="sm"
             variant="danger"
@@ -178,6 +211,89 @@ export function WorkCard({
         </div>
       </div>
     </article>
+  );
+}
+
+/** The title, preceded by a sub-task's level and followed by its parent path. */
+function TitleWithContext({
+  record,
+  hierarchy,
+}: {
+  readonly record: WorkRecord;
+  readonly hierarchy: WorkCardHierarchy;
+}): ReactNode {
+  return (
+    <>
+      {hierarchy.level !== null && hierarchy.level > 1 ? (
+        <span className={styles.levelTag}>{WORK_LEVEL_LABELS_ZH[hierarchy.level]}</span>
+      ) : null}
+      <span className={styles.title} id={`work-title-${record.id}`}>
+        {record.title}
+      </span>
+      {hierarchy.path !== '' ? (
+        <span className={styles.parentPath}>上级：{hierarchy.path}</span>
+      ) : null}
+    </>
+  );
+}
+
+function HierarchyDetails({ hierarchy }: { readonly hierarchy: WorkCardHierarchy }): ReactNode {
+  return (
+    <DetailGroup title="任务层级">
+      <Detail
+        label="层级"
+        value={hierarchy.level === null ? '层级异常' : WORK_LEVEL_LABELS_ZH[hierarchy.level]}
+      />
+      <Detail label="上级任务" value={hierarchy.path} />
+      {hierarchy.parentInTrash !== null ? (
+        <Detail label="说明" value={`上级任务「${hierarchy.parentInTrash}」在回收站中`} />
+      ) : null}
+      <Detail label="下级进度" value={hierarchy.progress ?? ''} />
+      {hierarchy.descendantsOverdue > 0 ? (
+        <Detail label="下级逾期" value={`${String(hierarchy.descendantsOverdue)} 项`} />
+      ) : null}
+      <Detail label="最近下级时限" value={hierarchy.nearestBelow ?? ''} />
+    </DetailGroup>
+  );
+}
+
+/** 添加下级任务 (levels 1 and 2 only — there is no fourth level) and 调整层级. */
+function HierarchyActions({
+  record,
+  hierarchy,
+  onAddChild,
+  onMove,
+}: {
+  readonly record: WorkRecord;
+  readonly hierarchy: WorkCardHierarchy;
+  readonly onAddChild: (record: WorkRecord) => void;
+  readonly onMove: (record: WorkRecord) => void;
+}): ReactNode {
+  return (
+    <>
+      {hierarchy.level !== null && hierarchy.level < MAX_WORK_DEPTH ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={<Plus size={14} />}
+          onClick={() => {
+            onAddChild(record);
+          }}
+        >
+          添加下级任务
+        </Button>
+      ) : null}
+      <Button
+        size="sm"
+        variant="secondary"
+        icon={<GitBranch size={14} />}
+        onClick={() => {
+          onMove(record);
+        }}
+      >
+        调整层级
+      </Button>
+    </>
   );
 }
 

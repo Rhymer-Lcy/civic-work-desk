@@ -8,6 +8,7 @@ import {
   ConfirmDialog,
   Dialog,
   Field,
+  Panel,
   fieldControlClass,
   fieldRowClass,
 } from '@/components/common';
@@ -35,6 +36,19 @@ export interface WorkRecordDialogProps {
   readonly groups: readonly WorkGroup[];
   readonly onSubmit: (draft: WorkDraft) => Promise<void>;
   readonly onClose: () => void;
+  /**
+   * Phase 5: where this record sits in the task hierarchy, stated at the top of the form — the parent
+   * a new sub-task will be created under, or an edited record's level and path. The level is never an
+   * input: the relationship decides it.
+   */
+  readonly hierarchyNote?: string | null;
+  /** Dialog title override, e.g. 新增下级任务 when creating under a parent. */
+  readonly title?: string;
+  /**
+   * Phase 5: a notice to confirm before saving, or null to save straight away. Used to warn before a
+   * parent is marked 已完成 while sub-tasks are still open; confirming changes only this record.
+   */
+  readonly completionNotice?: (draft: WorkDraft) => string | null;
 }
 
 /**
@@ -54,6 +68,9 @@ function WorkRecordDialogBody({
   groups,
   onSubmit,
   onClose,
+  hierarchyNote,
+  title,
+  completionNotice,
 }: WorkRecordDialogProps): ReactNode {
   const [draft, setDraft] = useState<WorkDraft>(() =>
     editing ? draftFromRecord(editing) : emptyWorkDraft(),
@@ -62,6 +79,7 @@ function WorkRecordDialogBody({
   const [error, setError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [pendingNotice, setPendingNotice] = useState<string | null>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const longTermId = useId();
 
@@ -75,10 +93,15 @@ function WorkRecordDialogBody({
     else onClose();
   };
 
-  const submit = async (): Promise<void> => {
+  const submit = async (acknowledged = false): Promise<void> => {
     if (draft.title.trim() === '') {
       setError('请填写事项名称。');
       titleRef.current?.focus();
+      return;
+    }
+    const notice = acknowledged ? null : (completionNotice?.(draft) ?? null);
+    if (notice !== null) {
+      setPendingNotice(notice);
       return;
     }
     setSaving(true);
@@ -98,7 +121,7 @@ function WorkRecordDialogBody({
     <>
       <Dialog
         open={open}
-        title={editing ? '编辑工作记录' : '新增工作记录'}
+        title={title ?? (editing ? '编辑工作记录' : '新增工作记录')}
         size="lg"
         busy={saving}
         onClose={attemptClose}
@@ -121,6 +144,7 @@ function WorkRecordDialogBody({
             void submit();
           }}
         >
+          {hierarchyNote ? <Panel tone="info">{hierarchyNote}</Panel> : null}
           <p className={styles.requiredNote}>带 * 的字段为必填项。</p>
 
           <Field label="事项" required error={error}>
@@ -354,6 +378,21 @@ function WorkRecordDialogBody({
           </details>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingNotice !== null}
+        title="仍标记为已完成？"
+        body={pendingNotice ?? ''}
+        confirmLabel="仍标记为已完成"
+        cancelLabel="返回修改"
+        onCancel={() => {
+          setPendingNotice(null);
+        }}
+        onConfirm={() => {
+          setPendingNotice(null);
+          void submit(true);
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDiscard}

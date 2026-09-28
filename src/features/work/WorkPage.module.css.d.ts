@@ -4,5 +4,7 @@ declare const classes: {
   readonly "columnsRight": string;
   readonly "list": string;
   readonly "more": string;
+  readonly "structureHint": string;
+  readonly "viewSwitch": string;
 };
 export default classes;

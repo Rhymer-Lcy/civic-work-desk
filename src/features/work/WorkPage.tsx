@@ -1,44 +1,122 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Plus } from 'lucide-react';
+import { ListTree, Plus, Rows3 } from 'lucide-react';
 import { usePrimaryAction } from '@/app/primary-action-context';
 import { useData } from '@/app/store/data-store';
-import { EMPTY_QUERY, countUndated, distinctUnits, distinctYears, runQuery } from '@/domain/query';
+import { WORK_LEVEL_LABELS_ZH, descendantsOf } from '@/domain/hierarchy';
+import {
+  buildStructureForest,
+  childProgress,
+  completionNotice,
+  describeChildProgress,
+  describePath,
+  descendantDeadlines,
+  hierarchyContext,
+  indexRecords,
+} from '@/domain/hierarchy-summary';
+import type { WorkIndex } from '@/domain/hierarchy-summary';
+import {
+  EMPTY_QUERY,
+  countUndated,
+  distinctUnits,
+  distinctYears,
+  queryHasFilter,
+  runQuery,
+} from '@/domain/query';
 import type { RecordQuery } from '@/domain/query';
 import { isWorkRecord } from '@/domain/types';
 import type { ProgressEntry, WorkRecord } from '@/domain/types';
+import { readPreference, writePreference } from '@/services/storage/persistence';
 import { Button, ConfirmDialog, EmptyState } from '@/components/common';
 import { PageHeader } from '@/components/layout/AppShell';
 import { FilterBar } from './FilterBar';
+import { MoveWorkDialog } from './MoveWorkDialog';
+import { TaskStructure } from './TaskStructure';
+import { TrashWorkDialog } from './TrashWorkDialog';
 import { WorkCard } from './WorkCard';
+import type { WorkCardHierarchy } from './WorkCard';
 import { WorkRecordDialog } from './WorkRecordDialog';
 import type { WorkDraft } from './work-draft';
 import { useRecordActions } from './use-record-actions';
 import styles from './WorkPage.module.css';
 
 /**
- * The work list.
+ * The work list — and, since Phase 5, the task structure.
  *
  * Rendering is windowed with an explicit "load more" rather than the legacy silent 40-row cap.
  * The count line always reports the *full* match count, so a filtered view never looks smaller
  * than it is — the legacy list showed 40 cards with no indication that more existed until the
  * user scrolled.
+ *
+ * **Two views of one query.** 列表 is the Phase-2 list, unchanged apart from each sub-task naming its
+ * level and parent. 任务结构 draws the same `runQuery` result as an outline, adding the ancestors of
+ * each match as context. There is no second filter implementation: both views are functions of the
+ * one result (docs/phase-5-product-evolution.md §8).
  */
 
 const PAGE_SIZE = 30;
+
+type WorkView = 'list' | 'structure';
+
+function initialView(): WorkView {
+  return readPreference('workView') === 'structure' ? 'structure' : 'list';
+}
+
+interface DialogState {
+  readonly editing: WorkRecord | null;
+  /** The parent a new sub-task will be created under. */
+  readonly parent: WorkRecord | null;
+}
+
+function cardHierarchy(index: WorkIndex, record: WorkRecord, today: string): WorkCardHierarchy {
+  const context = hierarchyContext(index, record.id);
+  const below = descendantDeadlines(index, record.id, today);
+  return {
+    level: context.level,
+    path: describePath(context.ancestors),
+    parentInTrash: context.parentInTrash?.title ?? null,
+    progress: describeChildProgress(childProgress(index, record.id)),
+    descendantsOverdue: below.overdue,
+    nearestBelow: below.nearest ? `${below.nearest.day}（${below.nearest.title}）` : null,
+  };
+}
+
+/** The sentence at the top of the record dialog that says where the record sits. */
+function hierarchyNoteFor(index: WorkIndex, state: DialogState): string | null {
+  if (state.parent) {
+    const parentLevel = hierarchyContext(index, state.parent.id).level ?? 1;
+    const childLevel = parentLevel + 1;
+    const label =
+      childLevel === 2 || childLevel === 3 ? WORK_LEVEL_LABELS_ZH[childLevel] : '下级任务';
+    return `上级任务：${state.parent.title}（将创建为 ${label}）`;
+  }
+  if (state.editing) {
+    const context = hierarchyContext(index, state.editing.id);
+    if (context.level === null || context.level === 1) return null;
+    return `${WORK_LEVEL_LABELS_ZH[context.level]}，上级：${describePath(context.ancestors)}。调整层级请使用「调整层级」。`;
+  }
+  return null;
+}
 
 export function WorkPage(): ReactNode {
   const data = useData();
   const actions = useRecordActions();
   const [query, setQuery] = useState<RecordQuery>({ ...EMPTY_QUERY, kind: 'work' });
+  const [view, setView] = useState<WorkView>(initialView);
   const [visible, setVisible] = useState(PAGE_SIZE);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<WorkRecord | null>(null);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [moveTarget, setMoveTarget] = useState<WorkRecord | null>(null);
   const [pendingDelete, setPendingDelete] = useState<WorkRecord | null>(null);
+  const [trashChoice, setTrashChoice] = useState<WorkRecord | null>(null);
 
   const results = useMemo(
     () => runQuery(data.records, query, { today: data.today }).filter(isWorkRecord),
     [data.records, data.today, query],
+  );
+  const index = useMemo(() => indexRecords(data.records), [data.records]);
+  const forest = useMemo(
+    () => (view === 'structure' ? buildStructureForest(index, results) : []),
+    [view, index, results],
   );
 
   const units = useMemo(() => distinctUnits(data.records), [data.records]);
@@ -56,24 +134,64 @@ export function WorkPage(): ReactNode {
   }, [data.progress]);
 
   const openCreate = useCallback((): void => {
-    setEditing(null);
-    setDialogOpen(true);
+    setDialog({ editing: null, parent: null });
   }, []);
   usePrimaryAction('新增记录', openCreate);
 
-  /*
-   * "Nothing matches" and "nothing exists" are different answers and need different offers (audit
-   * E-1). The live count is the discriminator: with records present, the useful action is to relax
-   * the filter, not to create another record.
-   */
   const liveTotal = useMemo(
     () => data.records.filter((record) => isWorkRecord(record) && record.deletedAt === null).length,
     [data.records],
   );
 
-  const submit = async (draft: WorkDraft): Promise<void> => {
-    await actions.saveWork(draft, editing?.id ?? null);
+  const chooseView = (next: WorkView): void => {
+    setView(next);
+    setVisible(PAGE_SIZE);
+    writePreference('workView', next);
   };
+
+  const openEdit = (record: WorkRecord): void => {
+    setDialog({ editing: record, parent: null });
+  };
+  const openAddChild = (record: WorkRecord): void => {
+    setDialog({ editing: null, parent: record });
+  };
+
+  /*
+   * Deleting a task with live sub-tasks is never a single click: the user chooses what happens to them
+   * (docs/phase-5-product-evolution.md §5). Without sub-tasks the Phase-2 confirmation is unchanged.
+   */
+  const requestDelete = (record: WorkRecord): void => {
+    // The same definition the repository refuses on: any live descendant, at any depth.
+    const hasLiveDescendants = descendantsOf(index, record.id).some(
+      (descendant) => descendant.deletedAt === null,
+    );
+    if (hasLiveDescendants) setTrashChoice(record);
+    else setPendingDelete(record);
+  };
+
+  const submit = async (draft: WorkDraft): Promise<void> => {
+    if (!dialog) return;
+    await actions.saveWork(draft, dialog.editing?.id ?? null, dialog.parent?.id ?? null);
+  };
+
+  const editingId = dialog?.editing?.id ?? null;
+  const noticeFor = (draft: WorkDraft): string | null =>
+    editingId !== null && draft.status === 'completed' && dialog?.editing?.status !== 'completed'
+      ? completionNotice(index, editingId)
+      : null;
+
+  const trashChoiceCounts = useMemo(() => {
+    if (!trashChoice) return { descendants: 0, children: 0 };
+    const live = (record: { readonly deletedAt: string | null }): boolean =>
+      record.deletedAt === null;
+    return {
+      descendants: descendantsOf(index, trashChoice.id).filter(live).length,
+      children: (index.children.get(trashChoice.id) ?? []).filter(live).length,
+    };
+  }, [index, trashChoice]);
+
+  const filtered = queryHasFilter(query);
+  const shownCount = view === 'list' ? results.length : forest.length;
 
   return (
     <>
@@ -93,39 +211,34 @@ export function WorkPage(): ReactNode {
         undatedCount={undated}
       />
 
+      <ViewSwitch view={view} onChoose={chooseView} />
+
       {results.length === 0 ? (
-        liveTotal === 0 ? (
-          <EmptyState
-            title="还没有工作记录"
-            description="登记第一条事项后，这里会按时限与状态列出全部工作。"
-            action={
-              /*
-               * Deliberately not labelled 新增记录: that is the shell's action, and two buttons with
-               * the same label on one screen is the "several equally prominent actions" problem in
-               * miniature. This one names the step instead, and matches the first-run page.
-               */
-              <Button variant="primary" icon={<Plus size={16} />} onClick={openCreate}>
-                新增第一条记录
-              </Button>
-            }
+        <WorkEmptyState
+          liveTotal={liveTotal}
+          onCreate={openCreate}
+          onClear={() => {
+            setQuery({ ...EMPTY_QUERY, kind: 'work', sort: query.sort });
+            setVisible(PAGE_SIZE);
+          }}
+        />
+      ) : view === 'structure' ? (
+        <>
+          {filtered ? (
+            <p className={styles.structureHint}>
+              筛选时显示符合条件的任务及其上级任务；标有「上下文」的上级任务本身未匹配筛选条件。
+            </p>
+          ) : null}
+          <TaskStructure
+            forest={forest.slice(0, visible)}
+            index={index}
+            today={data.today}
+            filtered={filtered}
+            onEdit={openEdit}
+            onAddChild={openAddChild}
+            onMove={setMoveTarget}
           />
-        ) : (
-          <EmptyState
-            title="没有符合当前筛选条件的记录"
-            description={`本机共有 ${String(liveTotal)} 条工作记录，当前筛选条件将它们全部排除了。`}
-            action={
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setQuery({ ...EMPTY_QUERY, kind: 'work', sort: query.sort });
-                  setVisible(PAGE_SIZE);
-                }}
-              >
-                清除全部筛选
-              </Button>
-            }
-          />
-        )
+        </>
       ) : (
         <>
           <div className={styles.columns} aria-hidden="true">
@@ -142,16 +255,16 @@ export function WorkPage(): ReactNode {
               <li key={record.id}>
                 <WorkCard
                   record={record}
+                  hierarchy={cardHierarchy(index, record, data.today)}
                   today={data.today}
                   categories={data.categories}
                   groups={data.groups}
                   progress={progressByRecord.get(record.id) ?? []}
                   progressCount={data.progressCountByRecord.get(record.id) ?? 0}
-                  onEdit={(target) => {
-                    setEditing(target);
-                    setDialogOpen(true);
-                  }}
-                  onDelete={setPendingDelete}
+                  onEdit={openEdit}
+                  onAddChild={openAddChild}
+                  onMove={setMoveTarget}
+                  onDelete={requestDelete}
                   onAddProgress={actions.addProgress}
                   onEditProgress={actions.editProgress}
                   onDeleteProgress={actions.removeProgress}
@@ -159,30 +272,55 @@ export function WorkPage(): ReactNode {
               </li>
             ))}
           </ul>
-          {visible < results.length ? (
-            <div className={styles.more}>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setVisible((value) => value + PAGE_SIZE);
-                }}
-              >
-                继续加载（已显示 {visible} / {results.length}）
-              </Button>
-            </div>
-          ) : null}
         </>
       )}
 
+      <LoadMore
+        visible={visible}
+        total={results.length > 0 ? shownCount : 0}
+        unit={view === 'structure' ? ' 个顶层任务' : ''}
+        onMore={() => {
+          setVisible((value) => value + PAGE_SIZE);
+        }}
+      />
+
       <WorkRecordDialog
-        open={dialogOpen}
-        editing={editing}
+        open={dialog !== null}
+        editing={dialog?.editing ?? null}
         categories={data.categories}
         groups={data.groups}
         onSubmit={submit}
         onClose={() => {
-          setDialogOpen(false);
-          setEditing(null);
+          setDialog(null);
+        }}
+        hierarchyNote={dialog ? hierarchyNoteFor(index, dialog) : null}
+        {...(dialog?.parent ? { title: '新增下级任务' } : {})}
+        completionNotice={noticeFor}
+      />
+
+      <MoveWorkDialog
+        record={moveTarget}
+        index={index}
+        onMove={actions.moveWork}
+        onClose={() => {
+          setMoveTarget(null);
+        }}
+      />
+
+      <TrashWorkDialog
+        record={trashChoice}
+        liveDescendants={trashChoiceCounts.descendants}
+        liveChildren={trashChoiceCounts.children}
+        onCancel={() => {
+          setTrashChoice(null);
+        }}
+        onTrashSubtree={(record) => {
+          setTrashChoice(null);
+          void actions.trashSubtree(record.id, record.title).catch(() => undefined);
+        }}
+        onPromoteChildren={(record) => {
+          setTrashChoice(null);
+          void actions.trashPromotingChildren(record.id, record.title).catch(() => undefined);
         }}
       />
 
@@ -206,5 +344,107 @@ export function WorkPage(): ReactNode {
         }}
       />
     </>
+  );
+}
+
+function ViewSwitch({
+  view,
+  onChoose,
+}: {
+  readonly view: WorkView;
+  readonly onChoose: (view: WorkView) => void;
+}): ReactNode {
+  return (
+    <div className={styles.viewSwitch} role="group" aria-label="工作视图">
+      <Button
+        size="sm"
+        variant="secondary"
+        icon={<Rows3 size={14} />}
+        aria-pressed={view === 'list'}
+        onClick={() => {
+          onChoose('list');
+        }}
+      >
+        列表
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        icon={<ListTree size={14} />}
+        aria-pressed={view === 'structure'}
+        onClick={() => {
+          onChoose('structure');
+        }}
+      >
+        任务结构
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * "Nothing matches" and "nothing exists" are different answers and need different offers (audit
+ * E-1). The live count is the discriminator: with records present, the useful action is to relax the
+ * filter, not to create another record.
+ */
+function WorkEmptyState({
+  liveTotal,
+  onCreate,
+  onClear,
+}: {
+  readonly liveTotal: number;
+  readonly onCreate: () => void;
+  readonly onClear: () => void;
+}): ReactNode {
+  if (liveTotal === 0) {
+    return (
+      <EmptyState
+        title="还没有工作记录"
+        description="登记第一条事项后，这里会按时限与状态列出全部工作。"
+        action={
+          /*
+           * Deliberately not labelled 新增记录: that is the shell's action, and two buttons with the
+           * same label on one screen is the "several equally prominent actions" problem in miniature.
+           * This one names the step instead, and matches the first-run page.
+           */
+          <Button variant="primary" icon={<Plus size={16} />} onClick={onCreate}>
+            新增第一条记录
+          </Button>
+        }
+      />
+    );
+  }
+  return (
+    <EmptyState
+      title="没有符合当前筛选条件的记录"
+      description={`本机共有 ${String(liveTotal)} 条工作记录，当前筛选条件将它们全部排除了。`}
+      action={
+        <Button variant="secondary" onClick={onClear}>
+          清除全部筛选
+        </Button>
+      }
+    />
+  );
+}
+
+function LoadMore({
+  visible,
+  total,
+  unit,
+  onMore,
+}: {
+  readonly visible: number;
+  readonly total: number;
+  readonly unit: string;
+  readonly onMore: () => void;
+}): ReactNode {
+  if (visible >= total) return null;
+  return (
+    <div className={styles.more}>
+      <Button variant="secondary" onClick={onMore}>
+        继续加载（已显示 {visible} / {total}
+        {unit}）
+      </Button>
+    </div>
   );
 }

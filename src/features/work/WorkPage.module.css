@@ -32,3 +32,14 @@
   justify-content: center;
   padding: var(--space-2) 0 var(--space-6);
 }
+
+/* Phase 5: 列表 / 任务结构. A labelled pair of toggle buttons, state in aria-pressed and in text weight. */
+.viewSwitch {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.structureHint {
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}

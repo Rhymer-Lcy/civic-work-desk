@@ -104,7 +104,14 @@ function localStore(): Storage | undefined {
  * Only these keys may be persisted. An allow-list rather than a convention, so a future change
  * cannot start writing record content into `localStorage` by accident.
  */
-export const PREFERENCE_KEYS = ['lastRoute', 'workSort', 'ledgerSort', 'reportPeriodType'] as const;
+export const PREFERENCE_KEYS = [
+  'lastRoute',
+  'workSort',
+  'ledgerSort',
+  'reportPeriodType',
+  /* Phase 5: 工作 shown as 列表 or as 任务结构. A view choice, never record content. */
+  'workView',
+] as const;
 
 export type PreferenceKey = (typeof PREFERENCE_KEYS)[number];
 

@@ -339,6 +339,33 @@ export function canMove<T extends HierarchyRecord>(
   return parentVerdict(index, newParentId, subtreeHeight(index, id));
 }
 
+/**
+ * Every record `id` could be moved under, in input order — exactly the targets `canMove` accepts.
+ *
+ * `canMove` answers for one target; a picker needs the answer for all of them, and asking `canMove` once
+ * per candidate would walk the moved subtree once per candidate. The subtree is walked once here and the
+ * same rule applied: a live work record, not the record itself or one of its descendants, whose level
+ * plus the subtree's height stays within `MAX_WORK_DEPTH`. Equivalence is pinned by a unit test.
+ */
+export function eligibleParents<T extends HierarchyRecord>(
+  index: HierarchyIndex<T>,
+  id: string,
+): T[] {
+  const record = index.byId.get(id);
+  if (record?.kind !== 'work' || record.deletedAt !== null) return [];
+  const excluded = new Set([id, ...descendantsOf(index, id).map((descendant) => descendant.id)]);
+  const height = subtreeHeight(index, id);
+  const out: T[] = [];
+  for (const candidate of index.byId.values()) {
+    if (candidate.kind !== 'work' || candidate.deletedAt !== null || excluded.has(candidate.id)) {
+      continue;
+    }
+    const { level } = ancestryOf(index, candidate.id);
+    if (level !== null && level + height <= MAX_WORK_DEPTH) out.push(candidate);
+  }
+  return out;
+}
+
 const REFUSAL_MESSAGES: Readonly<Record<HierarchyRefusal, string>> = Object.freeze({
   'record-missing': '该工作记录不存在。',
   'record-not-work': '只有工作记录可以参与任务层级，荣誉记录不能。',
@@ -378,4 +405,20 @@ export class HierarchyError extends Error {
 
 function isRefusal(reason: string): reason is HierarchyRefusal {
   return Object.hasOwn(REFUSAL_MESSAGES, reason);
+}
+
+/**
+ * Walk an error's `cause` chain for a `HierarchyError`.
+ *
+ * Repositories run inside `withDatabase`, which wraps whatever it catches in a `DatabaseError` whose
+ * message starts with the operation name. A hierarchy refusal is an expected, user-facing outcome, so
+ * the UI shows its own sentence instead of the technical wrapper.
+ */
+export function findHierarchyError(cause: unknown): HierarchyError | null {
+  let current = cause;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    if (current instanceof HierarchyError) return current;
+    current = current.cause;
+  }
+  return null;
 }
