@@ -43,8 +43,20 @@ export async function waitForAppReady(page: Page): Promise<void> {
   await expect(page.getByText('正在读取本机数据…')).toHaveCount(0, { timeout: 15_000 });
 }
 
+/**
+ * Switch route through the main navigation and wait until the new route has committed.
+ *
+ * The click resolves when the event has been dispatched, not when React has re-rendered, so an
+ * assertion issued straight after it can be evaluated against the page being left. That made
+ * `smoke.spec.ts` "ledger shows the record" pass at phone width by matching the record's card on
+ * 工作 before 台账 existed, and fail whenever 台账 won the race (Phase 5, 2026-09-29). The link's
+ * `aria-current="page"` is set in the same render that mounts the destination, so waiting on it
+ * waits on the route itself.
+ */
 export async function navigate(page: Page, label: string): Promise<void> {
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: label }).click();
+  const link = page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: label });
+  await link.click();
+  await expect(link).toHaveAttribute('aria-current', 'page');
   await waitForAppReady(page);
 }
 

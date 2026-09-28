@@ -195,9 +195,17 @@ test.describe('first run and core record flows', () => {
     await createWorkRecord(page, { title: '台账中的示范事项', date: '2026-07-07', unit: '单位丙' });
 
     await navigate(page, '台账');
-    // This spec runs at desktop AND phone widths, where the ledger deliberately renders as a table
-    // and as a card list respectively, so the assertion targets the record rather than the markup.
-    await expect(page.getByText('台账中的示范事项').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: '台账', level: 1 })).toBeVisible();
+    /*
+     * This spec runs at desktop AND phone widths, where the ledger renders both a table and a card
+     * list and hides one of them by width. `.first()` is the table cell in document order, which is
+     * the hidden one on a phone, so the assertion filters to the visible presentation instead of
+     * picking by position — and requires exactly one, so a regression that showed both, or neither,
+     * is caught rather than satisfied by whichever comes first.
+     */
+    const visibleTitle = page.getByText('台账中的示范事项').filter({ visible: true });
+    await expect(visibleTitle).toHaveCount(1);
+    await expect(visibleTitle).toBeVisible();
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
