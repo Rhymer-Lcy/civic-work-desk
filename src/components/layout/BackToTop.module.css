@@ -1,0 +1,41 @@
+/*
+ * 回到顶部.
+ *
+ * 44×44 CSS px on every pointer type: it is a floating target, often reached with a thumb, and it has
+ * no neighbour to borrow spacing from. `--z-sticky` keeps it under the header (40), dialogs (80) and
+ * toasts (100).
+ */
+.button {
+  position: fixed;
+  right: max(var(--space-4), env(safe-area-inset-right));
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  z-index: var(--z-sticky);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-card);
+  color: var(--ink-700);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.button:hover {
+  color: var(--brand-800);
+  border-color: var(--brand-700);
+}
+
+/* An author `display` beats the user-agent `[hidden] { display: none }`, so restate it. */
+.button[hidden] {
+  display: none;
+}
+
+@media print {
+  .button {
+    display: none;
+  }
+}

@@ -112,6 +112,16 @@ test.describe('axe scans of stable UI states', () => {
     await expect(page.getByRole('dialog', { name: '清空全部本机数据？' })).toBeVisible();
     await scan(page);
   });
+
+  test('back-to-top control, shown after scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await gotoApp(page, 'settings');
+    await page.evaluate(() => {
+      window.scrollTo({ top: 1800, behavior: 'instant' });
+    });
+    await expect(page.getByRole('button', { name: '回到顶部' })).toBeVisible();
+    await scan(page);
+  });
 });
 
 test.describe('keyboard and focus behaviour', () => {

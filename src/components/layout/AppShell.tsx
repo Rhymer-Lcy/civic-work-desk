@@ -12,6 +12,7 @@ import { useCurrentPrimaryAction } from '@/app/primary-action-context';
 import { ROUTES, ROUTE_LABELS_ZH, routeHref } from '@/app/router';
 import type { RouteId } from '@/app/router';
 import { Button, InPageLink } from '@/components/common';
+import { BackToTop } from './BackToTop';
 import styles from './AppShell.module.css';
 
 /**
@@ -137,6 +138,8 @@ export function AppShell({ title, route, onNavigate, banner, children }: AppShel
       <main id="main" className={`${styles.main} safe-bottom`} tabIndex={-1}>
         {children}
       </main>
+
+      <BackToTop routeKey={route} />
     </div>
   );
 }
