@@ -82,6 +82,17 @@ export default defineConfig({
       testDir: './tests/screenshots',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
+    /*
+     * Scale measurements, not a gate. Prints timings for a 5,000-record archive so a change can be
+     * compared before and after on the same machine; see tests/perf/load-scale.spec.ts. Its own
+     * `testDir`, so it never runs inside the regular suites.
+     */
+    {
+      name: 'perf',
+      testDir: './tests/perf',
+      testMatch: '**/*.spec.ts',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
     {
       name: 'firefox-desktop',
       use: { ...devices['Desktop Firefox'], viewport: { width: 1440, height: 900 } },
