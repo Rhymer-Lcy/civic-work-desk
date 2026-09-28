@@ -141,6 +141,27 @@ test.describe('the structure view', () => {
   });
 });
 
+test.describe('the ledger', () => {
+  test('names each task’s level and its parents, in the table and in the cards', async ({
+    page,
+  }) => {
+    await buildThreeLevels(page);
+    await navigate(page, '台账');
+    await expect(page.getByRole('columnheader', { name: '层级' })).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: GRANDCHILD });
+    await expect(row.getByRole('cell', { name: '3级子任务' })).toBeVisible();
+    await expect(row.getByText(`上级：${ROOT} / ${CHILD}`)).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const card = page
+      .getByRole('listitem')
+      .filter({ hasText: GRANDCHILD })
+      .filter({ visible: true });
+    await expect(card.getByText('3级子任务')).toBeVisible();
+    await expect(card.getByText(`${ROOT} / ${CHILD}`)).toBeVisible();
+  });
+});
+
 test.describe('re-parenting, completing and deleting', () => {
   test('调整层级 moves a task with a dialog, not by dragging', async ({ page }) => {
     await buildThreeLevels(page);

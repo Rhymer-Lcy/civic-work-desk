@@ -1,10 +1,13 @@
 import type { Paragraph as ParagraphNode, Table as TableNode } from 'docx';
 import { formatDateValue } from '@/domain/dates';
 import { DEADLINE_SOURCE_LABELS_ZH, describeVerdict, evaluateDeadline } from '@/domain/deadlines';
+import { WORK_LEVEL_LABELS_ZH } from '@/domain/hierarchy';
+import { describePath, hierarchyContext, indexRecords } from '@/domain/hierarchy-summary';
+import type { WorkIndex } from '@/domain/hierarchy-summary';
 import { formatCompletionRate, statusBreakdownLines } from '@/domain/reports';
 import type { PeriodContent } from '@/domain/reports';
 import { STATUS_LABELS_ZH } from '@/domain/status';
-import type { BusinessCategory, HonorRecord, WorkRecord } from '@/domain/types';
+import type { AnyRecord, BusinessCategory, HonorRecord, WorkRecord } from '@/domain/types';
 import { formatInstant } from '@/utils/clock';
 import { DOCX_MIME } from '../download';
 
@@ -31,7 +34,16 @@ export interface DocxReportInput extends PeriodContent {
   readonly generatedAt: string;
   readonly includeHonors: boolean;
   readonly includeSummary: boolean;
+  /**
+   * Every record, used only to resolve a sub-task's parents (Phase 5). A report period includes a
+   * record by its own date, so a sub-task's parent is often outside the period and must still be
+   * nameable. Defaults to the period's own work records.
+   */
+  readonly context?: readonly AnyRecord[];
 }
+
+/** A table cell: one line, or several lines rendered with breaks. */
+type CellText = string | readonly string[];
 
 const FONT = 'SimSun';
 const HEADER_FILL = 'F3EFEA';
@@ -53,8 +65,15 @@ export async function buildPeriodReport(input: DocxReportInput): Promise<Blob> {
     WidthType,
   } = await import('docx');
 
-  const text = (value: string, bold = false, size = BODY_SIZE): InstanceType<typeof TextRun> =>
-    new TextRun({ text: value, bold, font: FONT, size });
+  const text = (
+    value: string,
+    bold = false,
+    size = BODY_SIZE,
+    lineBreak = false,
+  ): InstanceType<typeof TextRun> =>
+    lineBreak
+      ? new TextRun({ text: value, bold, font: FONT, size, break: 1 })
+      : new TextRun({ text: value, bold, font: FONT, size });
 
   const para = (value: string, bold = false): ParagraphNode =>
     new Paragraph({ spacing: { after: 120 }, children: [text(value, bold)] });
@@ -75,10 +94,11 @@ export async function buildPeriodReport(input: DocxReportInput): Promise<Blob> {
 
   // `shading` is only supplied for header cells. Passing `shading: undefined` explicitly would be
   // rejected under exactOptionalPropertyTypes, so the key is omitted rather than set to undefined.
-  const cell = (value: string, bold = false, shaded = false): InstanceType<typeof TableCell> => {
+  const cell = (value: CellText, bold = false, shaded = false): InstanceType<typeof TableCell> => {
+    const lines = typeof value === 'string' ? [value] : value;
     const paragraph = new Paragraph({
       spacing: { after: 0 },
-      children: [text(value, bold, TABLE_SIZE)],
+      children: lines.map((line, index) => text(line, bold, TABLE_SIZE, index > 0)),
     });
     const margins = { top: 60, bottom: 60, left: 80, right: 80 };
     return shaded
@@ -89,7 +109,7 @@ export async function buildPeriodReport(input: DocxReportInput): Promise<Blob> {
   const border = { style: BorderStyle.SINGLE, size: 4, color: '999999' } as const;
   const innerBorder = { style: BorderStyle.SINGLE, size: 2, color: 'CCCCCC' } as const;
 
-  const table = (headers: readonly string[], rows: readonly (readonly string[])[]): TableNode =>
+  const table = (headers: readonly string[], rows: readonly (readonly CellText[])[]): TableNode =>
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       borders: {
@@ -108,6 +128,8 @@ export async function buildPeriodReport(input: DocxReportInput): Promise<Blob> {
         ...rows.map((row) => new TableRow({ children: row.map((value) => cell(value)) })),
       ],
     });
+
+  const hierarchyIndex = indexRecords(input.context ?? input.work);
 
   const categoryName = (id: string | null): string =>
     id === null ? '未分类' : (input.categories.find((c) => c.id === id)?.name ?? '（已删除）');
@@ -185,7 +207,9 @@ export async function buildPeriodReport(input: DocxReportInput): Promise<Blob> {
           '对接单位/人',
           '备注',
         ],
-        input.work.map((record, index) => workRow(record, index, input.today, categoryName)),
+        input.work.map((record, position) =>
+          workRow(record, position, input.today, categoryName, hierarchyIndex),
+        ),
       ),
     );
   }
@@ -241,12 +265,28 @@ export async function buildPeriodReport(input: DocxReportInput): Promise<Blob> {
   return new Blob([blob], { type: DOCX_MIME });
 }
 
+/**
+ * The 事项 cell: the title, and for a sub-task a second line with its level and parents (Phase 5).
+ *
+ * A report lists records by their own dates, so parent and child can be far apart or in different
+ * periods; the second line is what keeps a sub-task intelligible on its own. Built from ids, never by
+ * matching titles, which may repeat.
+ */
+function titleCell(record: WorkRecord, hierarchyIndex: WorkIndex): CellText {
+  const { level, ancestors } = hierarchyContext(hierarchyIndex, record.id);
+  if (level === 1) return record.title;
+  const label = level === null ? '层级异常' : WORK_LEVEL_LABELS_ZH[level];
+  const parents = ancestors.length > 0 ? ` · 上级：${describePath(ancestors)}` : '';
+  return [record.title, `（${label}${parents}）`];
+}
+
 function workRow(
   record: WorkRecord,
   index: number,
   today: string,
   categoryName: (id: string | null) => string,
-): string[] {
+  hierarchyIndex: WorkIndex,
+): CellText[] {
   const verdict = evaluateDeadline(record, today);
   const verdictText =
     verdict.source === null
@@ -258,7 +298,7 @@ function workRow(
   return [
     String(index + 1),
     formatDateValue(record.occurredOn, '—'),
-    record.title,
+    titleCell(record, hierarchyIndex),
     categoryName(record.categoryId),
     record.requirement || '—',
     formatDateValue(record.reportDeadline, '—'),

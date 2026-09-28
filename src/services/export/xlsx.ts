@@ -1,6 +1,9 @@
 import { formatDateValue, isIsoDate, toLocalDate } from '@/domain/dates';
 import type { DateValue } from '@/domain/dates';
 import { evaluateDeadline, describeVerdict, DEADLINE_SOURCE_LABELS_ZH } from '@/domain/deadlines';
+import { WORK_LEVEL_LABELS_ZH } from '@/domain/hierarchy';
+import { describePath, hierarchyContext, indexRecords } from '@/domain/hierarchy-summary';
+import type { WorkIndex } from '@/domain/hierarchy-summary';
 import { STATUS_LABELS_ZH } from '@/domain/status';
 import { isWorkRecord } from '@/domain/types';
 import type {
@@ -26,7 +29,14 @@ import { XLSX_MIME } from '../download';
  */
 
 export interface XlsxExportInput {
+  /** The rows to export — the ledger's current filter, in its order. */
   readonly records: readonly AnyRecord[];
+  /**
+   * Every record, used only to resolve references: a sub-task's parents and an honour's linked work
+   * item. A filter that hides a parent must not strip the sub-task's path, and a linked work item that
+   * is merely filtered out is not deleted. Defaults to `records`.
+   */
+  readonly context?: readonly AnyRecord[];
   readonly categories: readonly BusinessCategory[];
   readonly groups: readonly WorkGroup[];
   readonly today: string;
@@ -39,9 +49,18 @@ interface ColumnSpec {
   readonly wrap?: boolean;
 }
 
+/*
+ * Phase 5 adds the hierarchy: 任务层级, 上级任务 and 任务路径 beside the title, and the record's own id
+ * and its parent's id at the end. Titles may repeat — two sub-tasks called 「起草材料」 under different
+ * parents is ordinary — so the ids are what make a row unambiguously joinable, and every path is built
+ * by following ids, never by matching titles.
+ */
 const WORK_COLUMNS: readonly ColumnSpec[] = [
   { header: '日期', width: 12 },
   { header: '事项', width: 52, wrap: true },
+  { header: '任务层级', width: 11 },
+  { header: '上级任务', width: 28, wrap: true },
+  { header: '任务路径', width: 44, wrap: true },
   { header: '业务分类', width: 16 },
   { header: '归属分组', width: 12 },
   { header: '状态', width: 10 },
@@ -56,6 +75,8 @@ const WORK_COLUMNS: readonly ColumnSpec[] = [
   { header: '对接人', width: 12 },
   { header: '联系方式', width: 18 },
   { header: '备注', width: 40, wrap: true },
+  { header: '记录ID', width: 38 },
+  { header: '上级记录ID', width: 38 },
 ];
 
 const HONOR_COLUMNS: readonly ColumnSpec[] = [
@@ -88,8 +109,13 @@ function nameOf(id: string | null, list: readonly { id: string; name: string }[]
   return list.find((item) => item.id === id)?.name ?? '（已删除）';
 }
 
-function workRow(record: WorkRecord, input: XlsxExportInput): (Date | string | number)[] {
+function workRow(
+  record: WorkRecord,
+  input: XlsxExportInput,
+  index: WorkIndex,
+): (Date | string | number)[] {
   const verdict = evaluateDeadline(record, input.today);
+  const { level, ancestors } = hierarchyContext(index, record.id);
   const verdictText =
     verdict.source === null
       ? describeVerdict(verdict)
@@ -97,6 +123,9 @@ function workRow(record: WorkRecord, input: XlsxExportInput): (Date | string | n
   return [
     dateCell(record.occurredOn),
     record.title,
+    level === null ? '层级异常' : WORK_LEVEL_LABELS_ZH[level],
+    ancestors.at(-1)?.title ?? '',
+    describePath([...ancestors, record]),
     nameOf(record.categoryId, input.categories),
     nameOf(record.groupId, input.groups),
     STATUS_LABELS_ZH[record.status],
@@ -111,6 +140,8 @@ function workRow(record: WorkRecord, input: XlsxExportInput): (Date | string | n
     record.counterpartContact,
     record.counterpartPhone,
     record.remark,
+    record.id,
+    record.parentWorkId ?? '',
   ];
 }
 
@@ -140,13 +171,21 @@ export async function buildWorkbook(input: XlsxExportInput): Promise<Blob> {
   const live = input.records.filter((record) => record.deletedAt === null);
   const work = live.filter(isWorkRecord);
   const honors = live.filter((record): record is HonorRecord => record.kind === 'honor');
-  const titleById = new Map(live.map((record) => [record.id, record.title]));
+  const context = input.context ?? input.records;
+  const index = indexRecords(context);
+  // Resolved against every live record, not the filtered rows: a linked work item outside the current
+  // filter still exists, and until Phase 5 it was printed as 「（已删除）」.
+  const titleById = new Map(
+    context
+      .filter((record) => record.deletedAt === null)
+      .map((record) => [record.id, record.title]),
+  );
 
   addSheet(
     workbook,
     '日常工作',
     WORK_COLUMNS,
-    work.map((r) => workRow(r, input)),
+    work.map((r) => workRow(r, input, index)),
   );
   addSheet(
     workbook,

@@ -107,6 +107,7 @@ export function DataSection({ records, meta, health }: DataSectionProps): ReactN
       const { buildWorkbook, ledgerFilename } = await import('@/services/export/xlsx');
       const blob = await buildWorkbook({
         records: live,
+        context: data.records,
         categories: data.categories,
         groups: data.groups,
         today: data.today,

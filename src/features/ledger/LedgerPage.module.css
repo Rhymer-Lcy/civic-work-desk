@@ -225,8 +225,12 @@
   width: 4%;
 }
 
+.colLevel {
+  width: 6%;
+}
+
 .colTitle {
-  width: 22%;
+  width: 20%;
 }
 
 .colCategory {
@@ -251,4 +255,16 @@
 
 .colRemark {
   width: 13%;
+}
+
+/* Phase 5: a sub-task's level has its own narrow column, and its parents sit under the title. */
+.cellLevel {
+  white-space: nowrap;
+}
+
+.titlePath {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--ink-500);
 }

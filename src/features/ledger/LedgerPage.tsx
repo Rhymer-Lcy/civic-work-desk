@@ -4,6 +4,9 @@ import { FileSpreadsheet, Printer } from 'lucide-react';
 import { useData } from '@/app/store/data-store';
 import { formatDateValue } from '@/domain/dates';
 import { describeVerdictWithSource, evaluateDeadline } from '@/domain/deadlines';
+import { WORK_LEVEL_LABELS_ZH } from '@/domain/hierarchy';
+import { describePath, hierarchyContext, indexRecords } from '@/domain/hierarchy-summary';
+import type { WorkIndex } from '@/domain/hierarchy-summary';
 import { EMPTY_QUERY, countUndated, distinctUnits, distinctYears, runQuery } from '@/domain/query';
 import type { RecordQuery } from '@/domain/query';
 import { STATUS_LABELS_ZH } from '@/domain/status';
@@ -37,6 +40,8 @@ export function LedgerPage(): ReactNode {
     () => runQuery(data.records, query, { today: data.today }),
     [data.records, data.today, query],
   );
+  // Parents are resolved against every record, not the filtered rows (Phase 5).
+  const index = useMemo(() => indexRecords(data.records), [data.records]);
   const units = useMemo(() => distinctUnits(data.records), [data.records]);
   const years = useMemo(() => distinctYears(data.records), [data.records]);
 
@@ -46,6 +51,7 @@ export function LedgerPage(): ReactNode {
       const { buildWorkbook, ledgerFilename } = await import('@/services/export/xlsx');
       const blob = await buildWorkbook({
         records: results,
+        context: data.records,
         categories: data.categories,
         groups: data.groups,
         today: data.today,
@@ -123,6 +129,7 @@ export function LedgerPage(): ReactNode {
               <colgroup>
                 <col className={styles.colDate} />
                 <col className={styles.colKind} />
+                <col className={styles.colLevel} />
                 <col className={styles.colTitle} />
                 <col className={styles.colCategory} />
                 <col className={styles.colStatus} />
@@ -136,6 +143,7 @@ export function LedgerPage(): ReactNode {
                 <tr>
                   <th scope="col">日期</th>
                   <th scope="col">类别</th>
+                  <th scope="col">层级</th>
                   <th scope="col">事项 / 荣誉名称</th>
                   <th scope="col">业务分类</th>
                   <th scope="col">状态</th>
@@ -151,6 +159,7 @@ export function LedgerPage(): ReactNode {
                   <LedgerRow
                     key={record.id}
                     record={record}
+                    hierarchy={ledgerHierarchy(index, record)}
                     today={data.today}
                     categoryName={categoryNameOf(record, data.categories)}
                   />
@@ -164,6 +173,7 @@ export function LedgerPage(): ReactNode {
               <LedgerCard
                 key={record.id}
                 record={record}
+                hierarchy={ledgerHierarchy(index, record)}
                 today={data.today}
                 categoryName={categoryNameOf(record, data.categories)}
               />
@@ -183,12 +193,29 @@ function categoryNameOf(
   return categories.find((c) => c.id === record.categoryId)?.name ?? '（已删除）';
 }
 
+/** A record's level and parent path for the ledger. An honour has neither. */
+interface LedgerHierarchy {
+  readonly level: string;
+  readonly path: string;
+}
+
+function ledgerHierarchy(index: WorkIndex, record: AnyRecord): LedgerHierarchy {
+  if (!isWorkRecord(record)) return { level: '—', path: '' };
+  const { level, ancestors } = hierarchyContext(index, record.id);
+  return {
+    level: level === null ? '层级异常' : WORK_LEVEL_LABELS_ZH[level],
+    path: describePath(ancestors),
+  };
+}
+
 function LedgerRow({
   record,
+  hierarchy,
   today,
   categoryName,
 }: {
   readonly record: AnyRecord;
+  readonly hierarchy: LedgerHierarchy;
   readonly today: string;
   readonly categoryName: string;
 }): ReactNode {
@@ -197,7 +224,13 @@ function LedgerRow({
     <tr>
       <td className={styles.cellDate}>{cells.date}</td>
       <td className={styles.cellKind}>{cells.kind}</td>
-      <td className={styles.cellTitle}>{record.title}</td>
+      <td className={styles.cellLevel}>{hierarchy.level}</td>
+      <td className={styles.cellTitle}>
+        {record.title}
+        {hierarchy.path !== '' ? (
+          <span className={styles.titlePath}>上级：{hierarchy.path}</span>
+        ) : null}
+      </td>
       <td>{cells.category}</td>
       <td className={styles.cellStatus}>{cells.status}</td>
       <td className={styles.cellDate}>{cells.reportDeadline}</td>
@@ -222,7 +255,8 @@ interface LedgerCells {
 }
 
 /**
- * Flatten a record into the ten ledger columns.
+ * Flatten a record into the ledger's per-record columns. The 层级 column and the parent path under
+ * the title come from `ledgerHierarchy`, which needs the whole archive rather than one record.
  *
  * Separated from the row component so the branching over work/honour happens once, in plain
  * TypeScript, rather than being repeated inline in ten JSX expressions.
@@ -265,10 +299,12 @@ function ledgerCells(record: AnyRecord, today: string, categoryName: string): Le
 
 function LedgerCard({
   record,
+  hierarchy,
   today,
   categoryName,
 }: {
   readonly record: AnyRecord;
+  readonly hierarchy: LedgerHierarchy;
   readonly today: string;
   readonly categoryName: string;
 }): ReactNode {
@@ -286,6 +322,8 @@ function LedgerCard({
       </div>
       <dl className={styles.cardFields}>
         <CardField label="日期" value={formatDateValue(primaryDate(record))} />
+        {work ? <CardField label="任务层级" value={hierarchy.level} /> : null}
+        <CardField label="上级任务" value={hierarchy.path} />
         <CardField label="业务分类" value={categoryName} />
         <CardField
           label={work ? '对接单位 / 人' : '授予单位'}

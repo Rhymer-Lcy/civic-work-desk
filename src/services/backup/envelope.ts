@@ -20,8 +20,10 @@ import type {
 /**
  * The canonical backup format.
  *
- * JSON is the *only* backup. XLSX and DOCX are reports: they are lossy by design (no ids, no
- * progress entries, no soft-delete state, no settings) and cannot restore an archive. The legacy
+ * JSON is the *only* backup. XLSX and DOCX are reports: they are lossy by design (no progress
+ * entries, no soft-delete state, no settings, no taxonomy ids) and cannot restore an archive. Since
+ * Phase 5 the XLSX carries record and parent ids, so that rows with repeated titles can be joined —
+ * not so that a spreadsheet could stand in for a backup. The legacy
  * prototype blurred this — `exportExcel()` wrote `gov_last_backup`, so exporting a spreadsheet
  * silenced the backup reminder for a week without a backup existing.
  *

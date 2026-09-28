@@ -83,6 +83,7 @@ export function ReportsPage(): ReactNode {
         generatedAt: new Date().toISOString(),
         includeHonors,
         includeSummary,
+        context: data.records,
       });
       const result = downloadBlob(blob, reportFilename(content.period.label, filenameStamp()));
       toast.show(

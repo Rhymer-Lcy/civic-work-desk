@@ -10,6 +10,7 @@ declare const classes: {
   readonly "cards": string;
   readonly "cellDate": string;
   readonly "cellKind": string;
+  readonly "cellLevel": string;
   readonly "cellStatus": string;
   readonly "cellTitle": string;
   readonly "colCategory": string;
@@ -17,6 +18,7 @@ declare const classes: {
   readonly "colDate": string;
   readonly "colDeadline": string;
   readonly "colKind": string;
+  readonly "colLevel": string;
   readonly "colRemark": string;
   readonly "colStatus": string;
   readonly "colTitle": string;
@@ -26,5 +28,6 @@ declare const classes: {
   readonly "table": string;
   readonly "tableWrap": string;
   readonly "title": string;
+  readonly "titlePath": string;
 };
 export default classes;
