@@ -138,6 +138,12 @@ func TestRuntimeFailsClosed(t *testing.T) {
 			if reason, _ := answer["error"].(string); !strings.Contains(reason, tc.reason) {
 				t.Errorf("refusal reason %q does not say %q", reason, tc.reason)
 			}
+			// The reason reaches the browser: it may name a file, never where the release is installed
+			// (under %LOCALAPPDATA% that path names the Windows user).
+			if reason, _ := answer["error"].(string); strings.Contains(reason, filepath.Dir(appDir)) ||
+				strings.Contains(reason, ":\\") || strings.Contains(reason, string(filepath.Separator)+"app") {
+				t.Errorf("refusal reason %q discloses a path", reason)
+			}
 		})
 	}
 }

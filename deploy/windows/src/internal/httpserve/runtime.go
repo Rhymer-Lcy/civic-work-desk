@@ -41,6 +41,17 @@ type AppGeneration struct {
 	Entry         string `json:"entry"`
 }
 
+// pathlessError reports a file problem without the file's location. An *os.PathError's text carries the
+// absolute path, which under %LOCALAPPDATA% names the Windows user, and these reasons travel to the
+// browser in the runtime answer. The cause stays reachable, so errors.Is(err, fs.ErrNotExist) holds.
+type pathlessError struct {
+	text  string
+	cause error
+}
+
+func (e pathlessError) Error() string { return e.text }
+func (e pathlessError) Unwrap() error { return e.cause }
+
 // LoadAppGeneration reads and validates app-generation.json in a release's app directory. It is the
 // single definition of "this release knows its interface generation", used by the runtime endpoint and
 // by civic-admin verify.
@@ -49,14 +60,14 @@ func LoadAppGeneration(appDir string) (AppGeneration, error) {
 	path := filepath.Join(appDir, generationFileName)
 	info, err := os.Lstat(path)
 	if err != nil {
-		return gen, fmt.Errorf("%s is missing: %w", generationFileName, err)
+		return gen, pathlessError{generationFileName + " is missing", err}
 	}
 	if !info.Mode().IsRegular() || info.Size() > generationMaxBytes {
 		return gen, fmt.Errorf("%s is not a small regular file", generationFileName)
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return gen, fmt.Errorf("%s cannot be read: %w", generationFileName, err)
+		return gen, pathlessError{generationFileName + " cannot be read", err}
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
 	decoder.DisallowUnknownFields()
