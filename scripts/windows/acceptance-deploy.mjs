@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Windows RC1 acceptance on the development workstation, driven from the ACTUAL installer bytes.
+ * Windows acceptance on the development workstation, driven from the ACTUAL installer bytes.
  *
- *   node scripts/windows/acceptance-deploy.mjs [--release-id <id>] [--keep]
+ *   node scripts/windows/acceptance-deploy.mjs --release-id <id> [--keep]
  *
  * ## What this is and is not
  *
@@ -14,6 +14,9 @@
  * tree that gets tested is the one Setup.exe wrote, the server that answers is the one it activated, and
  * the uninstall at the end is the one a colleague would run from the Start Menu.
  *
+ * The release id is required. It used to default to an RC2 id, which is how a suite quietly stops
+ * covering the thing being shipped; every name here now comes from release-identity.mjs.
+ *
  * `--keep` leaves the installation in place at the end, for looking at by hand.
  */
 
@@ -23,18 +26,23 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-function argValue(name, fallback) {
+function argValue(name) {
   const i = process.argv.indexOf(name);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')
+    ? process.argv[i + 1]
+    : undefined;
 }
 
-// The suite is release-agnostic: the same checks have to pass for every candidate, and hard-coding one
-// id is how a suite quietly stops covering the thing being shipped.
-const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc2');
-const SETUP_BASE = `CivicWorkDesk-Windows-x64-${RELEASE_ID.replace('-win-', '-')}-Setup`;
-const SETUP = join(ROOT, 'release', 'windows', `${SETUP_BASE}.exe`);
+const IDENTITY = loadReleaseIdentity(
+  ROOT,
+  argValue('--release-id'),
+  argValue('--today') ?? businessDateUtc8(),
+);
+const RELEASE_ID = IDENTITY.releaseId;
+const SETUP = join(ROOT, 'release', 'windows', IDENTITY.installerName);
 const INSTALL_ROOT = join(
   process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
   'CivicWorkDesk',
@@ -49,6 +57,10 @@ const START_MENU = join(
 );
 const ORIGIN = 'http://127.0.0.1:8765';
 const KEEP = process.argv.includes('--keep');
+const APP_ID_KEY =
+  'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8B3F2C71-4D5E-4A19-9C42-7E1D6F0B8A53}_is1';
+/* A literal BOM in source is an invisible character; PowerShell needs one to read a UTF-8 script. */
+const BOM = String.fromCharCode(0xfeff);
 
 const results = [];
 let failures = 0;
@@ -89,6 +101,10 @@ function bin(name) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function sha256(buffer) {
+  return createHash('sha256').update(buffer).digest('hex');
+}
+
 function serverProcesses() {
   const r = sh('powershell', [
     '-NoProfile',
@@ -98,14 +114,111 @@ function serverProcesses() {
   return (r.stdout ?? '').trim();
 }
 
+/** Run a PowerShell script from a UTF-8 file with a BOM; its first argument is an output file. */
+function ps(script, ...args) {
+  const scriptPath = join(process.env.TEMP ?? '.', `civic-accept-${process.pid}.ps1`);
+  const outPath = join(process.env.TEMP ?? '.', `civic-accept-${process.pid}.out`);
+  rmSync(outPath, { force: true });
+  writeFileSync(scriptPath, `${BOM}${script}\n`, 'utf8');
+  sh(
+    'powershell',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, outPath, ...args],
+    {
+      timeout: 60000,
+    },
+  );
+  const text = existsSync(outPath) ? readFileSync(outPath, 'utf8').replace(BOM, '').trim() : '';
+  rmSync(outPath, { force: true });
+  rmSync(scriptPath, { force: true });
+  return text;
+}
+
+/**
+ * Start a program the way a shortcut does -- through the shell, with no console and no standard handles
+ * -- then find the message box it shows, read its title and text, and close it.
+ *
+ * This is the only honest test of what a person clicking the Start Menu entry sees. The rest of this
+ * suite runs the tools with pipes, where they print to the pipe and never show a dialog; RC1-RC3 passed
+ * every one of those checks while a real click on a failing launch showed nothing at all.
+ */
+const DIALOG_PROBE = String.raw`
+param($out, $exe, $arg)
+Add-Type -TypeDefinition @'
+using System; using System.Text; using System.Runtime.InteropServices;
+public static class CivicDialogProbe {
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern uint GetDlgItemText(IntPtr h, int id, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  public static IntPtr Find(uint pid) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate (IntPtr h, IntPtr l) {
+      uint owner; GetWindowThreadProcessId(h, out owner);
+      if (owner != pid || !IsWindowVisible(h)) return true;
+      StringBuilder c = new StringBuilder(64); GetClassName(h, c, 64);
+      if (c.ToString() == "#32770") { found = h; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+}
+'@
+$p = Start-Process -FilePath $exe -ArgumentList $arg -PassThru
+$null = $p.Handle
+$h = [IntPtr]::Zero
+for ($i = 0; $i -lt 150; $i++) {
+  Start-Sleep -Milliseconds 200
+  $h = [CivicDialogProbe]::Find([uint32]$p.Id)
+  if ($h -ne [IntPtr]::Zero -or $p.HasExited) { break }
+}
+$title = ''; $text = ''
+if ($h -ne [IntPtr]::Zero) {
+  $t = New-Object System.Text.StringBuilder 256; [void][CivicDialogProbe]::GetWindowText($h, $t, 256); $title = $t.ToString()
+  $s = New-Object System.Text.StringBuilder 8192; [void][CivicDialogProbe]::GetDlgItemText($h, 65535, $s, 8192); $text = $s.ToString()
+  [void][CivicDialogProbe]::PostMessage($h, 16, [IntPtr]::Zero, [IntPtr]::Zero)
+}
+[void]$p.WaitForExit(15000)
+$code = 'running'
+if ($p.HasExited) { $code = [string]$p.ExitCode }
+# Built with += : in an @( ... ) literal the comma binds tighter than +, so the array collapses into one
+# space-joined string -- measured, not assumed.
+$lines = @()
+$lines += 'found=' + ($h -ne [IntPtr]::Zero)
+$lines += 'title=' + $title
+$lines += 'exit=' + $code
+$lines += 'text=' + ($text -replace '\r?\n', ' | ')
+[System.IO.File]::WriteAllText($out, ($lines -join [char]10), [System.Text.Encoding]::UTF8)
+`;
+
+function dialogOf(exe, arg) {
+  const text = ps(DIALOG_PROBE, exe, arg);
+  const fields = Object.fromEntries(
+    text
+      .split(/\r?\n/)
+      .filter((l) => l.includes('='))
+      .map((l) => {
+        const at = l.indexOf('=');
+        return [l.slice(0, at), l.slice(at + 1)];
+      }),
+  );
+  return {
+    found: fields.found === 'True',
+    title: fields.title ?? '',
+    exit: fields.exit ?? '',
+    text: fields.text ?? '',
+  };
+}
+
 /** Raw HTTP over a socket, so a hostile request target reaches the server exactly as written. */
-async function rawRequest(target, method = 'GET') {
+async function rawRequest(target, method = 'GET', host = '127.0.0.1:8765') {
   const net = await import('node:net');
   return new Promise((resolvePromise) => {
     const socket = net.createConnection({ host: '127.0.0.1', port: 8765 }, () => {
-      socket.write(
-        `${method} ${target} HTTP/1.1\r\nHost: 127.0.0.1:8765\r\nConnection: close\r\n\r\n`,
-      );
+      socket.write(`${method} ${target} HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`);
     });
     let data = '';
     socket.setTimeout(5000, () => {
@@ -177,12 +290,51 @@ function runUninstall() {
   return { code: result.status };
 }
 
+function launchLogLines() {
+  const path = join(INSTALL_ROOT, 'logs', 'launch.log');
+  return existsSync(path) ? readFileSync(path, 'utf8').trim().split(/\r?\n/) : [];
+}
+
+/** Copy the installed release to a sibling id, optionally rewriting it to an older data schema. */
+function siblingRelease(id, { legacySchema = false } = {}) {
+  const dir = join(INSTALL_ROOT, 'releases', id);
+  rmSync(dir, { recursive: true, force: true });
+  sh('powershell', [
+    '-NoProfile',
+    '-Command',
+    `Copy-Item -LiteralPath '${join(INSTALL_ROOT, 'releases', RELEASE_ID)}' -Destination '${dir}' -Recurse`,
+  ]);
+  if (legacySchema) {
+    // What an RC3 release looks like to civic-admin: no databaseSchemaVersion anywhere. The manifest
+    // entry is rewritten to match, so the release still VERIFIES and the refusal under test is the
+    // schema refusal, not an integrity one.
+    const healthPath = join(dir, 'app', 'deployment-health.json');
+    const health = JSON.parse(readFileSync(healthPath, 'utf8'));
+    delete health.databaseSchemaVersion;
+    const body = `${JSON.stringify(health, null, 2)}\n`;
+    writeFileSync(healthPath, body, 'utf8');
+    const sums = readFileSync(join(dir, 'SHA256SUMS.txt'), 'utf8').replace(
+      /^[0-9a-f]{64}( \*app\/deployment-health\.json)$/m,
+      `${sha256(Buffer.from(body, 'utf8'))}$1`,
+    );
+    writeFileSync(join(dir, 'SHA256SUMS.txt'), sums, 'utf8');
+    const version = readFileSync(join(dir, 'VERSION'), 'utf8').replace(
+      /^databaseSchemaVersion=.*\n/m,
+      '',
+    );
+    writeFileSync(join(dir, 'VERSION'), version, 'utf8');
+  }
+  return dir;
+}
+
 // ===================================================================================================
-console.log('CivicWorkDesk Windows RC1 -- development-workstation acceptance');
+console.log('CivicWorkDesk Windows -- development-workstation acceptance');
 console.log('');
-console.log(`  installer   : ${SETUP}`);
-console.log(`  install root: ${INSTALL_ROOT}`);
-console.log(`  origin      : ${ORIGIN}/`);
+console.log(`  installer       : ${SETUP}`);
+console.log(`  display version : ${IDENTITY.displayVersion}`);
+console.log(`  release id      : ${RELEASE_ID}`);
+console.log(`  install root    : ${INSTALL_ROOT}`);
+console.log(`  origin          : ${ORIGIN}/`);
 
 // ---------------------------------------------------------------------------------------------------
 section('1. the installer bytes');
@@ -191,7 +343,7 @@ if (!existsSync(SETUP)) {
   process.exit(2);
 }
 const setupBytes = readFileSync(SETUP);
-const setupDigest = createHash('sha256').update(setupBytes).digest('hex');
+const setupDigest = sha256(setupBytes);
 const sidecar = readFileSync(`${SETUP}.sha256`, 'utf8').trim().split(/\s+/)[0];
 check(setupDigest === sidecar, 'installer matches its .sha256 sidecar', setupDigest);
 info('installer size', `${setupBytes.length} bytes`);
@@ -247,14 +399,6 @@ const hklm = sh('reg', [
   '/s',
 ]);
 check(!/CivicWorkDesk/.test(hklm.stdout ?? ''), 'no HKLM uninstall entry');
-const hkcu = sh('reg', [
-  'query',
-  'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
-  '/f',
-  'CivicWorkDesk',
-  '/s',
-]);
-check(/CivicWorkDesk|政务/.test(hkcu.stdout ?? ''), 'per-user uninstall entry registered');
 const svc = sh('sc', ['query', 'CivicWorkDesk']);
 check(svc.status !== 0, 'no Windows service created');
 const task = sh('schtasks', ['/query', '/tn', 'CivicWorkDesk']);
@@ -263,6 +407,35 @@ check(
   !existsSync(join(process.env.ProgramFiles ?? 'C:/Program Files', 'CivicWorkDesk')),
   'nothing in Program Files',
 );
+
+// The installed-programs entry is the second place a person reads the version and the publisher.
+// Read through PowerShell into a UTF-8 file: `reg query` prints in the console code page, and the
+// Chinese DisplayName came back as mojibake the first time this was run that way.
+const uninstallFields = Object.fromEntries(
+  ps(
+    `$p = Get-ItemProperty -Path ('Registry::' + $args[1]) -ErrorAction SilentlyContinue
+$lines = @()
+if ($p) { foreach ($k in 'DisplayName','DisplayVersion','Publisher') { $lines += $k + '=' + $p.$k } }
+[System.IO.File]::WriteAllText($args[0], ($lines -join [char]10), [System.Text.Encoding]::UTF8)`,
+    APP_ID_KEY,
+  )
+    .split(/\r?\n/)
+    .filter((l) => l.includes('='))
+    .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+);
+const regValue = (name) => uninstallFields[name] ?? '';
+check(
+  Object.keys(uninstallFields).length === 3,
+  'per-user uninstall entry registered under HKCU',
+  APP_ID_KEY,
+);
+check(regValue('DisplayName') === IDENTITY.productNameZh, 'DisplayName', regValue('DisplayName'));
+check(
+  regValue('DisplayVersion') === IDENTITY.displayVersion,
+  'DisplayVersion is the display version',
+  regValue('DisplayVersion'),
+);
+check(regValue('Publisher') === IDENTITY.publisher, 'Publisher', regValue('Publisher'));
 
 // ---------------------------------------------------------------------------------------------------
 section('3. Start Menu integration');
@@ -326,15 +499,28 @@ check(
   'health reports this installation root',
   healthDoc.installRoot,
 );
+check(
+  healthDoc.serverVersion === 'civic-server/1.1',
+  'the server names its own version and no release-candidate label',
+  healthDoc.serverVersion,
+);
 const firstPid = healthDoc.pid;
 info('server pid', String(firstPid));
 
 const appHealth = await get('/deployment-health.json');
 check(appHealth.status === 200, 'application deployment-health.json served');
-check(JSON.parse(appHealth.body).releaseId === RELEASE_ID, 'payload names the Windows release id');
+const appHealthDoc = JSON.parse(appHealth.body);
+check(appHealthDoc.releaseId === RELEASE_ID, 'payload names the Windows release id');
+check(appHealthDoc.releaseChannel === 'windows-x64', 'payload names the windows-x64 channel');
 check(
-  JSON.parse(appHealth.body).releaseChannel === 'windows-x64',
-  'payload names the windows-x64 channel',
+  appHealthDoc.displayVersion === IDENTITY.displayVersion,
+  'payload names the display version',
+  appHealthDoc.displayVersion,
+);
+check(
+  appHealthDoc.databaseSchemaVersion === 2 && appHealthDoc.backupFormatVersion === 3,
+  'payload declares database schema 2 and backup format 3',
+  `schema ${appHealthDoc.databaseSchemaVersion}, backup ${appHealthDoc.backupFormatVersion}`,
 );
 
 // The default-browser mechanism. Assert the shell actually started the user's configured handler rather
@@ -356,6 +542,10 @@ check(
   Number((browserProcesses.stdout ?? '0').trim()) > 0,
   'a browser process is running after launch',
   `handler ${progIdValue}`,
+);
+check(
+  launchLogLines().some((l) => / open outcome=ok exit=0 /.test(l)),
+  'the launch was recorded in logs\\launch.log as ok',
 );
 
 // ---------------------------------------------------------------------------------------------------
@@ -394,7 +584,7 @@ for (const [path, want] of Object.entries(mime)) {
   );
 }
 // The content-hashed asset bundle, discovered from the payload rather than hard-coded.
-const entryJs = JSON.parse(appHealth.body).entry.js;
+const entryJs = appHealthDoc.entry.js;
 const asset = await get(`/${entryJs}`);
 check(
   asset.status === 200 && asset.headers.get('content-type') === 'text/javascript; charset=utf-8',
@@ -463,12 +653,12 @@ const traversals = [
   '/%00/VERSION',
 ];
 let leaks = 0;
-for (const target of traversals) {
-  const r = await rawRequest(target);
+for (const t of traversals) {
+  const r = await rawRequest(t);
   const leaked = r.body?.includes(canary) || /\[fonts\]/i.test(r.body ?? '');
   if (leaked) {
     leaks += 1;
-    fail(`traversal ${target}`, `LEAKED (status ${r.status})`);
+    fail(`traversal ${t}`, `LEAKED (status ${r.status})`);
   }
 }
 check(
@@ -478,7 +668,7 @@ check(
 );
 
 // The traversal battery must be able to fail. Confirm the canary is genuinely reachable on disk and
-// genuinely outside the document root, or those 20 refusals prove nothing.
+// genuinely outside the document root, or those refusals prove nothing.
 const versionOnDisk = readFileSync(join(INSTALL_ROOT, 'releases', RELEASE_ID, 'VERSION'), 'utf8');
 check(
   versionOnDisk.includes(canary),
@@ -498,7 +688,11 @@ section('8. status, stop and process identity');
 const status = sh(bin('civic-launch.exe'), ['status']);
 check(status.status === 0, 'status exited 0');
 check(/已核验属于本安装/.test(status.stdout ?? ''), 'status proves process ownership');
-check(new RegExp(RELEASE_ID).test(status.stdout ?? ''), 'status names the active release');
+check(
+  (status.stdout ?? '').includes(`${IDENTITY.displayVersion}（${RELEASE_ID}）`),
+  'status names the display version and the release id',
+);
+check(/数据格式 +: 第 2 版/.test(status.stdout ?? ''), 'status names the data format');
 check(
   /no missing, altered or unlisted file/.test(status.stdout ?? ''),
   'status verifies payload integrity',
@@ -506,10 +700,9 @@ check(
 
 // A state file that names a process we do not own must lead to a refusal, not a kill.
 //
-// Tampering with the PID alone is NOT enough to test this, and the first version of this check made
-// exactly that mistake: stop tries the graceful shutdown endpoint first, the real token was still
-// valid, so the real server stopped politely and the terminate path -- the one under test -- was never
-// reached. The token has to be broken too, so the only route left is the one that must refuse.
+// Tampering with the PID alone is NOT enough to test this: stop tries the graceful shutdown endpoint
+// first, and a valid token would stop the real server politely without ever reaching the terminate path
+// under test. The token has to be broken too, so the only route left is the one that must refuse.
 const statePath = join(INSTALL_ROOT, 'state', 'server.json');
 const realState = JSON.parse(readFileSync(statePath, 'utf8'));
 const victim = spawn('cmd.exe', ['/c', 'ping', '-n', '30', '127.0.0.1'], {
@@ -545,8 +738,6 @@ check(
   'the refusal names the reason it refused',
   refusalText.split(/\r?\n/).find((l) => /refusing/.test(l)) ?? '(no reason line)',
 );
-// RC2 replaced RC1's developer-facing sentence with the canonical safety statement from
-// docs/copy-style-zh-CN.md, so that is what must appear.
 check(
   /程序不会强行结束无法确认归属的进程/.test(refusalText),
   'the refusal states the canonical safety guarantee in Chinese',
@@ -565,8 +756,8 @@ check(
 check(await waitFor(async () => !(await portOpen()), 8000), 'the port is free after stop');
 check(!existsSync(statePath), 'the state file was removed on stop');
 
-// Stopping twice must be harmless. This is the case that used to return an error: the record names a
-// dead process, and the honest answer is "nothing is running", not a refusal.
+// Stopping twice must be harmless: the record names a dead process, and the honest answer is "nothing
+// is running", not a refusal.
 writeFileSync(statePath, JSON.stringify(realState, null, 2));
 const stopAgain = sh(bin('civic-launch.exe'), ['stop']);
 check(stopAgain.status === 0, 'stop on a stale record exits 0', `code ${stopAgain.status}`);
@@ -575,8 +766,7 @@ check(!existsSync(statePath), 'the stale record was cleared');
 const stopThird = sh(bin('civic-launch.exe'), ['stop']);
 check(stopThird.status === 0, 'stop with no record at all exits 0', `code ${stopThird.status}`);
 
-// Let anything of ours finish exiting before the next section measures the port: a just-exited image is
-// still listed by Get-Process for a moment, and its file cannot be deleted yet.
+// Let anything of ours finish exiting before the next section measures the port.
 await waitFor(async () => serverProcesses() === '', 15000);
 
 // ---------------------------------------------------------------------------------------------------
@@ -590,6 +780,32 @@ const conflictText = `${conflicted.stdout}${conflicted.stderr}`;
 check(/已被其他程序占用/.test(conflictText), 'the conflict message is in Chinese and specific');
 check(/换端口/.test(conflictText), 'the message explains why the port cannot be changed');
 check(squatter.listening, 'the unrelated occupant is still listening -- it was not killed');
+check(
+  launchLogLines().some((l) => / open outcome=port-conflict-foreign-program exit=3 /.test(l)),
+  'the conflict was recorded in logs\\launch.log',
+);
+
+// The same conflict, started the way a Start Menu shortcut starts it. There is no console, so the
+// person must get a dialog -- RC1-RC3 printed to a stderr that did not exist and showed nothing.
+const conflictDialog = dialogOf(bin('civic-launch.exe'), 'open');
+check(conflictDialog.found, 'a shortcut-started launch shows a dialog on a port conflict');
+check(
+  conflictDialog.title === '政务工作记录台',
+  'the dialog is titled 政务工作记录台',
+  conflictDialog.title,
+);
+check(
+  /端口 127\.0\.0\.1:8765 已被其他程序占用/.test(conflictDialog.text) &&
+    /收集诊断信息/.test(conflictDialog.text),
+  'the dialog explains the conflict and points to 收集诊断信息',
+  conflictDialog.text.slice(0, 120),
+);
+check(
+  conflictDialog.exit === '3',
+  'the shortcut-started launch still exits 3',
+  conflictDialog.exit,
+);
+check(squatter.listening, 'the occupant survived the second attempt too');
 const stray = serverProcesses();
 check(
   stray === '',
@@ -598,8 +814,53 @@ check(
 );
 await new Promise((r) => squatter.close(r));
 
+// The status shortcut: with no console, the report arrives in an information dialog.
+const statusDialog = dialogOf(bin('civic-launch.exe'), 'status');
+check(statusDialog.found, 'the 查看运行状态 shortcut shows its report in a dialog');
+check(
+  /运行状态/.test(statusDialog.text) && statusDialog.text.includes(RELEASE_ID),
+  'the status dialog carries the report',
+  statusDialog.text.slice(0, 120),
+);
+check(statusDialog.exit === '0', 'status exits 0', statusDialog.exit);
+
 // ---------------------------------------------------------------------------------------------------
-section('10. same-version repair');
+section('10. a quarantined server executable');
+// What an anti-malware quarantine looks like to the launcher: both copies of civic-server.exe gone. The
+// outcome must be named, and the person must be told to repair rather than to switch protection off.
+const releaseServer = join(INSTALL_ROOT, 'releases', RELEASE_ID, 'server', 'civic-server.exe');
+const binServer = bin('civic-server.exe');
+const aside = (p) => `${p}.acceptance-aside`;
+sh('powershell', [
+  '-NoProfile',
+  '-Command',
+  `Move-Item -LiteralPath '${binServer}' -Destination '${aside(binServer)}'; Move-Item -LiteralPath '${releaseServer}' -Destination '${aside(releaseServer)}'`,
+]);
+const quarantined = sh(bin('civic-launch.exe'), ['open']);
+const quarantineText = `${quarantined.stdout}${quarantined.stderr}`;
+check(
+  quarantined.status === 5,
+  'launch exits 5 when the server executable is missing',
+  `code ${quarantined.status}`,
+);
+check(/找不到本地服务程序/.test(quarantineText), 'the message names the missing program');
+check(
+  /请不要为此关闭安全软件/.test(quarantineText),
+  'the message does not ask for protection to be switched off',
+);
+check(
+  launchLogLines().some((l) => / open outcome=server-executable-missing exit=5 /.test(l)),
+  'the outcome was recorded as server-executable-missing',
+);
+sh('powershell', [
+  '-NoProfile',
+  '-Command',
+  `Move-Item -LiteralPath '${aside(binServer)}' -Destination '${binServer}'; Move-Item -LiteralPath '${aside(releaseServer)}' -Destination '${releaseServer}'`,
+]);
+check(existsSync(binServer) && existsSync(releaseServer), 'both executables were put back');
+
+// ---------------------------------------------------------------------------------------------------
+section('11. same-version repair');
 sh(bin('civic-launch.exe'), ['stop']);
 const removed = await waitFor(async () => {
   try {
@@ -635,15 +896,22 @@ check(/integration check/.test(repair.stdout ?? ''), 'the repair proved the serv
 sh(bin('civic-launch.exe'), ['stop']);
 
 // A same-version activate must not damage the payload it is verifying.
-const verifyAfterRepair = sh(bin('civic-admin.exe'), ['verify', '--root', INSTALL_ROOT]);
+const verifyAfterRepair = sh(bin('civic-admin.exe'), [
+  'verify',
+  '--root',
+  INSTALL_ROOT,
+  '--release',
+  RELEASE_ID,
+  '--expect-active',
+]);
 check(
   verifyAfterRepair.status === 0,
-  'the payload still verifies after a repair',
+  'the payload still verifies, and this release is the active one',
   (verifyAfterRepair.stdout ?? '').trim(),
 );
 
 // ---------------------------------------------------------------------------------------------------
-section('11. concurrent installers');
+section('12. concurrent installers');
 const a = spawn(
   bin('civic-admin.exe'),
   ['activate', '--root', INSTALL_ROOT, '--release', RELEASE_ID],
@@ -689,17 +957,11 @@ check(
 sh(bin('civic-launch.exe'), ['stop']);
 
 // ---------------------------------------------------------------------------------------------------
-section('12. upgrade and rollback');
+section('13. upgrade and rollback within one data format');
 // A second release built by copying the first: this exercises the pointer machinery without pretending
-// the payload changed.
-const NEXT_ID = RELEASE_ID + 'a'; // a synthetic sibling release, for the pointer machinery only
-const nextDir = join(INSTALL_ROOT, 'releases', NEXT_ID);
-rmSync(nextDir, { recursive: true, force: true });
-sh('powershell', [
-  '-NoProfile',
-  '-Command',
-  `Copy-Item -LiteralPath '${join(INSTALL_ROOT, 'releases', RELEASE_ID)}' -Destination '${nextDir}' -Recurse`,
-]);
+// the payload changed. Same schema, so both directions are allowed.
+const NEXT_ID = `${RELEASE_ID}a`;
+const nextDir = siblingRelease(NEXT_ID);
 const upgrade = sh(bin('civic-admin.exe'), [
   'activate',
   '--root',
@@ -719,7 +981,7 @@ check(
 sh(bin('civic-launch.exe'), ['stop']);
 
 const rollback = sh(bin('civic-admin.exe'), ['rollback', '--root', INSTALL_ROOT]);
-check(rollback.status === 0, 'rollback exited 0', `code ${rollback.status}`);
+check(rollback.status === 0, 'rollback within one schema exited 0', `code ${rollback.status}`);
 check(
   readFileSync(join(INSTALL_ROOT, 'current.txt'), 'utf8').trim() === RELEASE_ID,
   'current.txt is back to the previous release',
@@ -731,16 +993,70 @@ check(
 sh(bin('civic-launch.exe'), ['stop']);
 rmSync(nextDir, { recursive: true, force: true });
 
+// ---------------------------------------------------------------------------------------------------
+section('14. an older data format is never put in front of the records');
+// A release shaped like RC3 -- no databaseSchemaVersion, so schema 1 -- that still verifies.
+const LEGACY_ID = `${RELEASE_ID}l`;
+const legacyDir = siblingRelease(LEGACY_ID, { legacySchema: true });
+const legacyVerify = sh(bin('civic-admin.exe'), [
+  'verify',
+  '--root',
+  INSTALL_ROOT,
+  '--release',
+  LEGACY_ID,
+]);
+check(
+  legacyVerify.status === 0,
+  'the legacy-shaped release verifies, so only its schema is at issue',
+);
+
+const downgrade = sh(bin('civic-admin.exe'), [
+  'activate',
+  '--root',
+  INSTALL_ROOT,
+  '--release',
+  LEGACY_ID,
+]);
+check(
+  downgrade.status === 4,
+  'activating an older data format is refused (exit 4)',
+  `code ${downgrade.status}`,
+);
+check(
+  /older browser-database schema/.test(downgrade.stderr ?? '') &&
+    /不支持把数据降级/.test(downgrade.stderr ?? ''),
+  'the refusal names the reason, in English and in Chinese',
+);
+check(
+  readFileSync(join(INSTALL_ROOT, 'current.txt'), 'utf8').trim() === RELEASE_ID,
+  'the current release is untouched by the refused activation',
+);
+
+// Rollback: previous.txt naming an older format is exactly the state an RC3 -> 0.2.0 upgrade leaves.
+writeFileSync(join(INSTALL_ROOT, 'previous.txt'), `${LEGACY_ID}\r\n`);
+const refusedRollback = sh(bin('civic-admin.exe'), ['rollback', '--root', INSTALL_ROOT]);
+check(
+  refusedRollback.status === 4,
+  'rollback to an older data format is refused (exit 4)',
+  `code ${refusedRollback.status}`,
+);
+check(
+  readFileSync(join(INSTALL_ROOT, 'current.txt'), 'utf8').trim() === RELEASE_ID,
+  'the current release is untouched by the refused rollback',
+);
+const statusAfter = sh(bin('civic-launch.exe'), ['status']);
+check(
+  /可回退版本 +: （无）上一版本 .* 使用较旧的数据格式（第 1 版），回退可能损坏记录，已禁止/.test(
+    statusAfter.stdout ?? '',
+  ),
+  'status says the previous release is not a safe rollback target',
+);
+check(!(await portOpen()), 'nothing was started by either refusal');
+
 // Failure before activation must leave the current version usable. Corrupt a staged release and confirm
 // activation refuses without touching current.txt.
-const BROKEN_ID = RELEASE_ID + 'b'; // deliberately tampered, to prove activation refuses it
-const brokenDir = join(INSTALL_ROOT, 'releases', BROKEN_ID);
-rmSync(brokenDir, { recursive: true, force: true });
-sh('powershell', [
-  '-NoProfile',
-  '-Command',
-  `Copy-Item -LiteralPath '${join(INSTALL_ROOT, 'releases', RELEASE_ID)}' -Destination '${brokenDir}' -Recurse`,
-]);
+const BROKEN_ID = `${RELEASE_ID}b`;
+const brokenDir = siblingRelease(BROKEN_ID);
 writeFileSync(join(brokenDir, 'app', 'index.html'), '<!doctype html><title>tampered</title>');
 const brokenActivate = sh(bin('civic-admin.exe'), [
   'activate',
@@ -762,13 +1078,18 @@ check(
 rmSync(brokenDir, { recursive: true, force: true });
 
 // ---------------------------------------------------------------------------------------------------
-section('13. diagnostics');
-// Start a server first. A diagnostic report collected with nothing running is the uninteresting case,
-// and the first version of this check asserted on a line that only exists when a server IS recorded --
-// so it failed for the wrong reason rather than finding anything.
+section('15. diagnostics');
+// Start a server first. A report collected with nothing running is the uninteresting case.
 sh(bin('civic-launch.exe'), ['open']);
 await waitFor(portOpen, 15000);
 const liveState = JSON.parse(readFileSync(join(INSTALL_ROOT, 'state', 'server.json'), 'utf8'));
+// One request under localhost, the mistake that makes records look lost: the server must mark it, and
+// the report must name the class.
+const viaLocalhost = await rawRequest('/', 'GET', 'localhost:8765');
+check(
+  viaLocalhost.status === 200,
+  'a request under localhost is still answered (behaviour unchanged)',
+);
 
 const diag = sh(bin('civic-diag.exe'), []);
 check(diag.status === 0, 'civic-diag exited 0', `code ${diag.status}`);
@@ -782,7 +1103,41 @@ if (diagPath && existsSync(diagPath)) {
     report.startsWith('\uFEFF'),
     'the report is UTF-8 with a BOM so Notepad reads it correctly',
   );
+  check(
+    report.indexOf('0. 诊断结论') > 0 &&
+      report.indexOf('0. 诊断结论') < report.indexOf('1. Windows'),
+    'the report opens with its conclusion',
+  );
+  check(
+    /\[origin-or-profile\] 服务日志中有 [1-9][0-9]* 个请求不是通过固定访问地址/.test(report),
+    'the conclusion names the localhost request as an origin issue',
+  );
+  check(
+    /support class +: windows-11/.test(report),
+    'the report classifies this machine as Windows 11',
+  );
+  check(
+    /native arch +: x64 \(IsWow64Process2\)/.test(report),
+    'the report names the native architecture',
+  );
+  check(
+    /registry name +: .*the build decides/.test(report),
+    'the registry product name is quoted, not trusted',
+  );
+  check(
+    /Smart App Control : /.test(report) && /AppLocker rules +: /.test(report),
+    'the report states the program-execution policies',
+  );
   check(report.includes(RELEASE_ID), 'the report names the active release');
+  check(
+    new RegExp(`display version +: ${IDENTITY.displayVersion.replace(/\./g, '\\.')}`).test(report),
+    'the report names the display version',
+  );
+  check(/data format +: schema 2/.test(report), 'the report names the data format');
+  check(
+    /rollback +: NOT a safe rollback target -- it uses schema 1/.test(report),
+    'the report says the older previous release is not a safe rollback target',
+  );
   check(report.includes(ORIGIN), 'the report names the canonical origin');
   check(
     /shutdown token +: present/.test(report),
@@ -790,35 +1145,46 @@ if (diagPath && existsSync(diagPath)) {
   );
   check(/ownership +: PROVEN/.test(report), 'the report states that server ownership is proven');
   check(/payload +: .*verified/.test(report), 'the report carries the payload verdict');
-  check(/install.log|Deployment log/.test(report), 'the report carries the deployment log');
+  check(
+    /5\. Launch log/.test(report) && /outcome=server-executable-missing/.test(report),
+    'the report carries the launch log',
+  );
+  check(
+    /host=localhost:8765/.test(report),
+    'the report carries the server log with the host marker',
+  );
+  check(/7\. Installer transcript/.test(report), 'the report carries the installer transcript');
 
   // The token is the one secret in the tree. It must be named as present and never quoted.
   check(!report.includes(liveState.shutdownToken), 'the token value itself is NOT in the report');
 
-  // A word-based scan is the wrong instrument here: the report's own privacy note names Cookie,
-  // IndexedDB and passwords in order to promise it does not carry them, so grepping for those words
-  // matches the disclaimer and reports a leak that does not exist -- which is exactly what the first
-  // version of this check did. Scan for the SHAPE of leaked data instead, outside the note.
-  const note = report.indexOf('可以直接回传。');
-  const body = note >= 0 ? report.slice(note) : report;
-  const blobs = body.match(/[A-Za-z0-9+/]{48,}={0,2}/g) ?? [];
+  // Scan for the SHAPE of leaked data, not for words: the report's own privacy note names Cookie and
+  // passwords in order to promise it does not carry them.
+  const blobs = report.match(/[A-Za-z0-9+/]{48,}={0,2}/g) ?? [];
   check(
     blobs.length === 0,
-    'the report body carries no long opaque blob',
+    'the report carries no long opaque blob',
     blobs.length === 0
       ? 'no base64/hex run of 48+ characters'
       : `found: ${blobs.slice(0, 2).join(', ')}`,
   );
-  for (const marker of ['.sqlite', '.ldb', 'Local Storage', 'User Data', 'CURRENT_RECORD']) {
-    check(!body.includes(marker), `the report body does not reference ${marker}`);
+  const account = process.env.USERNAME ?? '';
+  check(
+    account.length >= 3 && !report.toLowerCase().includes(account.toLowerCase()),
+    'the report does not carry the account name',
+  );
+  for (const marker of ['.sqlite', '.ldb', 'Local Storage', 'User Data', 'IndexedDB\\']) {
+    check(!report.includes(marker), `the report does not reference ${marker}`);
   }
   info('diagnostic file', `${diagPath} (${readFileSync(diagPath).length} bytes)`);
   rmSync(diagPath, { force: true });
 }
 sh(bin('civic-launch.exe'), ['stop']);
+rmSync(legacyDir, { recursive: true, force: true });
+rmSync(join(INSTALL_ROOT, 'previous.txt'), { force: true });
 
 // ---------------------------------------------------------------------------------------------------
-section('14. summary');
+section('16. summary');
 const outDir = join(ROOT, 'release', 'windows');
 for (const f of readdirSync(outDir)) {
   if (f.startsWith('.acceptance-setup-')) rmSync(join(outDir, f), { force: true });
@@ -841,7 +1207,7 @@ if (failures === 0) {
 writeFileSync(
   join(outDir, `acceptance-deploy-${RELEASE_ID}.txt`),
   [
-    'CivicWorkDesk Windows RC1 -- development-workstation acceptance',
+    `CivicWorkDesk Windows ${IDENTITY.displayVersion} -- development-workstation acceptance`,
     '',
     `installer sha256 : ${setupDigest}`,
     `release id       : ${RELEASE_ID}`,
