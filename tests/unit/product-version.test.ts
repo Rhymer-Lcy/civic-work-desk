@@ -17,6 +17,13 @@ const TARGET = {
   original: 'x.exe',
 };
 
+const RELEASE = {
+  releaseId: '2026.09.29-win-0.2.0-rc.1',
+  publisher: 'Rhymer-Lcy',
+  productNameZh: '政务工作记录台',
+  productNameEn: 'CivicWorkDesk',
+};
+
 /** dwFileVersion and dwProductVersion from a VS_VERSION_INFO block, as dotted quads. */
 function fixedVersions(resource: Buffer): { file: string; product: string } {
   const signature = Buffer.from([0xbd, 0x04, 0xef, 0xfe]);
@@ -97,10 +104,29 @@ describe('the version resource the build writes', () => {
     ['1.12.3', '1.12.3.0'],
     ['40000.1.2', '40000.1.2.0'],
   ])('%s is stamped as numeric %s, with the display version kept as text', (input, numeric) => {
-    const resource = buildVersionResource(TARGET, parseProductVersion(input), '2026.10.01-win-rc1');
+    const resource = buildVersionResource(TARGET, parseProductVersion(input), RELEASE);
     expect(fixedVersions(resource)).toEqual({ file: numeric, product: numeric });
     expect(stringValue(resource, 'FileVersion')).toBe(numeric);
-    expect(stringValue(resource, 'ProductVersion')).toBe(`${input} (2026.10.01-win-rc1)`);
+    // Exactly the display version, which is also what Add/Remove Programs shows. RC1-RC3 appended the
+    // release id here, so the two places named one build differently.
+    expect(stringValue(resource, 'ProductVersion')).toBe(input);
+    expect(stringValue(resource, 'Comments')).toBe(`release ${RELEASE.releaseId}`);
+  });
+
+  it('names the publisher, never the product, as the company', () => {
+    const resource = buildVersionResource(TARGET, parseProductVersion('0.2.0-rc.1'), RELEASE);
+    expect(stringValue(resource, 'CompanyName')).toBe('Rhymer-Lcy');
+    expect(stringValue(resource, 'LegalCopyright')).toBe('© 2026 Rhymer-Lcy. 保留所有权利。');
+    expect(stringValue(resource, 'ProductName')).toBe('政务工作记录台 (CivicWorkDesk)');
+    expect(resource.toString('utf16le')).not.toMatch(/win-rc[0-9]|\bRC[0-9]\b/);
+  });
+
+  it('has no default for any identity field', () => {
+    for (const key of Object.keys(RELEASE) as (keyof typeof RELEASE)[]) {
+      expect(() =>
+        buildVersionResource(TARGET, parseProductVersion('0.2.0-rc.1'), { ...RELEASE, [key]: '' }),
+      ).toThrow(new RegExp(`${key} is required`));
+    }
   });
 
   it('the package version of this branch is policy-conformant', async () => {

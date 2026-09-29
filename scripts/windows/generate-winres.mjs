@@ -2,7 +2,7 @@
 /**
  * Generate the Windows resource objects that give the executables an icon and a version block.
  *
- *   node scripts/windows/generate-winres.mjs --release-id <id> [--version <x.y.z[-pre]>]
+ *   node scripts/windows/generate-winres.mjs --release-id <YYYY.MM.DD-win-<package.json version>>
  *
  * Writes one `*_windows_amd64.syso` next to each user-facing command. The Go linker picks up any
  * `.syso` in a package directory automatically, so no build flag or linker option is involved and CGO
@@ -33,6 +33,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseProductVersion } from './product-version.mjs';
+import { loadReleaseIdentity } from './release-identity.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ICON = join(ROOT, 'deploy', 'windows', 'installer', 'civic-work-desk.ico');
@@ -169,21 +170,36 @@ function fixedFileInfo([a, b, c, d]) {
  * The RT_VERSION block for one executable. Exported so the unit suite can decode exactly the bytes the
  * resource object would carry (tests/unit/product-version.test.ts).
  *
+ * Every string comes from the arguments. RC1-RC3 hard-coded CompanyName "CivicWorkDesk" -- the product's
+ * own name, standing where a publisher belongs -- and appended the release id to ProductVersion, so the
+ * Details tab and the installed-programs list showed two different version strings for one build. Now
+ * CompanyName is the publisher from product-identity.json, ProductVersion is exactly the display version
+ * that Add/Remove Programs shows, and the release id that identifies the exact build moves to Comments.
+ *
  * @param {{ description: string, internal: string, original: string }} target
  * @param {import('./product-version.mjs').ProductVersion} version from `parseProductVersion`
- * @param {string} releaseId
+ * @param {{ releaseId: string, publisher: string, productNameZh: string, productNameEn: string }} release
  */
-export function buildVersionResource(target, version, releaseId) {
+export function buildVersionResource(target, version, release) {
+  for (const key of ['releaseId', 'publisher', 'productNameZh', 'productNameEn']) {
+    const value = release?.[key];
+    if (typeof value !== 'string' || value.trim() === '') {
+      throw new Error(`buildVersionResource: ${key} is required and has no default`);
+    }
+  }
+  const year = /^([0-9]{4})\./.exec(release.releaseId)?.[1];
+  if (!year) throw new Error(`buildVersionResource: ${release.releaseId} carries no year`);
   const strings = [
-    ['CompanyName', 'CivicWorkDesk'],
+    ['Comments', `release ${release.releaseId}`],
+    ['CompanyName', release.publisher],
     ['FileDescription', target.description],
     // Numeric by definition; the pre-release label, if any, travels in ProductVersion below.
     ['FileVersion', version.windowsVersion],
     ['InternalName', target.internal],
-    ['LegalCopyright', 'CivicWorkDesk. 保留所有权利。'],
+    ['LegalCopyright', `© ${year} ${release.publisher}. 保留所有权利。`],
     ['OriginalFilename', target.original],
-    ['ProductName', '政务工作记录台 (CivicWorkDesk)'],
-    ['ProductVersion', `${version.displayVersion} (${releaseId})`],
+    ['ProductName', `${release.productNameZh} (${release.productNameEn})`],
+    ['ProductVersion', version.displayVersion],
   ];
 
   const stringEntries = strings.map(([key, value]) => versionNode(key, utf16(value), true));
@@ -399,20 +415,20 @@ function buildCoff(resources) {
 
 // -------------------------------------------------------------------------------------------- main
 function main() {
-  const releaseId = arg('--release-id', '2026.09.24-win-rc2');
-  const appVersion = arg(
-    '--version',
-    JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version,
-  );
-  // Fails the build, with the reason, on anything that is not a policy-conformant version.
-  const version = parseProductVersion(appVersion);
+  // Required, and checked against package.json, product-identity.json and the published releases by
+  // release-identity.mjs. Until Phase 6 this defaulted to 2026.09.24-win-rc2, so a bare run stamped a
+  // spent identity into the executables. There is no --version flag either: the version is
+  // package.json's, and a second source is how the two would come to disagree.
+  const identity = loadReleaseIdentity(ROOT, arg('--release-id', undefined));
+  const version = parseProductVersion(identity.displayVersion);
   const { images, group } = readIcon(ICON);
 
   console.log('CivicWorkDesk Windows resource objects');
   console.log('');
   console.log(`  icon       : ${ICON} (${images.length} images)`);
-  console.log(`  release id : ${releaseId}`);
+  console.log(`  release id : ${identity.releaseId}`);
   console.log(`  version    : ${version.displayVersion} (numeric ${version.windowsVersion})`);
+  console.log(`  publisher  : ${identity.publisher}`);
   console.log('');
 
   for (const target of TARGETS) {
@@ -428,7 +444,7 @@ function main() {
         type: RT_VERSION,
         id: 1,
         lang: LANG_ZH_CN,
-        data: buildVersionResource(target, version, releaseId),
+        data: buildVersionResource(target, version, identity),
       },
     ];
     const coff = buildCoff(resources);
