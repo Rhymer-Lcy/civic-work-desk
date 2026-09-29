@@ -1,0 +1,12 @@
+{
+  "description": "UOS release archives that have been signed off and are frozen. archive-tests.mjs verifies a listed archive against its own entry here (byte-identical digest, recorded application commit, sign-off document) instead of against today's dist/, which is only the right comparison for an unsigned candidate built from the current tree. Add an entry only when a release is signed off; never edit one.",
+  "releases": [
+    {
+      "archive": "civic-work-desk-uos20-loongarch64-2026.09.23-5.tar.gz",
+      "releaseId": "2026.09.23-5",
+      "sha256": "969a2a74bb3e893ef7e794729578383620f0d819e6ce74bd1e2cfb43f370e5bf",
+      "applicationCommit": "ad65e8f6e186912ae97200264f05ab26181f34e1",
+      "signOffRecord": "docs/phase-3-final-signoff.md"
+    }
+  ]
+}

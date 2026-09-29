@@ -86,6 +86,13 @@ sh scripts/uos/build-release.sh 2026.10.05-1   # 或显式指定
    `dist/` 逐字节一致、地址是否处处规范、`targetTested` 是否还是 `NO`、以及
    `docs/uos-final-acceptance.md` 里写的那个 SHA-256 是否就是这个包的。
 
+   其中 `app/` 与 `dist/` 的逐字节比对**只针对候选包**，即尚未签收、由当前源码构建的包。已签收的包
+   登记在 `scripts/uos/signed-off-releases.json` 中，属于冻结产物：闸门改为核对它仍是签收时的那一个
+   （SHA-256 与登记值及签收记录一致，`VERSION` 中的 `applicationCommit` 与 `releaseId` 与登记值一致），
+   其余各项照常检查，但不再要求它与今天的 `dist/` 相同。否则共享应用的每一次正常改动都会被报成已签收
+   包损坏（Phase 5 收尾时的修正，见 docs/phase-5-evidence.md）。新的包只有在签收时才加入登记表，
+   已有条目不得修改。
+
 最后一条是防「陈旧的伴生文件」：文档里手抄的哈希会在重新打包的那一刻过期，而它正是回传证据要
 对照的值。
 

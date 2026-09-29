@@ -382,11 +382,11 @@ checked by hand on 2026-09-21, Chromium 1440×900 and an emulated Pixel 7.
 The UOS deployment is not application code and is not covered by Vitest or Playwright. It has three
 gates of its own, run together by `npm run verify:uos`:
 
-| Gate                       | What it checks                                                                      |
-| -------------------------- | ----------------------------------------------------------------------------------- |
-| `npm run lint:uos`         | the deployment invariants: one canonical origin, no sudo, no kill-by-port, POSIX sh |
-| `npm run test:uos`         | 138 assertions against real BusyBox / `/proc` / signals on a POSIX host             |
-| `npm run test:uos:archive` | 55 checks over the bytes of **both** delivered tars                                 |
+| Gate                       | What it checks                                                                                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint:uos`         | the deployment invariants: one canonical origin, no sudo, no kill-by-port, POSIX sh                                                                         |
+| `npm run test:uos`         | 138 assertions against real BusyBox / `/proc` / signals on a POSIX host                                                                                     |
+| `npm run test:uos:archive` | the bytes of **both** delivered tars; a signed-off archive against its registry entry (`scripts/uos/signed-off-releases.json`), a candidate against `dist/` |
 
 Three things about them are worth knowing before relying on them:
 

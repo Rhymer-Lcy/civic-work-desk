@@ -14,19 +14,34 @@
  * would answer the first two through another program's formatting; the last one it cannot answer at
  * all. So the archive is inflated and the headers are read here.
  *
- * The check that matters most is the last: every `app/` member is compared byte-for-byte (by digest)
- * against `dist/`, from inside the archive. That is what makes "Phase 3 ships the Phase-2 build
- * unchanged" a measured claim about the delivered artifact rather than a statement about a staging
- * directory that was correct at some earlier moment.
+ * ## Two questions, depending on what the archive is (section 5)
+ *
+ * A CANDIDATE — an archive not yet signed off, built from the current tree — must carry exactly the
+ * current build: every `app/` member is compared byte-for-byte (by digest) against `dist/`, from inside
+ * the archive. That is what makes "this release ships the build under test" a measured claim about the
+ * delivered artifact rather than a statement about a staging directory.
+ *
+ * A SIGNED-OFF archive, listed in `signed-off-releases.json`, is frozen. It must still be exactly the
+ * artifact that was signed off — its SHA-256 equal to the registered one (which must also be the digest
+ * the sign-off record quotes), its VERSION naming the registered application commit — and every other
+ * section of this file still applies to it. It is NOT compared with today's `dist/`: once the shared
+ * application moves on, that comparison fails for every legitimate product change and says nothing
+ * about the artifact. Until the Phase-5 closeout this file asked a signed-off archive that question
+ * anyway, and a development branch carried three failures that had to be explained by hand
+ * (docs/phase-5-evidence.md §1).
+ *
+ * A registered file name with any other digest fails; it is never quietly treated as a candidate.
  */
 
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { scanKindFor, wrongOriginHits } from './origin-scan.mjs';
 
 const ROOT = process.cwd();
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const RELEASE_DIR = join(ROOT, 'release');
 const CANONICAL = 'http://127.0.0.1:8765';
 
@@ -254,44 +269,93 @@ assert(
   `${digestMismatch} mismatched`,
 );
 
-group('5. the application payload is the unmodified Phase-2 build');
-const distDir = join(ROOT, 'dist');
-if (!existsSync(distDir)) {
-  nok('dist/ is present for comparison', 'run npm run build first');
-} else {
-  const distFiles = new Map();
-  (function walk(dir) {
-    for (const name of readdirSync(dir)) {
-      const full = join(dir, name);
-      if (statSync(full).isDirectory()) walk(full);
-      else {
-        const rel = full.slice(distDir.length + 1).replaceAll('\\', '/');
-        distFiles.set(rel, createHash('sha256').update(readFileSync(full)).digest('hex'));
-      }
-    }
-  })(distDir);
+const archiveDigest = createHash('sha256').update(gz).digest('hex');
+const registry = JSON.parse(readFileSync(join(SCRIPT_DIR, 'signed-off-releases.json'), 'utf8'));
+const signedOff = registry.releases.find((r) => r.archive === basename(archivePath)) ?? null;
+const appFileCount = files.filter((e) => e.name.startsWith(`${rootName}/app/`)).length;
 
-  const appFiles = files.filter((e) => e.name.startsWith(`${rootName}/app/`));
-  const differing = [];
-  const extra = [];
-  for (const entry of appFiles) {
-    const rel = entry.name.slice(`${rootName}/app/`.length);
-    const digest = createHash('sha256').update(entry.data).digest('hex');
-    if (!distFiles.has(rel)) extra.push(rel);
-    else if (distFiles.get(rel) !== digest) differing.push(rel);
-  }
-  const absent = [...distFiles.keys()].filter(
-    (rel) => !appFiles.some((e) => e.name === `${rootName}/app/${rel}`),
-  );
-
-  assert(differing.length === 0, 'no application file differs from dist/', differing.join(', '));
-  assert(absent.length === 0, 'no application file is missing from the archive', absent.join(', '));
+if (signedOff) {
+  group('5. signed-off artifact: the payload is still exactly what was signed off');
+  console.log(`       registered: ${signedOff.archive} (${signedOff.signOffRecord})`);
   assert(
-    extra.length === 1 && extra[0] === 'deployment-health.json',
-    'the only addition to the build is deployment-health.json',
-    extra.join(', '),
+    archiveDigest === signedOff.sha256,
+    'the archive is byte-identical to the signed-off artifact (SHA-256 matches the registry)',
+    `registry ${signedOff.sha256} actual ${archiveDigest}`,
   );
-  console.log(`       ${appFiles.length - 1} application files byte-identical to dist/`);
+  const record = join(ROOT, signedOff.signOffRecord);
+  assert(
+    existsSync(record) && readFileSync(record, 'utf8').includes(signedOff.sha256),
+    'the sign-off record quotes the same digest as the registry',
+    signedOff.signOffRecord,
+  );
+  const versionOfArchive =
+    files.find((e) => e.name === `${rootName}/VERSION`)?.data.toString('utf8') ?? '';
+  assert(
+    new RegExp(`^applicationCommit=${signedOff.applicationCommit}$`, 'm').test(versionOfArchive),
+    'VERSION names the application commit recorded at sign-off',
+    signedOff.applicationCommit,
+  );
+  assert(
+    new RegExp(`^releaseId=${signedOff.releaseId.replaceAll('.', '\\.')}$`, 'm').test(
+      versionOfArchive,
+    ),
+    'VERSION names the release id recorded at sign-off',
+    signedOff.releaseId,
+  );
+  console.log(
+    `       ${appFileCount} app/ members covered by the digest above and by the inner manifest (§4);`,
+  );
+  console.log(
+    '       parity with the current dist/ is a candidate check, not asked of a frozen artifact',
+  );
+} else {
+  group('5. candidate: the application payload is the current build');
+  runCandidateParity();
+}
+
+function runCandidateParity() {
+  const distDir = join(ROOT, 'dist');
+  if (!existsSync(distDir)) {
+    nok('dist/ is present for comparison', 'run npm run build first');
+  } else {
+    const distFiles = new Map();
+    (function walk(dir) {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) walk(full);
+        else {
+          const rel = full.slice(distDir.length + 1).replaceAll('\\', '/');
+          distFiles.set(rel, createHash('sha256').update(readFileSync(full)).digest('hex'));
+        }
+      }
+    })(distDir);
+
+    const appFiles = files.filter((e) => e.name.startsWith(`${rootName}/app/`));
+    const differing = [];
+    const extra = [];
+    for (const entry of appFiles) {
+      const rel = entry.name.slice(`${rootName}/app/`.length);
+      const digest = createHash('sha256').update(entry.data).digest('hex');
+      if (!distFiles.has(rel)) extra.push(rel);
+      else if (distFiles.get(rel) !== digest) differing.push(rel);
+    }
+    const absent = [...distFiles.keys()].filter(
+      (rel) => !appFiles.some((e) => e.name === `${rootName}/app/${rel}`),
+    );
+
+    assert(differing.length === 0, 'no application file differs from dist/', differing.join(', '));
+    assert(
+      absent.length === 0,
+      'no application file is missing from the archive',
+      absent.join(', '),
+    );
+    assert(
+      extra.length === 1 && extra[0] === 'deployment-health.json',
+      'the only addition to the build is deployment-health.json',
+      extra.join(', '),
+    );
+    console.log(`       ${appFiles.length - 1} application files byte-identical to dist/`);
+  }
 }
 
 group('6. canonical origin and release identity');
