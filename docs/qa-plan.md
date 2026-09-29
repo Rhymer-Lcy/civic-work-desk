@@ -205,8 +205,11 @@ skip link; keyboard-only record creation; accessible name on every button; 200% 
 
 ### Static
 
-`scripts/static-security-scan.mjs` — ten rules over every source file and `dist/`; the scan prints the
-file count it actually covered (166 in the run that produced the Phase-1.1 package). Source rules
+`scripts/static-security-scan.mjs` — a fixed rule list over every source file and `dist/`; the scan
+prints every rule it applied and the file count it actually covered (166 in the run that produced the
+Phase-1.1 package). This sentence no longer states the number of rules: it said "ten" long after Phase 5
+had made it thirteen, and Phase 5.1 added two (window enumeration and the runtime-endpoint caller,
+each confined to one reviewed file). The scan's own output is the count. Source rules
 (inline handlers, `eval`, `new Function`, `dangerouslySetInnerHTML`, `innerHTML`, `document.write`)
 apply to our code; egress rules (remote script/link, telemetry hosts, absolute paths, legacy record
 ids) apply to the built bundle too. Exceptions are listed in the script with reasons.

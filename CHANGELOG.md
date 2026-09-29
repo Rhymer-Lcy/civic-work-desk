@@ -6,6 +6,32 @@ release ids (`docs/versioning-and-publisher.md`). The deployment phases — the 
 the Windows release candidates (Phase 4) — are recorded in `docs/phase-3-final-signoff.md` and
 `docs/phase-4-windows-rc1.md` to `rc3.md`, and published as GitHub Releases.
 
+## [Unreleased] — Phase 5.1 runtime update safety (post-signoff correction)
+
+Four defects that packaged Windows upgrade acceptance exposed after Phase 5 was signed off. Phase 5's
+sign-off is not rewritten. **No platform release was produced**, and the unpublished Windows candidate
+`4fe9296d…` stays rejected. Full record: `docs/phase-5.1-runtime-update-safety.md`.
+
+### Fixed
+
+- **The application bar no longer moves when a route has a scrollbar.** With classic scrollbars the
+  action slot moved 15 px between routes up to 1920 px wide, and the whole bar 7.5 px above it; the
+  root now reserves the scrollbar gutter (`scrollbar-gutter: stable`). Opening a dialog on a page that
+  scrolls no longer moves the bar either.
+- **Applying an update in one tab no longer reloads the others.** Only the tab where 应用更新 was
+  pressed reloads; every other tab keeps its page, including unsaved input, and offers 刷新到新版本.
+
+### Added
+
+- **Window awareness for update pages.** A waiting service worker answers, without any URL, which
+  windows of the origin are open, so a future update page can refuse to activate while other
+  application windows hold unsaved input.
+- **Interface-generation check.** The build records its interface generation in
+  `app-generation.json`; a page that runs an older interface than the installed program expects says so
+  and looks for the update, without reloading. Silent where the deployment has no
+  `/api/civic/runtime` endpoint yet.
+- `npm run test:e2e:edge`: classic-scrollbar geometry and update behaviour in installed Edge.
+
 ## [Unreleased] — Phase 5 product evolution
 
 The shared application gains a three-level task hierarchy and the data-model change it needs, while every

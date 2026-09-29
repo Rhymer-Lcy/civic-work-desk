@@ -116,3 +116,11 @@ On the evidence above:
 
 This signs off the product for the next platform phase. It is not a platform release and not a
 certification of any platform or store.
+
+## Addendum (2026-09-29): post-signoff corrective Phase 5.1
+
+This record is unchanged above this heading. Packaged Windows upgrade acceptance in Phase 6 later
+exposed four defects in the signed-off application: the bar moved with a classic scrollbar, applying an
+update in one tab reloaded the others, update pages had no view of other open windows, and a page could
+not tell that it ran an older interface than the installed program. They are corrected in a separate
+corrective phase: [phase-5.1-runtime-update-safety.md](phase-5.1-runtime-update-safety.md).

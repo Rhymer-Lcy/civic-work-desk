@@ -271,6 +271,20 @@ This is verified rather than asserted: an E2E test creates a record with an iden
 waits for the worker to activate, then walks every cache entry looking for that string. It fails if
 the string is found.
 
+Two same-origin exchanges were added in Phase 5.1 (`docs/phase-5.1-runtime-update-safety.md`), and
+both carry deployment state only:
+
+- **Window awareness** (`public/sw-client-awareness.js`). A page may ask a waiting worker which
+  windows of the origin are open. The reply reduces each window to a fixed classification, one of
+  the six route names or none, and the visibility and focus flags; it never contains a URL, query,
+  fragment, title or page content. Messages that are not exactly the request, or that come from
+  another origin, get no reply. Unit tests assert the reply's shape and plant URL markers that must
+  not appear; the static scan allows `clients.matchAll` in this file and its built copy only.
+- **Runtime generation** (`src/app/pwa/runtime-generation.ts`). The page asks `/api/civic/runtime`
+  which interface generation the installed program expects, with a body-less GET, no credentials and
+  no cache. It sends nothing about the user, and any answer other than a well-formed different
+  generation changes nothing. The static scan allows the endpoint to be named in this module only.
+
 ## Dependency policy
 
 - Six runtime dependencies, each justified in `docs/dependencies.md`.
