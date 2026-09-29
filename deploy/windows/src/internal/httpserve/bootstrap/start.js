@@ -55,10 +55,14 @@
     blockedCount: '仍在打开的其他页面：{0} 个。关闭后请点击“重试”。',
     unknown:
       '暂时无法确认是否还有其他政务工作记录台页面正在打开。请先保存并关闭其他政务工作记录台页面，然后点击“重试”。',
-    runtime: '无法读取已安装程序的版本信息，为避免使用不一致的版本，暂不打开应用。请点击“重试”；如仍无法打开，' + DIAG,
+    runtime:
+      '无法读取已安装程序的版本信息，为避免使用不一致的版本，暂不打开应用。请点击“重试”；如仍无法打开，' +
+      DIAG,
     origin:
       '当前地址不是政务工作记录台的固定访问地址。记录保存在固定访问地址 {0} 下，请从开始菜单打开政务工作记录台。',
-    incoherent: '本地服务提供的页面与已安装程序的版本不一致，暂不打开应用。请点击“重试”；如仍无法打开，' + DIAG,
+    incoherent:
+      '本地服务提供的页面与已安装程序的版本不一致，暂不打开应用。请点击“重试”；如仍无法打开，' +
+      DIAG,
     uncontrolled: '无法确认浏览器将使用的页面版本。请点击“重试”。',
     stale:
       '浏览器仍在使用旧版本页面，暂时未能取得新版本。请点击“重试”；如多次重试仍不成功，请关闭所有政务工作记录台页面后从开始菜单重新打开，或' +
@@ -66,7 +70,8 @@
     updateTimeout: '检查新版本用时过长，尚未完成。请点击“重试”。',
     switchTimeout: '切换到新版本用时过长，尚未完成。请点击“重试”。',
     afterSwitch:
-      '切换后浏览器提供的页面版本仍与已安装程序不一致，为避免使用旧版本，暂不进入应用。请点击“重试”；如仍不成功，' + DIAG,
+      '切换后浏览器提供的页面版本仍与已安装程序不一致，为避免使用旧版本，暂不进入应用。请点击“重试”；如仍不成功，' +
+      DIAG,
     unexpected: '检查程序版本时出现意外错误，暂不打开应用。请点击“重试”；如仍不成功，' + DIAG,
   };
 
@@ -165,7 +170,8 @@
   function interpret(data) {
     if (!data || typeof data !== 'object' || data.type !== RESULT_TYPE) return unknown('malformed');
     if (data.version !== PROTOCOL.version) return unknown('unsupported-version');
-    if (data.worker !== 'installed' && data.worker !== 'unknown') return unknown('worker-not-waiting');
+    if (data.worker !== 'installed' && data.worker !== 'unknown')
+      return unknown('worker-not-waiting');
     if (!Array.isArray(data.windows)) return unknown('malformed');
     var requesters = 0;
     var others = 0;
@@ -183,7 +189,8 @@
       if (entry.requester) requesters += 1;
       else if (entry.kind === 'application') others += 1;
     }
-    if (requesters !== 1) return unknown(requesters === 0 ? 'requester-not-identified' : 'malformed');
+    if (requesters !== 1)
+      return unknown(requesters === 0 ? 'requester-not-identified' : 'malformed');
     return others === 0 ? { status: 'safe' } : { status: 'blocked', others: others };
   }
 

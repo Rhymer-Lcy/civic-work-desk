@@ -1,37 +1,78 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>政务工作记录台</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { font: 15px/1.7 "Microsoft YaHei", "Segoe UI", sans-serif; margin: 0; padding: 48px 24px; }
-  main { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 16px; }
-  #message { font-size: 16px; margin: 0 0 8px; }
-  #detail { color: #555; margin: 0 0 16px; }
-  .actions { display: flex; gap: 12px; margin: 16px 0 24px; }
-  button { font: inherit; padding: 6px 18px; }
-  details { color: #666; font-size: 13px; }
-  pre { white-space: pre-wrap; word-break: break-all; font-family: Consolas, monospace; font-size: 12px; }
-  @media (prefers-color-scheme: dark) { #detail, details { color: #aaa; } }
-</style>
-</head>
-<body data-state="loading">
-<main>
-  <h1>政务工作记录台</h1>
-  <p id="message" role="status" aria-live="polite">正在检查程序版本…</p>
-  <p id="detail"></p>
-  <div class="actions">
-    <button id="enter" type="button" hidden>进入新版本</button>
-    <button id="retry" type="button" hidden>重试</button>
-  </div>
-  <details>
-    <summary>技术信息</summary>
-    <pre id="facts"></pre>
-  </details>
-</main>
-<script src="/api/civic/start.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>政务工作记录台</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font:
+          15px/1.7 'Microsoft YaHei',
+          'Segoe UI',
+          sans-serif;
+        margin: 0;
+        padding: 48px 24px;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 16px;
+      }
+      #message {
+        font-size: 16px;
+        margin: 0 0 8px;
+      }
+      #detail {
+        color: #555;
+        margin: 0 0 16px;
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+        margin: 16px 0 24px;
+      }
+      button {
+        font: inherit;
+        padding: 6px 18px;
+      }
+      details {
+        color: #666;
+        font-size: 13px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-family: Consolas, monospace;
+        font-size: 12px;
+      }
+      @media (prefers-color-scheme: dark) {
+        #detail,
+        details {
+          color: #aaa;
+        }
+      }
+    </style>
+  </head>
+  <body data-state="loading">
+    <main>
+      <h1>政务工作记录台</h1>
+      <p id="message" role="status" aria-live="polite">正在检查程序版本…</p>
+      <p id="detail"></p>
+      <div class="actions">
+        <button id="enter" type="button" hidden>进入新版本</button>
+        <button id="retry" type="button" hidden>重试</button>
+      </div>
+      <details>
+        <summary>技术信息</summary>
+        <pre id="facts"></pre>
+      </details>
+    </main>
+    <script src="/api/civic/start.js"></script>
+  </body>
 </html>
