@@ -1,0 +1,50 @@
+/** Type declarations for release-identity.mjs, so TypeScript tests can import it. */
+export interface ReleaseIdentity {
+  readonly releaseId: string;
+  readonly releaseDate: string;
+  readonly productVersion: string;
+  readonly displayVersion: string;
+  readonly windowsVersion: string;
+  readonly windowsParts: readonly [number, number, number, number];
+  readonly prerelease: readonly string[];
+  readonly publisher: string;
+  readonly productNameZh: string;
+  readonly productNameEn: string;
+  readonly appVerName: string;
+  readonly setupBase: string;
+  readonly installerName: string;
+  readonly payloadName: string;
+  readonly tagName: string;
+}
+
+export interface PublishedRelease {
+  readonly releaseId: string;
+  readonly tag: string;
+  readonly displayVersion?: string;
+}
+
+export interface PublishedReleases {
+  readonly releases: readonly PublishedRelease[];
+}
+
+export const RELEASE_ID_PATTERN: RegExp;
+
+export function businessDateUtc8(now?: Date): string;
+
+export function deriveReleaseIdentity(input: {
+  readonly releaseId: unknown;
+  readonly packageVersion: string;
+  readonly identity: {
+    readonly productNameZh: string;
+    readonly productNameEn: string;
+    readonly publisherDisplayName: string;
+  };
+  readonly published: PublishedReleases;
+  readonly today: string;
+}): ReleaseIdentity;
+
+export function loadReleaseIdentity(
+  root: string,
+  releaseId: unknown,
+  today?: string,
+): ReleaseIdentity;
