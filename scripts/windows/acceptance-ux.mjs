@@ -34,6 +34,7 @@ const IDENTITY = loadReleaseIdentity(
   ROOT,
   argValue('--release-id', undefined),
   argValue('--today', undefined) ?? businessDateUtc8(),
+  'audit',
 );
 const RELEASE_ID = IDENTITY.releaseId;
 const SETUP = join(ROOT, 'release', 'windows', IDENTITY.installerName);

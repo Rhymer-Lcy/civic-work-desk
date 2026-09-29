@@ -51,9 +51,23 @@ function validCalendarDate(year, month, day) {
  *   identity: { productNameZh: string, productNameEn: string, publisherDisplayName: string },
  *   published: { releases: ReadonlyArray<{ releaseId: string, tag: string, displayVersion?: string }> },
  *   today: string,
+ *   purpose?: 'build' | 'audit',
  * }} input
+ *
+ * `purpose` decides what a published identity means. For `build` -- the default, so forgetting to pass
+ * it fails closed -- every published id, display version and tag is spent and refused. For `audit` the
+ * one published entry that IS this release (same id, same display version, same tag) is accepted, so the
+ * audits and acceptance suites can still examine a release after it has been published; any other
+ * collision is refused as before.
  */
-export function deriveReleaseIdentity({ releaseId, packageVersion, identity, published, today }) {
+export function deriveReleaseIdentity({
+  releaseId,
+  packageVersion,
+  identity,
+  published,
+  today,
+  purpose = 'build',
+}) {
   const fail = (why) => {
     throw new Error(`release identity refused: ${why}`);
   };
@@ -95,9 +109,16 @@ export function deriveReleaseIdentity({ releaseId, packageVersion, identity, pub
     fail(`the publisher ${JSON.stringify(publisher)} is the product's own name, not a publisher`);
   }
 
+  if (purpose !== 'build' && purpose !== 'audit')
+    fail(`unknown purpose ${JSON.stringify(purpose)}`);
   const tagName = `windows-v${version.displayVersion}`;
   // Most specific first: the display version is what a person reads, and the tag is derived from it.
   for (const spent of published.releases) {
+    const isThisRelease =
+      spent.releaseId === releaseId &&
+      spent.displayVersion === version.displayVersion &&
+      spent.tag === tagName;
+    if (purpose === 'audit' && isThisRelease) continue;
     if (spent.releaseId === releaseId) fail(`${releaseId} is already published as ${spent.tag}`);
     if (spent.displayVersion === version.displayVersion) {
       fail(
@@ -129,7 +150,12 @@ export function deriveReleaseIdentity({ releaseId, packageVersion, identity, pub
 }
 
 /** Read the three inputs from the repository and derive the identity. */
-export function loadReleaseIdentity(root, releaseId, today = businessDateUtc8()) {
+export function loadReleaseIdentity(
+  root,
+  releaseId,
+  today = businessDateUtc8(),
+  purpose = 'build',
+) {
   const read = (rel) => JSON.parse(readFileSync(join(root, rel), 'utf8'));
   return deriveReleaseIdentity({
     releaseId,
@@ -137,5 +163,6 @@ export function loadReleaseIdentity(root, releaseId, today = businessDateUtc8())
     identity: read('product-identity.json'),
     published: read(join('scripts', 'windows', 'published-releases.json')),
     today,
+    purpose,
   });
 }

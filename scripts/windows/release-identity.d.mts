@@ -41,10 +41,15 @@ export function deriveReleaseIdentity(input: {
   };
   readonly published: PublishedReleases;
   readonly today: string;
+  readonly purpose?: ReleasePurpose;
 }): ReleaseIdentity;
+
+/** `build` refuses every published identity; `audit` accepts the one that is this release. */
+export type ReleasePurpose = 'build' | 'audit';
 
 export function loadReleaseIdentity(
   root: string,
   releaseId: unknown,
   today?: string,
+  purpose?: ReleasePurpose,
 ): ReleaseIdentity;

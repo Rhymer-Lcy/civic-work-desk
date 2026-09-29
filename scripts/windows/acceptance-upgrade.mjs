@@ -45,6 +45,7 @@ const IDENTITY = loadReleaseIdentity(
   ROOT,
   argValue('--release-id', undefined),
   argValue('--today', undefined) ?? businessDateUtc8(),
+  'audit',
 );
 const RELEASE_ID = IDENTITY.releaseId;
 const RC3_ID = '2026.09.24-win-rc3';

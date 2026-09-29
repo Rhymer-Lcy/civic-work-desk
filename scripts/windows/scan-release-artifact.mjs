@@ -31,6 +31,7 @@ const identity = loadReleaseIdentity(
   ROOT,
   argValue('--release-id'),
   argValue('--today') ?? businessDateUtc8(),
+  'audit',
 );
 const RELEASE_ID = identity.releaseId;
 const OUT_DIR = join(ROOT, 'release', 'windows');
