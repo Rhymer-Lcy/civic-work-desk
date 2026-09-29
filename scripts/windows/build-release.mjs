@@ -15,7 +15,7 @@
  *
  * RC1-RC3 copied app/ out of the frozen UOS -5 release, because that was the application they shipped.
  * The 0.2.0 line ships the Phase-5 application, which no frozen release carries, so the payload is built
- * here -- and built twice, from two clean `git archive` exports rather than from the working tree:
+ * here -- and built twice, from two clean exports of committed trees rather than from the working tree:
  *
  *   1. the signed-off Phase-5 product baseline (PRODUCT_BASELINE, main at sign-off);
  *   2. the deployment source commit this installer is built from.
@@ -258,8 +258,12 @@ function buildExport(commit, label) {
   });
   rmSync(indexEnv.GIT_INDEX_FILE);
   symlinkSync(join(ROOT, 'node_modules'), join(tree, 'node_modules'), 'junction');
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  run(npm, ['run', 'build'], { cwd: tree, shell: process.platform === 'win32' });
+  // npm's own entry point under the Node running this script, so the build uses exactly that Node and
+  // no shell: npm.cmd can only be spawned through a shell, which concatenates arguments unescaped.
+  const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (!existsSync(npmCli))
+    fatal(`${npmCli} is not present; run with a Node distribution that bundles npm`);
+  run(process.execPath, [npmCli, 'run', 'build'], { cwd: tree });
   return join(tree, 'dist');
 }
 
@@ -439,7 +443,7 @@ const version = [
   `publisher=${identity.publisher}`,
   `productBaselineCommit=${PRODUCT_BASELINE}`,
   `applicationCommit=${PRODUCT_BASELINE}`,
-  `applicationPayloadSource=dist/ built from deploymentSourceCommit in a clean git-archive export`,
+  'applicationPayloadSource=dist/ built from deploymentSourceCommit in a clean export of the committed tree (git read-tree + checkout-index)',
   // Derived from what the checks above verified, not retyped.
   `applicationPayloadUnchanged=YES — byte-identical to a clean build of productBaselineCommit (${String(sourceFiles.length)} files), plus ${[...declaredAdditions].join(', ')}`,
   `deploymentSourceCommit=${sourceCommit}`,
