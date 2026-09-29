@@ -503,14 +503,19 @@ end;
   from WizardDirValue, which is the directory that will actually be used in every case. }
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+var
+  Active: string;
 begin
+  Active := ActiveReleaseIn(WizardDirValue);
   Result := '安装位置：' + NewLine + Space + WizardDirValue + NewLine + NewLine +
             '安装类型：' + NewLine + Space + InstallKindText() + NewLine + NewLine +
             '版本：' + NewLine + Space + '{#CivicDisplayVersion}（{#CivicReleaseId}）' + NewLine + NewLine +
             '固定访问地址：' + NewLine + Space + '{#CivicOrigin}' + NewLine;
   if MemoTasksInfo <> '' then
     Result := Result + NewLine + MemoTasksInfo + NewLine;
-  if ActiveReleaseIn(WizardDirValue) <> '' then
+  { Only on a real upgrade: a repair reinstalls the version already running, so there is no old page to
+    close and no update to apply. The first probe of this page showed the note on a repair. }
+  if (Active <> '') and (Active <> '{#CivicReleaseId}') then
     Result := Result + NewLine + '升级后：请关闭所有已打开的{#CivicAppName}页面，再从开始菜单打开；' +
               NewLine + Space + '页面顶部如提示“有新版本可用”，请点“应用更新”。' + NewLine;
 end;
