@@ -405,7 +405,7 @@ begin
                      '  支持的系统：Windows 11 x64，或 Windows 10 22H2（内部版本 19045）x64。' + #13#10;
 
   Shown := Shown + #13#10 + NothingInstalledSentence() + #13#10#13#10 + DiagnosticSentence();
-  MsgBox(Shown, mbCriticalError, MB_OK);
+  SuppressibleMsgBox(Shown, mbCriticalError, MB_OK, IDOK);
   Result := False;
 end;
 
@@ -427,16 +427,16 @@ begin
     exit;
 
   if Code = -1 then
-    MsgBox('无法运行安装前检查程序，可能被安全软件拦截。' + #13#10#13#10 + DiagnosticSentence(),
-           mbCriticalError, MB_OK)
+    SuppressibleMsgBox('无法运行安装前检查程序，可能被安全软件拦截。' + #13#10#13#10 + DiagnosticSentence(),
+           mbCriticalError, MB_OK, IDOK)
   else
-    MsgBox('这个安装位置不能使用：' + #13#10 + WizardDirValue + #13#10#13#10 +
+    SuppressibleMsgBox('这个安装位置不能使用：' + #13#10 + WizardDirValue + #13#10#13#10 +
            '请选择一个当前用户可写的本地目录，例如：' + #13#10 +
            '  ' + ExpandConstant('{localappdata}') + '\CivicWorkDesk' + #13#10 +
            '  D:\Applications\CivicWorkDesk' + #13#10#13#10 +
            '不能使用系统目录、Program Files、驱动器根目录或网络位置。' + #13#10#13#10 +
            DiagnosticSentence(),
-           mbError, MB_OK);
+           mbError, MB_OK, IDOK);
   Result := False;
 end;
 
@@ -671,24 +671,26 @@ begin
     ResultCode := -1;
 
   if ResultCode <> 0 then
-    MsgBox('版本文件已解压，但版本 {#CivicDisplayVersion} 没有被启用。' + #13#10#13#10 +
+    SuppressibleMsgBox('版本文件已解压，但版本 {#CivicDisplayVersion} 没有被启用。' + #13#10#13#10 +
            '之前可用的版本（如果有）没有被破坏，仍然可以正常使用。' + #13#10 +
            '请从开始菜单运行“维护工具 → 收集诊断信息”，' + #13#10 +
            '并将生成的诊断文件（TXT）反馈给维护人员。',
-           mbError, MB_OK);
+           mbError, MB_OK, IDOK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   { Said at the moment it matters, not buried in a document: removing the program is not removing the
-    records. }
+    records. Suppressible, like every message box a silent run can reach: a plain MsgBox ignores
+    /SUPPRESSMSGBOXES, and a scripted silent uninstall then waited on this box with nobody to close it
+    (found in Phase-6 acceptance, 2026-09-30). }
   if CurUninstallStep = usPostUninstall then
-    MsgBox('政务工作记录台已卸载。' + #13#10#13#10 +
+    SuppressibleMsgBox('政务工作记录台已卸载。' + #13#10#13#10 +
            '卸载程序不等于删除数据。' + #13#10#13#10 +
            '工作记录保存在浏览器的站点数据中。卸载不会删除该站点数据，' + #13#10 +
            '也不会删除已导出的 JSON、Excel（.xlsx）、Word（.docx）文件。' + #13#10#13#10 +
            '若以后使用同一浏览器及同一浏览器配置文件，并通过同一固定访问地址' + #13#10 +
            '{#CivicOrigin} 安装兼容版本，原有记录仍可访问。' + #13#10#13#10 +
            '如果确实要清除浏览器中的数据，需要在浏览器的“站点数据”里手动删除。',
-           mbInformation, MB_OK);
+           mbInformation, MB_OK, IDOK);
 end;
