@@ -30,7 +30,8 @@
 
 在 Windows 10 22H2 上安装时会提示：Windows 10 已于 2025 年 10 月 14 日结束支持。
 本程序可以在 Windows 10 22H2 上安装和使用，但建议尽早升级到 Windows 11。
-这个提示只是告知，不会阻止安装。
+这个提示只是告知，不会阻止安装。Windows 10 结束支持后，只有加入扩展安全更新（ESU）
+计划的设备还能收到安全更新；这台计算机自身的安全状况由其管理员负责，安装本程序不会改变这一点。
 
 以下系统不在支持范围内，安装程序会说明原因并停止，不会写入任何安装文件：
 Windows 7、Windows 8、Windows 8.1、22H2 以外的 Windows 10 版本、Windows Server、
@@ -104,7 +105,7 @@ Windows 7、Windows 8、Windows 8.1、22H2 以外的 Windows 10 版本、Windows
 请仅从项目正式 GitHub Release 获取安装包，并在需要时核对 SHA-256。
 如有疑虑，请勿安装。
 
-请勿关闭 Windows Defender、SmartScreen、“智能应用控制”或其他安全软件。
+请勿关闭 Windows Defender 或 SmartScreen，也不要关闭“智能应用控制”或其他安全软件。
 如果安全软件或系统策略阻止了程序运行，程序会弹出说明；请运行
 “收集诊断信息”，把诊断文件反馈给维护人员，由维护人员判断下一步。
 
