@@ -433,13 +433,34 @@ number; the previous release is the only rollback.
 >
 > - The ledger **did** get worse: 台账 is about 25% slower at 5,000 records (≈0.4 s). The hierarchy
 >   computation behind it costs about 2 ms; the rest is rendering the added cell and card fields on a page
->   that renders every row twice without windowing. Windowing remains deferred, so this is recorded as an
->   open product decision rather than fixed here. The integrity pass is 82% slower (+1.2 ms), all of it the
+>   that renders every row twice without windowing. It was first recorded as an open product decision;
+>   the narrow closeout (next note) resolved it without windowing. The integrity pass is 82% slower (+1.2 ms), all of it the
 >   new hierarchy check, which scales like the existing checks. Every other line held or improved; the
 >   "before" figures above came from an earlier session, and the comparison was re-measured interleaved.
 > - No RC3 installation existed on this workstation at closeout, and no installer was run, so the
 >   footprint audit uses the RC3 payload and the installer's layout and retention code instead. It found
 >   that Windows never prunes release directories.
+
+> **Narrow closeout note, 2026-09-29.** A second pass closed three engineering issues before review;
+> results in [phase-5-evidence.md](phase-5-evidence.md) §1 and §3–§7.
+>
+> - **台账** now renders only the presentation in use — the table at `(min-width: 60rem)` or when printing,
+>   the card list otherwise — chosen synchronously on the first render, so the other one never exists in
+>   the DOM. Interleaved over 15 samples per arm, switching to 台账 went from 1,594 ms before Phase 5 and
+>   1,994 ms as first closed to 954 ms. No windowing was needed. A structural E2E spec asserts, on 1,000
+>   records, that the unused presentation is absent at both widths, at the exact breakpoint, across a live
+>   resize and when printing.
+> - **The Windows numeric version** comes from one fail-closed parser: a pre-release never reaches the
+>   fourth field (`0.2.0-rc.1` → `0.2.0.0`), and malformed versions stop the build. Nothing was built.
+> - **The UOS archive gate** verifies a signed-off archive against its own registered digest and
+>   provenance, and keeps parity with `dist/` for candidates only; it passes 56/56 with no expected
+>   failures.
+> - **Trash:** a trashed three-level tree can always be removed — as one subtree, leaf first, or by
+>   emptying the trash — and tests at the repository and interface levels walk each path. The §5 refusal
+>   to purge a record still named as parent stays; it never strands a tree.
+> - One further measurement is recorded rather than changed: the 工作 search is about 17 ms (24%) slower
+>   than before Phase 5 because each result card and the new calendar render more DOM; the query itself is
+>   faster.
 
 ---
 
@@ -451,14 +472,15 @@ Specified in `docs/versioning-and-publisher.md`, which keeps six concepts apart:
 | ----------------------- | -------------------- | ------------------------------------------ |
 | product version         | 0.1.0                | **0.2.0** line (hierarchy + schema change) |
 | display version         | —                    | `0.2.0-dev.0` while in development         |
-| Windows file version    | 0.1.0 (from package) | derived numeric `0.2.0.0` — next packaging |
+| Windows file version    | 0.1.0 (from package) | derived numeric `0.2.0.0` by the parser    |
 | release id              | `2026.09.24-win-rc3` | unchanged; provenance only                 |
 | database schema version | 1                    | **2**                                      |
 | backup format version   | 3                    | 3, unchanged (§10.2)                       |
 
 Publisher display identity for community builds: **Rhymer-Lcy**. `StorePublisherIdentity` is a separate,
-deliberately **unresolved** field. Installer sources are not changed in this phase; the mapping they must
-adopt is specified for the next packaging phase.
+deliberately **unresolved** field. The installer sources changed only where the numeric version was wrong
+(the narrow closeout: `VersionInfoVersion` and the stale `"0.1.0"` fallback); the rest of the mapping they
+must adopt is specified for the next packaging phase.
 
 ---
 
