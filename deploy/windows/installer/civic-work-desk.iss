@@ -136,7 +136,7 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 chinesesimplified.WelcomeLabel1=安装{#CivicAppName}
 chinesesimplified.WelcomeLabel2=即将安装{#CivicAppName}（版本 {#CivicDisplayVersion}，发布者 {#CivicPublisher}）。%n%n本程序仅安装到当前用户可写的目录，不需要管理员权限，不安装任何运行环境，也不修改系统设置。安装和使用不依赖互联网。%n%n这是一个待现场验证的候选版本，尚未通过 Windows 兼容性认证。支持的系统：Windows 11 x64，或 Windows 10 22H2 x64。%n%n如果{#CivicAppName}正在运行，请先关闭。
 chinesesimplified.FinishedHeadingLabel=安装完成
-chinesesimplified.FinishedLabel=已安装{#CivicAppName} {#CivicDisplayVersion}。%n%n从开始菜单或桌面打开即可使用。程序会在本机启动一个只监听 127.0.0.1:8765 的本地服务，再用你默认的浏览器打开固定访问地址：{#CivicOrigin}%n%n如果是从旧版本升级：请先关闭所有已打开的{#CivicAppName}页面，再从开始菜单打开；页面顶部如提示“有新版本可用”，请点“应用更新”。%n%n如问题仍然存在，请运行“收集诊断信息”，并将生成的诊断文件（TXT）反馈给维护人员。
+chinesesimplified.FinishedLabel=已安装{#CivicAppName} {#CivicDisplayVersion}。%n%n从开始菜单或桌面打开即可使用。程序会在本机启动一个只监听 127.0.0.1:8765 的本地服务，再用你默认的浏览器打开固定访问地址：{#CivicOrigin}%n%n如果是从旧版本升级：打开时会先显示一个检查页面，确认浏览器使用的是新版本；如提示仍有页面打开，请先保存并关闭这些页面，再按提示进入新版本。%n%n如问题仍然存在，请运行“收集诊断信息”，并将生成的诊断文件（TXT）反馈给维护人员。
 chinesesimplified.ClickFinish=点击“完成”结束安装。
 ; Inno's own refusals, reworded so a person is told what IS supported. The originals name a bare version
 ; number ("需要 Windows 版本 10.0.19045 或更高") and a list of architecture codes.
@@ -514,10 +514,11 @@ begin
   if MemoTasksInfo <> '' then
     Result := Result + NewLine + MemoTasksInfo + NewLine;
   { Only on a real upgrade: a repair reinstalls the version already running, so there is no old page to
-    close and no update to apply. The first probe of this page showed the note on a repair. }
+    close and no update to apply. The first probe of this page showed the note on a repair. It is said
+    BEFORE installing because the pages to close are the previous version's; after the upgrade the update
+    check page (civic-server /api/civic/start) refuses to switch while any of them is still open. }
   if (Active <> '') and (Active <> '{#CivicReleaseId}') then
-    Result := Result + NewLine + '升级后：请关闭所有已打开的{#CivicAppName}页面，再从开始菜单打开；' +
-              NewLine + Space + '页面顶部如提示“有新版本可用”，请点“应用更新”。' + NewLine;
+    Result := Result + NewLine + '升级前请保存并关闭已打开的{#CivicAppName}页面。' + NewLine;
 end;
 
 { True when bin\civic-server.exe is absent or can be opened for writing -- i.e. no process still holds

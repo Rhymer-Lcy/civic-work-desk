@@ -23,6 +23,9 @@ import { obtainPublishedInstaller } from './published-installer.mjs';
 import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
 import { readyPageOf } from './wizard-probe.mjs';
 
+/** The Ready page's pre-install warning, shown on a real upgrade only (Phase 6). */
+const UPGRADE_WARNING = '升级前请保存并关闭已打开的政务工作记录台页面。';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 function argValue(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -321,6 +324,7 @@ check(
     freshReady.memo.includes('http://127.0.0.1:8765/'),
   'it states the version and the fixed origin',
 );
+check(!freshReady.memo.includes(UPGRADE_WARNING), 'a clean install carries no upgrade warning');
 check(
   freshReady.closed && freshReady.strayProcessesStopped === 0,
   'the wizard was cancelled cleanly',
@@ -398,7 +402,7 @@ check(
   repairReady.memo.includes(`修复（重新安装同一版本 ${IDENTITY.displayVersion}，沿用原安装位置）`),
   'the repair Ready page says it is a repair',
 );
-check(!repairReady.memo.includes('升级后'), 'a repair carries no upgrade instruction');
+check(!repairReady.memo.includes(UPGRADE_WARNING), 'a repair carries no upgrade warning');
 check(
   repairReady.closed && repairReady.strayProcessesStopped === 0,
   'the wizard was cancelled cleanly',
@@ -665,9 +669,8 @@ if (!PREVIOUS_SETUP || !existsSync(PREVIOUS_SETUP)) {
     'it says this is an upgrade from RC3',
   );
   check(
-    upgradeReady.memo.includes('升级后：请关闭所有已打开的政务工作记录台页面') &&
-      upgradeReady.memo.includes('“应用更新”'),
-    'it tells the person to close old pages or apply the update',
+    upgradeReady.memo.includes(UPGRADE_WARNING) && !upgradeReady.memo.includes('应用更新'),
+    'it warns, before installing, to save and close the open pages',
   );
   check(
     upgradeReady.closed && upgradeReady.strayProcessesStopped === 0,
