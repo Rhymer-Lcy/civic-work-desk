@@ -42,7 +42,10 @@ const (
 	canonicalHost   = "127.0.0.1"
 	canonicalPort   = 8765
 	canonicalOrigin = "http://127.0.0.1:8765"
-	serverVersion   = "civic-server/1.0 (windows-rc1)"
+	// The protocol version of this component, not a release label. RC1-RC3 carried "(windows-rc1)" here
+	// in every build, so RC3's health endpoint named RC1; the release id is reported separately, from
+	// the release actually being served. 1.1 adds the non-canonical Host marker in the request log.
+	serverVersion = "civic-server/1.1"
 )
 
 const (

@@ -463,6 +463,38 @@ func TestLoggingIsPrivacyMinimal(t *testing.T) {
 	}
 }
 
+// The canonical host leaves no marker; localhost -- the one that silently shows an empty application --
+// is marked; and a hostile Host header cannot put a newline or a quote into the log.
+func TestNonCanonicalHostIsMarkedAndServedUnchanged(t *testing.T) {
+	_, cfg := fixture(t)
+	var logged []string
+	cfg.Log = func(s string) { logged = append(logged, s) }
+	h := Handler(cfg)
+
+	for _, host := range []string{"127.0.0.1:8765", "localhost:8765", "evil.example\r\nforged: line\""} {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8765/index.html", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("host %q: status %d, want the page served unchanged", host, rec.Code)
+		}
+	}
+	if len(logged) != 3 {
+		t.Fatalf("%d lines logged, want 3", len(logged))
+	}
+	if strings.Contains(logged[0], "host=") {
+		t.Errorf("the canonical host was marked: %q", logged[0])
+	}
+	if !strings.HasSuffix(logged[1], " host=localhost:8765") {
+		t.Errorf("localhost was not marked: %q", logged[1])
+	}
+	// ':' survives because it separates host and port; CR, LF, the space and the quote do not.
+	if strings.ContainsAny(logged[2], "\r\n\"") || !strings.HasSuffix(logged[2], " host=evil.example__forged:_line_") {
+		t.Errorf("a hostile host was not neutralised: %q", logged[2])
+	}
+}
+
 func TestUnknownExtensionIsOpaque(t *testing.T) {
 	appDir, cfg := fixture(t)
 	if err := os.WriteFile(filepath.Join(appDir, "thing.xyz"), []byte("data"), 0o644); err != nil {
