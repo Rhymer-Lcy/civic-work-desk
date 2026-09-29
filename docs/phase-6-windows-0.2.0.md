@@ -318,16 +318,25 @@ the upgrade acceptance for its last one. A second phase that is still waiting is
 button would close it, so no run leaves a dialog behind. RC3's uninstaller carries the same plain
 `MsgBox` (the notice dates from the first installer commit, `ead96d2`) and cannot be changed.
 
-### 10.6 The first product-gate run: lint
+### 10.6 The first product-gate runs: lint, then the static scan
 
 Rehearsal 4 (`d104035`) passed every installer-level acceptance, and the product gates were then run on
-that commit. `npm run verify` failed at its lint step: `eslint .` reached the new
-`bootstrap/start.js`, which belongs to no TypeScript project, so the type-aware parser refused it. During
-development only `scripts/windows/` had been linted. `399c4ce` lints the script as a classic browser
-script, the way `public/sw-client-awareness.js` already is, and removes what the linter then reported:
-three unused `catch` bindings and an index loop written as `for…of`. Its behaviour is unchanged, and
-both the Go tests that serve the file and the update-check suites in Chromium and Edge run again in the
-gates. That run was stopped, and every gate re-run on the new commit.
+that commit. During development only `scripts/windows/` had been linted and the static scan had not been
+run, and `npm run verify` failed twice:
+
+1. **Lint** (`d104035`): `eslint .` reached the new `bootstrap/start.js`, which belongs to no TypeScript
+   project, so the type-aware parser refused it. `399c4ce` lints it as a classic browser script, the way
+   `public/sw-client-awareness.js` already is, and removes what the linter then reported: three unused
+   `catch` bindings, and an index loop now written as `for…of`. Behaviour is unchanged; the Go tests
+   that serve the file and the update-check suites in Chromium and Edge cover it again in the gates.
+2. **Static scan** (`789a030`): the Phase-5.1 rule `runtime-endpoint-caller`, which admits one caller of
+   `/api/civic/runtime` in `src/`, reported eight lines in this phase's Windows tooling: a comment in
+   `build-release.mjs`, and Node-side checks, labels and comments in `acceptance-deploy.mjs` and
+   `acceptance-upgrade.mjs`. None is a caller inside the application. `f1091c7` rewords the comment and
+   adds those two harnesses, by name, to the rule's documented exceptions beside `tests/`. The update
+   check page's own call is in `deploy/`, which the scan does not cover (section 11).
+
+Each time the gate run was stopped, and every gate was run again from the start on the new commit.
 
 ## 11. Known limitations
 
@@ -337,6 +346,10 @@ gates. That run was stopped, and every gate re-run on the new commit.
   tab. What protects the upgrade is procedural: the Ready page asks to save and close the old pages
   before installing, the tester notice says the same, and the check page itself refuses while old tabs
   are open. From 0.2.0 on, the product's own guard (Phase 5.1) blocks this in the new generation.
+- **The static scan does not read `deploy/`.** Its Phase-5.1 rules admit one caller of
+  `/api/civic/runtime` and one sender of `SKIP_WAITING`, both in the application; the update check page
+  is a second of each, by design. It is covered instead by the Go tests (the served bytes are the
+  reviewed files, with no forbidden construct) and by the update-check suites in Chromium and Edge.
 - **The check page needs the local server.** It is served by `civic-server` and not precached, so it
   cannot open while the program is stopped; offline use is `/` directly, served by the worker. The
   launcher always starts the server first.
