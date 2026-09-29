@@ -123,3 +123,33 @@ windowsFileVersion, and a malformed version stops either script before it writes
 Windows Control Panel should then show `0.2.0-rc.1` as Version and the publisher display name as
 Publisher; the `releaseId` remains visible in `VERSION`, `civic-diag` output, the provenance record and
 the release notes.
+
+## Phase 6: the state of the Windows 0.2.0-rc.1 build
+
+Every "must become" row above is implemented on the Phase-6 branch (checked against its source on
+2026-09-30, UTC+8):
+
+| where                                                                      | now                                                                 |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `civic-work-desk.iss` `AppVersion`, `AppVerName`                           | the displayVersion, `0.2.0-rc.1`                                    |
+| `civic-work-desk.iss` `AppPublisher`, `VersionInfoCompany`, `AppCopyright` | `Rhymer-Lcy`, from `product-identity.json`                          |
+| `generate-winres.mjs` `CompanyName`                                        | `Rhymer-Lcy`                                                        |
+| `generate-winres.mjs` `ProductVersion`                                     | the displayVersion alone; the releaseId is no longer appended       |
+| `build-release.mjs`, `generate-winres.mjs` `--release-id`                  | required, no default; derived and checked by `release-identity.mjs` |
+
+**Spent release ids.** An engineering `releaseId` names one artifact. Two tracked registries record the
+ids that can never name another one:
+
+- `scripts/windows/published-releases.json`: candidates published as GitHub prereleases (RC1-RC3). Their
+  ids, display versions and tags are refused for a build; an audit may name the one published entry that
+  is the release under audit.
+- `scripts/windows/rejected-releases.json`: candidates built, frozen and rejected before publication,
+  each with its display version, SHA-256, source commit, status `rejected-before-publication` and reason.
+  Its one entry is `2026.09.29-win-0.2.0-rc.1` (SHA-256 `4fe9296d…`), whose application was the Phase-5
+  sign-off without the Phase-5.1 corrections. A rejected id is refused for every purpose, build and
+  audit alike; the binary itself is not tracked.
+
+`scripts/windows/release-identity.mjs` enforces both, and `tests/unit/release-identity.test.ts` proves
+each class is refused. A rejected candidate spends its engineering id but not its display version, since
+no `0.2.0-rc.1` was ever published: the rebuilt candidate keeps displayVersion `0.2.0-rc.1` under the new
+engineering id `2026.09.30-win-0.2.0-rc.1`, and is not renamed `rc.2`.
