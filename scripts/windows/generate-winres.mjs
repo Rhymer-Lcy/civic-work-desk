@@ -2,7 +2,7 @@
 /**
  * Generate the Windows resource objects that give the executables an icon and a version block.
  *
- *   node scripts/windows/generate-winres.mjs --release-id <id> [--version <x.y.z>]
+ *   node scripts/windows/generate-winres.mjs --release-id <id> [--version <x.y.z[-pre]>]
  *
  * Writes one `*_windows_amd64.syso` next to each user-facing command. The Go linker picks up any
  * `.syso` in a package directory automatically, so no build flag or linker option is involved and CGO
@@ -32,6 +32,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseProductVersion } from './product-version.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ICON = join(ROOT, 'deploy', 'windows', 'installer', 'civic-work-desk.ico');
@@ -51,12 +52,6 @@ function arg(name, fallback) {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
-
-const releaseId = arg('--release-id', '2026.09.24-win-rc2');
-const appVersion = arg(
-  '--version',
-  JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version,
-);
 
 /**
  * The executables that a user can see, and what Windows should say about each.
@@ -147,16 +142,21 @@ function versionNode(key, value, isText, children = []) {
   return body;
 }
 
-function fixedFileInfo(version) {
-  const parts = version.split('.').map((p) => parseInt(p, 10) || 0);
-  const [a = 0, b = 0, c = 0, d = 0] = parts;
+/**
+ * The binary version block, from the four numeric parts `parseProductVersion` validated (each at most
+ * 65535). `>>> 0` keeps the packed value unsigned: `<< 16` on a field of 32768 or more would otherwise
+ * produce a negative number, which `writeUInt32LE` rejects.
+ */
+function fixedFileInfo([a, b, c, d]) {
+  const high = ((a << 16) | b) >>> 0;
+  const low = ((c << 16) | d) >>> 0;
   const info = Buffer.alloc(52);
   info.writeUInt32LE(0xfeef04bd, 0); // dwSignature
   info.writeUInt32LE(0x00010000, 4); // dwStrucVersion
-  info.writeUInt32LE((a << 16) | b, 8); // dwFileVersionMS
-  info.writeUInt32LE((c << 16) | d, 12); // dwFileVersionLS
-  info.writeUInt32LE((a << 16) | b, 16); // dwProductVersionMS
-  info.writeUInt32LE((c << 16) | d, 20); // dwProductVersionLS
+  info.writeUInt32LE(high, 8); // dwFileVersionMS
+  info.writeUInt32LE(low, 12); // dwFileVersionLS
+  info.writeUInt32LE(high, 16); // dwProductVersionMS
+  info.writeUInt32LE(low, 20); // dwProductVersionLS
   info.writeUInt32LE(0x3f, 24); // dwFileFlagsMask
   info.writeUInt32LE(0, 28); // dwFileFlags
   info.writeUInt32LE(0x00000004, 32); // VOS__WINDOWS32
@@ -165,17 +165,25 @@ function fixedFileInfo(version) {
   return info;
 }
 
-function buildVersionResource(target) {
-  const numericVersion = `${appVersion}.0`;
+/**
+ * The RT_VERSION block for one executable. Exported so the unit suite can decode exactly the bytes the
+ * resource object would carry (tests/unit/product-version.test.ts).
+ *
+ * @param {{ description: string, internal: string, original: string }} target
+ * @param {import('./product-version.mjs').ProductVersion} version from `parseProductVersion`
+ * @param {string} releaseId
+ */
+export function buildVersionResource(target, version, releaseId) {
   const strings = [
     ['CompanyName', 'CivicWorkDesk'],
     ['FileDescription', target.description],
-    ['FileVersion', numericVersion],
+    // Numeric by definition; the pre-release label, if any, travels in ProductVersion below.
+    ['FileVersion', version.windowsVersion],
     ['InternalName', target.internal],
     ['LegalCopyright', 'CivicWorkDesk. 保留所有权利。'],
     ['OriginalFilename', target.original],
     ['ProductName', '政务工作记录台 (CivicWorkDesk)'],
-    ['ProductVersion', `${appVersion} (${releaseId})`],
+    ['ProductVersion', `${version.displayVersion} (${releaseId})`],
   ];
 
   const stringEntries = strings.map(([key, value]) => versionNode(key, utf16(value), true));
@@ -190,7 +198,7 @@ function buildVersionResource(target) {
     versionNode('Translation', translation, false),
   ]);
 
-  return versionNode('VS_VERSION_INFO', fixedFileInfo(numericVersion), false, [
+  return versionNode('VS_VERSION_INFO', fixedFileInfo(version.windowsParts), false, [
     stringFileInfo,
     varFileInfo,
   ]);
@@ -390,34 +398,53 @@ function buildCoff(resources) {
 }
 
 // -------------------------------------------------------------------------------------------- main
-const { images, group } = readIcon(ICON);
-
-console.log('CivicWorkDesk Windows resource objects');
-console.log('');
-console.log(`  icon       : ${ICON} (${images.length} images)`);
-console.log(`  release id : ${releaseId}`);
-console.log(`  version    : ${appVersion}`);
-console.log('');
-
-for (const target of TARGETS) {
-  const resources = [
-    ...images.map((image) => ({
-      type: RT_ICON,
-      id: image.id,
-      lang: LANG_NEUTRAL,
-      data: image.data,
-    })),
-    { type: RT_GROUP_ICON, id: 1, lang: LANG_NEUTRAL, data: group },
-    { type: RT_VERSION, id: 1, lang: LANG_ZH_CN, data: buildVersionResource(target) },
-  ];
-  const coff = buildCoff(resources);
-  const out = join(CMD_DIR, target.dir, `rsrc_windows_amd64.syso`);
-  mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, coff);
-  console.log(
-    `  ${target.dir.padEnd(14)} ${String(coff.length).padStart(7)} bytes  ${target.description}`,
+function main() {
+  const releaseId = arg('--release-id', '2026.09.24-win-rc2');
+  const appVersion = arg(
+    '--version',
+    JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version,
   );
+  // Fails the build, with the reason, on anything that is not a policy-conformant version.
+  const version = parseProductVersion(appVersion);
+  const { images, group } = readIcon(ICON);
+
+  console.log('CivicWorkDesk Windows resource objects');
+  console.log('');
+  console.log(`  icon       : ${ICON} (${images.length} images)`);
+  console.log(`  release id : ${releaseId}`);
+  console.log(`  version    : ${version.displayVersion} (numeric ${version.windowsVersion})`);
+  console.log('');
+
+  for (const target of TARGETS) {
+    const resources = [
+      ...images.map((image) => ({
+        type: RT_ICON,
+        id: image.id,
+        lang: LANG_NEUTRAL,
+        data: image.data,
+      })),
+      { type: RT_GROUP_ICON, id: 1, lang: LANG_NEUTRAL, data: group },
+      {
+        type: RT_VERSION,
+        id: 1,
+        lang: LANG_ZH_CN,
+        data: buildVersionResource(target, version, releaseId),
+      },
+    ];
+    const coff = buildCoff(resources);
+    const out = join(CMD_DIR, target.dir, `rsrc_windows_amd64.syso`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, coff);
+    console.log(
+      `  ${target.dir.padEnd(14)} ${String(coff.length).padStart(7)} bytes  ${target.description}`,
+    );
+  }
+
+  console.log('');
+  console.log('  The Go linker picks these up automatically; no build flag is involved.');
 }
 
-console.log('');
-console.log('  The Go linker picks these up automatically; no build flag is involved.');
+// Importing this module (the unit suite does) must not write the tracked .syso files.
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}

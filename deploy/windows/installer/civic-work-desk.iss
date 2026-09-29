@@ -34,7 +34,7 @@
   #error Define CivicReleaseId
 #endif
 #ifndef CivicAppVersion
-  #define CivicAppVersion "0.1.0"
+  #error Define CivicAppVersion with the numeric Windows version (four numbers, e.g. 0.2.0.0)
 #endif
 #ifndef CivicOutDir
   #define CivicOutDir "..\..\..\release\windows"

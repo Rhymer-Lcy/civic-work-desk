@@ -46,6 +46,22 @@ Rules that follow:
 5. **The schema version moves only with a Dexie `version(n)` block** and is announced in the backup
    envelope; the backup format moves only when the envelope itself changes. Phase 5 changed the first and
    not the second (docs/phase-5-product-evolution.md §10.2).
+6. **Every derived version comes from one fail-closed parser**, `scripts/windows/product-version.mjs`.
+   It accepts exactly `MAJOR.MINOR.PATCH` with an optional SemVer pre-release, each numeric field at most
+   65535 (a PE version field is 16 bits), and derives `windowsFileVersion` as `MAJOR.MINOR.PATCH.0`. It
+   rejects, with the reason, rather than repairs: build metadata (`+…`), a four-part numeric version
+   (`1.2.3.4` — the fourth Windows field is derived, never supplied), leading zeros, empty identifiers,
+   surrounding whitespace and anything else. Examples, all pinned in `tests/unit/product-version.test.ts`
+   against the bytes of the version resource the build writes:
+
+   | package.json#version | displayVersion   | windowsFileVersion |
+   | -------------------- | ---------------- | ------------------ |
+   | `0.2.0`              | `0.2.0`          | `0.2.0.0`          |
+   | `0.2.0-rc.1`         | `0.2.0-rc.1`     | `0.2.0.0`          |
+   | `0.2.0-beta.7`       | `0.2.0-beta.7`   | `0.2.0.0`          |
+   | `0.2.0-alpha.12`     | `0.2.0-alpha.12` | `0.2.0.0`          |
+   | `1.12.3`             | `1.12.3`         | `1.12.3.0`         |
+   | `0.2.0.1`, `v0.2.0`  | rejected         | rejected           |
 
 ## Publisher identity
 
@@ -77,32 +93,30 @@ identity is filled in.
 
 ## What the next packaging phase must change
 
-Nothing below is done in Phase 5: the installer sources and build scripts are release engineering, and
-changing them here would mix packaging into a product phase. They are listed so the next phase starts
-from a specification.
+The numeric-version rows were corrected in the Phase-5 closeout, because they were build-tool defects
+rather than packaging decisions (below). Nothing was built: no installer and no version resource was
+produced. The remaining rows are release engineering and are left for the next packaging phase, which
+starts from this specification.
 
-| where                                           | today                               | must become                                       |
-| ----------------------------------------------- | ----------------------------------- | ------------------------------------------------- |
-| `civic-work-desk.iss` `AppVersion`              | `{#CivicReleaseId}`                 | the displayVersion, e.g. `0.2.0-rc.1`             |
-| `civic-work-desk.iss` `AppVerName`              | name + releaseId                    | name + displayVersion                             |
-| `civic-work-desk.iss` `AppPublisher`            | `CivicWorkDesk`                     | `Rhymer-Lcy` (community) or the verified identity |
-| `civic-work-desk.iss` `VersionInfoVersion`      | `package.json#version` passed as is | windowsFileVersion `0.2.0.0`                      |
-| `generate-winres.mjs` `FileVersion`             | `${appVersion}.0`                   | windowsFileVersion                                |
-| `generate-winres.mjs` `CompanyName`, copyright  | `CivicWorkDesk`                     | the publisher display name                        |
-| `generate-winres.mjs` `ProductVersion`          | `${appVersion} (${releaseId})`      | displayVersion (releaseId stays in `VERSION`)     |
-| `scripts/uos/build-release.sh`                  | copies `package.json#version`       | unchanged; it already records `releaseId` apart   |
-| `civic-work-desk.iss` `#ifndef CivicAppVersion` | falls back to `"0.1.0"`             | `#error`, like the other required defines         |
+| where                                           | before the closeout                 | now / must become                                             |
+| ----------------------------------------------- | ----------------------------------- | ------------------------------------------------------------- |
+| `civic-work-desk.iss` `AppVersion`              | `{#CivicReleaseId}`                 | must become the displayVersion, e.g. `0.2.0-rc.1`             |
+| `civic-work-desk.iss` `AppVerName`              | name + releaseId                    | must become name + displayVersion                             |
+| `civic-work-desk.iss` `AppPublisher`            | `CivicWorkDesk`                     | must become `Rhymer-Lcy` (community) or the verified identity |
+| `civic-work-desk.iss` `VersionInfoVersion`      | `package.json#version` passed as is | **done:** windowsFileVersion from the parser, e.g. `0.2.0.0`  |
+| `civic-work-desk.iss` `#ifndef CivicAppVersion` | fell back to `"0.1.0"`              | **done:** `#error`, like the other required defines           |
+| `generate-winres.mjs` `FileVersion` and binary  | `${appVersion}.0`, `parseInt` split | **done:** windowsFileVersion from the parser                  |
+| `generate-winres.mjs` `CompanyName`, copyright  | `CivicWorkDesk`                     | must become the publisher display name                        |
+| `generate-winres.mjs` `ProductVersion`          | `${appVersion} (${releaseId})`      | displayVersion (releaseId); must drop the releaseId later     |
+| `scripts/uos/build-release.sh`                  | copies `package.json#version`       | unchanged; it already records `releaseId` apart               |
 
-**A caution, stated as far as it was checked.** With `package.json` now at `0.2.0-dev.0`, the current
-Windows scripts must not be run unchanged against this branch:
-
-- `generate-winres.mjs` does not reject a pre-release version; it mangles it silently. Its binary
-  version is built by splitting `${appVersion}.0` on dots and taking `parseInt(part) || 0` of the first
-  four parts. Evaluating that exact expression: `0.2.0-dev.0` gives the binary version `0.2.0.0` and the
-  text `FileVersion` `0.2.0-dev.0.0`; `0.2.0-rc.1` gives `0.2.0.1` — the candidate number leaks into the
-  fourth field — and the text `0.2.0-rc.1.0`.
-- ISCC would receive `0.2.0-dev.0` for `VersionInfoVersion`, which Inno Setup documents as up to four
-  dot-separated numbers. Whether it rejects or truncates the value was **not** tested.
+**The defect the closeout removed, as measured.** `generate-winres.mjs` built its binary version by
+splitting `${appVersion}.0` on dots and taking `parseInt(part) || 0` of the first four parts, so it never
+rejected anything: `0.2.0-dev.0` became the binary version `0.2.0.0` with the text `FileVersion`
+`0.2.0-dev.0.0`, and `0.2.0-rc.1` became `0.2.0.1` — the candidate number leaking into the fourth field —
+with the text `0.2.0-rc.1.0`. `build-release.mjs` passed the same unparsed string to Inno Setup's
+`VersionInfoVersion`, which takes up to four dot-separated numbers. Both now take the parser's
+windowsFileVersion, and a malformed version stops either script before it writes anything.
 
 Windows Control Panel should then show `0.2.0-rc.1` as Version and the publisher display name as
 Publisher; the `releaseId` remains visible in `VERSION`, `civic-diag` output, the provenance record and

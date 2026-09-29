@@ -37,6 +37,7 @@ import {
 } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseProductVersion } from './product-version.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -84,6 +85,19 @@ if (!/^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[a-z0-9]([a-z0-9.-]{0,29}[a-z0-9])?$/.test(r
 const releaseLabel = (releaseId.split('-').pop() ?? '').toUpperCase();
 if (!/^RC[0-9]+$/.test(releaseLabel)) {
   fatal(`cannot derive a release label from ${releaseId} (got ${JSON.stringify(releaseLabel)})`);
+}
+
+/*
+ * Parsed here, before any step runs or writes, so a malformed version stops the build with its reason.
+ * The installer receives the numeric Windows version (0.2.0-rc.1 -> 0.2.0.0); the display version stays
+ * in VERSION and in the version resource's ProductVersion string (docs/versioning-and-publisher.md).
+ */
+const appVersion = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+let productVersion;
+try {
+  productVersion = parseProductVersion(appVersion);
+} catch (cause) {
+  fatal(cause instanceof Error ? cause.message : String(cause));
 }
 
 function fatal(message) {
@@ -271,7 +285,6 @@ for (const binary of SERVER_BINARIES) {
 const appCommit =
   /applicationCommit=(\S+)/.exec(readFileSync(join(UOS_RELEASE, 'VERSION'), 'utf8'))?.[1] ??
   'unknown';
-const appVersion = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 const uosHealth = JSON.parse(
   readFileSync(join(UOS_RELEASE, 'app', 'deployment-health.json'), 'utf8'),
 );
@@ -415,7 +428,8 @@ if (!skipInstaller) {
       [
         `/DCivicPayload=${payload}`,
         `/DCivicReleaseId=${releaseId}`,
-        `/DCivicAppVersion=${appVersion}`,
+        // VersionInfoVersion takes up to four numbers; never the pre-release text.
+        `/DCivicAppVersion=${productVersion.windowsVersion}`,
         `/DCivicOutDir=${outDir}`,
         `/DCivicOutBase=${setupBase}`,
         `/DCivicReleaseLabel=${releaseLabel}`,
