@@ -47,6 +47,7 @@ const identity = loadReleaseIdentity(
   ROOT,
   argValue('--release-id'),
   argValue('--today') ?? businessDateUtc8(),
+  'audit',
 );
 const RELEASE_ID = identity.releaseId;
 const OUT = join(ROOT, 'release', 'windows');

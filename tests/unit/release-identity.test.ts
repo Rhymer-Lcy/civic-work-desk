@@ -110,6 +110,37 @@ describe('release identity', () => {
     );
   });
 
+  it('lets an audit examine the published release itself, and nothing else', () => {
+    const published: PublishedReleases = {
+      releases: [
+        ...PUBLISHED.releases,
+        {
+          releaseId: '2026.09.29-win-0.2.0-rc.1',
+          tag: 'windows-v0.2.0-rc.1',
+          displayVersion: '0.2.0-rc.1',
+        },
+      ],
+    };
+    // The build still refuses it -- and refusing is the default when no purpose is given.
+    expect(() => derive('2026.09.29-win-0.2.0-rc.1', { published })).toThrow(/already published/);
+    expect(() => derive('2026.09.29-win-0.2.0-rc.1', { published, purpose: 'build' })).toThrow(
+      /already published/,
+    );
+    // An audit of exactly that release is allowed.
+    expect(derive('2026.09.29-win-0.2.0-rc.1', { published, purpose: 'audit' }).releaseId).toBe(
+      '2026.09.29-win-0.2.0-rc.1',
+    );
+    // An audit of ANOTHER build claiming the same display version is not: that would be a second rc.1.
+    expect(() =>
+      derive('2026.10.01-win-0.2.0-rc.1', { published, purpose: 'audit', today: '2026.10.02' }),
+    ).toThrow(/display version 0.2.0-rc.1 is already published/);
+    // RC3 cannot be audited under this package version at all: its id names a different version.
+    expect(() => derive('2026.09.24-win-rc3', { purpose: 'audit' })).toThrow(/package.json/);
+    expect(() => derive('2026.09.29-win-0.2.0-rc.1', { purpose: 'deploy' })).toThrow(
+      /unknown purpose/,
+    );
+  });
+
   it('refuses a publisher that is missing, padded, or the product name', () => {
     for (const publisherDisplayName of ['', ' Rhymer-Lcy', 'CivicWorkDesk', '政务工作记录台']) {
       expect(() =>
