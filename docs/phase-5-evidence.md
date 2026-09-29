@@ -1,6 +1,6 @@
 # Phase 5 — closeout evidence
 
-**Date:** 2026-09-29 (UTC+8). **Branch:** `phase-5/product-evolution`, 23 commits on `40c8330`, not pushed.
+**Date:** 2026-09-29 (UTC+8). **Branch:** `phase-5/product-evolution` on `40c8330`, not pushed; commits in §5.
 **Companion:** the design record, [phase-5-product-evolution.md](phase-5-product-evolution.md).
 
 Unless a figure says otherwise, it was measured at closeout on the development workstation, from the
