@@ -232,6 +232,12 @@ const RULES = [
       /^dist[/\\]assets[/\\]index-[A-Za-z0-9_-]+\.js$/,
       /^docs[/\\]/,
       /^tests[/\\]/,
+      /*
+       * Phase 6: the two Windows acceptance harnesses check the installed server's endpoint from
+       * outside the application (from Node, or by opening it as a page), the role tests/ plays above.
+       * They are not shipped and are not part of any page.
+       */
+      /^scripts[/\\]windows[/\\]acceptance-(deploy|upgrade)\.mjs$/,
     ],
     appliesToDist: true,
   },

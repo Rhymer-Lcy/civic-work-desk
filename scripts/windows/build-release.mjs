@@ -394,7 +394,7 @@ for (const entry of [entryJs[0][1], entryCss[0][1]]) {
 }
 
 /* The interface generation (Phase 5.1): app-generation.json is part of the product build, and civic-server
- * serves it to the page and to the update bootstrap at /api/civic/runtime. It must name exactly the entry
+ * serves it to the page and to the update check page from its runtime endpoint. It must name exactly the entry
  * script index.html loads, or the page and the server would disagree about which interface is current. */
 const generationDoc = JSON.parse(readFileSync(join(payload, 'app', 'app-generation.json'), 'utf8'));
 const entryHash = /^assets\/index-([A-Za-z0-9_-]{6,64})\.js$/.exec(entryJs[0][1])?.[1];
