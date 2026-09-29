@@ -31,6 +31,14 @@ Resolution, in three commits:
 - `7a93fa8` `test(tests)` — the scale measurements in §13, committed before any hierarchy code so the
   "before" numbers are measured on the baseline.
 
+> **Review correction, 2026-09-29.** `e1b5d7e` fixed ordinary activation only: the anchors still carried
+> raw fragments (`#main`, `#settings-*`) as their real href, so a modified or middle click, a new tab or a
+> copied link still opened an unknown route and landed on 概览. `InPageLink` now separates the two: a
+> required `href` typed as a route (`routeHref(...)` — `#/settings` for the Settings index, the current
+> route for the skip link) that every browser-handled activation follows, and `targetId` for the in-page
+> jump an ordinary activation performs. The URL names the view, not the section. Details and tests:
+> [phase-5-evidence.md](phase-5-evidence.md) §9.
+
 Baseline gates, on the fix commit: unit 338/338; Chromium desktop + mobile 112/112 in three consecutive
 full runs (the original 96 plus 16 new); Firefox/WebKit 21 passed, 1 skipped (the deliberate WebKit
 offline-reload skip from `eb4fa43`); accessibility 14/14; static scan PASS.
@@ -458,9 +466,14 @@ number; the previous release is the only rollback.
 > - **Trash:** a trashed three-level tree can always be removed — as one subtree, leaf first, or by
 >   emptying the trash — and tests at the repository and interface levels walk each path. The §5 refusal
 >   to purge a record still named as parent stays; it never strands a tree.
-> - One further measurement is recorded rather than changed: the 工作 search is about 17 ms (24%) slower
->   than before Phase 5 because each result card and the new calendar render more DOM; the query itself is
->   faster.
+> - One further measurement is accepted as a non-blocking observation, not changed: the 工作 search went
+>   from about 70 to 87 ms (+17 ms, +24%) because each result card and the new calendar render more DOM,
+>   for a fixed page of 30 results; the query itself is faster and the cost does not grow with the archive.
+> - **Backlog before the next Windows build** (recorded, not implemented): the release scripts must stop
+>   defaulting silently to an old release id (`build-release.mjs` to RC3, `generate-winres.mjs` to RC2) and
+>   fail without an explicit one; `AppVersion`/`AppVerName` must use the displayVersion; `AppPublisher`
+>   and the PE `CompanyName` must use the configured publisher identity (evidence §10,
+>   `docs/versioning-and-publisher.md`).
 
 ---
 

@@ -48,7 +48,10 @@ export function parseHash(hash: string): RouteId {
   return isRouteId(path) ? path : DEFAULT_ROUTE;
 }
 
-export function routeHref(route: RouteId): string {
+/** A fragment that names a route: the only kind of `#…` this application may put in an href. */
+export type RouteHref = `#/${RouteId}`;
+
+export function routeHref(route: RouteId): RouteHref {
   return `#/${route}`;
 }
 

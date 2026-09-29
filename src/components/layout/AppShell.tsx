@@ -74,10 +74,11 @@ export function AppShell({ title, route, onNavigate, banner, children }: AppShel
     <div className={`${styles.shell} ${VIEW_WIDTH_CLASS[route]}`}>
       {/*
        * Focus-only: `<main>` is always on screen, so the jump moves the keyboard and screen-reader
-       * position without scrolling. A plain `href="#main"` was read by the hash router as an unknown
+       * position without scrolling. The real href is the current route, so a modified click or a
+       * copied link opens this view; a plain `href="#main"` was read by the hash router as an unknown
        * route and sent the user to 概览 instead (see `InPageLink`).
        */}
-      <InPageLink className="skip-link" targetId="main" jump="focus-only">
+      <InPageLink className="skip-link" href={routeHref(route)} targetId="main" jump="focus-only">
         跳到主要内容
       </InPageLink>
 

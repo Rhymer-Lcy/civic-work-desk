@@ -1,6 +1,6 @@
 # Phase 5 — closeout evidence
 
-**Date:** 2026-09-29 (UTC+8). **Branch:** `phase-5/product-evolution` on `40c8330`; commits in §9.
+**Date:** 2026-09-29 (UTC+8). **Branch:** `phase-5/product-evolution` on `40c8330`; commits in §11.
 **Companion:** the design record, [phase-5-product-evolution.md](phase-5-product-evolution.md).
 
 Unless a figure says otherwise, it was measured on the development workstation during the closeout, from
@@ -10,14 +10,16 @@ in the same session, interleaved.
 The closeout had two passes. The first recorded the phase (§1–§4 as first written, kept in §3.2 where
 they were superseded). A second, narrow pass then closed three engineering issues that the first had left
 open or explained by hand — the 台账 rendering regression (§3.1, §4), the Windows numeric version (§5) and
-the UOS archive gate's contract (§1) — and re-ran every gate.
+the UOS archive gate's contract (§1) — and re-ran every gate. An independent review of that branch then
+found one remaining navigation defect in the in-page links; its correction is §9, and every gate in §1
+was run again after it.
 
 ## 1. Gates (final)
 
 | gate                                                            | command                                      | result                                                                                                                                                                  |
 | --------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| format, lint, typecheck, unit + integration, static scan, build | `npm run verify`                             | exit 0: Prettier clean, ESLint 0 warnings, both `tsc` projects clean, **486 tests in 35 files**, static scan PASS over 254 files with 13 rules (self-test first), build |
-| E2E, Chromium desktop + mobile                                  | `npm run test:e2e`                           | **147/147 in three consecutive full runs**; retries are 0 outside CI and no test was retried or flaky                                                                   |
+| format, lint, typecheck, unit + integration, static scan, build | `npm run verify`                             | exit 0: Prettier clean, ESLint 0 warnings, both `tsc` projects clean, **487 tests in 35 files**, static scan PASS over 254 files with 13 rules (self-test first), build |
+| E2E, Chromium desktop + mobile                                  | `npm run test:e2e`                           | **154/154 in three consecutive full runs**; retries are 0 outside CI and no test was retried or flaky                                                                   |
 | E2E, Firefox + WebKit                                           | `npm run test:e2e:cross`                     | 23 passed, 1 skipped — the WebKit offline-reload test, skipped since `eb4fa43` (2026-09-21) for a reproduced Playwright WebKit limitation                               |
 | accessibility (axe)                                             | `npm run test:a11y`                          | 16/16                                                                                                                                                                   |
 | Windows Go tests                                                | `npm run test:windows`                       | exit 0; 5 packages pass (`httpserve`, `layout`, `redact`, `release`, `winproc`), 5 have no test files                                                                   |
@@ -27,7 +29,9 @@ the UOS archive gate's contract (§1) — and re-ran every gate.
 | UOS release archive                                             | `npm run test:uos:archive`                   | **56/56**, the signed-off `-5` verified against its own record (below)                                                                                                  |
 | review screenshots                                              | `npm run screenshots` (captures, no asserts) | 5 passed; 33 of 35 captures byte-identical to `d0c6d65`, the two ledger captures differ by 21 and 34 anti-aliased pixels (no layout change) and were recommitted        |
 
-No gate is knowingly red. The one skip is a pre-existing, documented harness limitation.
+No gate is knowingly red. The one skip is a pre-existing, documented harness limitation. The totals
+above are from the run after the review correction (§9); the screenshots were captured in the narrow
+closeout, and the correction changes no rendered pixel (the skip link it touches is hidden until focused).
 
 **The archive gate asks the right question now.** Its section 5 used to hash the application files inside
 the newest UOS archive against the current `dist/`. For a candidate built from the current tree that is the
@@ -62,9 +66,10 @@ checks; a registry with a changed digest fails both the digest check and the sig
 - The GitHub release `windows-v2026.09.24-rc3` is published as a pre-release (not a draft), with the
   installer asset at 6,894,533 bytes and digest `sha256:4b8bc1d2…71e96`. No newer release exists.
 - No tracked file under `release/` changed on this branch (`git diff 40c8330..HEAD -- release` is empty).
-- Remote refs before the push that ends the closeout: `main` at `fa12b03`,
-  `phase-4/windows-offline-distribution` at `40c8330`, tags `rc1`–`rc3` unchanged; this branch had never
-  been pushed. The push itself is reported outside this file, which is part of what is pushed.
+- Remote refs: `main` at `fa12b03` and `phase-4/windows-offline-distribution` at `40c8330`, as when the
+  phase began; tags `rc1`–`rc3` unchanged. This branch was first pushed for independent review at
+  `6f327fb`; the push of the review correction is reported outside this file, which is part of what is
+  pushed.
 
 ## 3. Performance at 5,000 work records
 
@@ -103,12 +108,13 @@ page it re-renders while exporting is half the size; that attribution was not me
 The integrity pass costs about 1 ms more (medians 1.51 → 2.46), and the hierarchy validation alone
 accounts for about 1 ms of it; it scales like the pre-existing checks (§3.2).
 
-**Search, +24%, investigated and not changed in this pass.** The query itself is faster than before Phase 5
-(§3.2). The 工作 page, which shows 30 cards per page in both versions, builds a bigger DOM for the same 747
-matches: 116 nodes per card instead of 91 (level, parent path and hierarchy actions) and about 265 more
-nodes outside the cards (the month calendar), 3,667 against 2,772 in all. The cost is fixed per page of
-30 results, about 17 ms, and does not grow with the archive. Recorded for review; outside the three issues
-this pass was allowed to touch.
+**Search, 70 → 87 ms (about +17 ms, +24%) — accepted as a non-blocking Phase-5 observation.** The query
+itself is faster than before Phase 5 (§3.2). The 工作 page, which shows 30 cards per page in both versions,
+builds a bigger DOM for the same 747 matches: 116 nodes per card instead of 91 (level, parent path and
+hierarchy actions) and about 265 more nodes outside the cards (the month calendar), 3,667 against 2,772 in
+all. The cost is presentation work for a fixed page of 30 results; it does not grow with the 5,000-record
+archive, and the absolute latency stays small. Changing the interface further is not justified by this
+evidence, so nothing was optimised; the review accepted the observation as it stands.
 
 ### 3.2 First measurement (superseded where stated)
 
@@ -262,7 +268,55 @@ numbers.
 
 For comparison, the UOS `-5` payload is 2,088,718 bytes: it ships no native executables.
 
-## 9. Commits
+## 9. Review correction: in-page links carry a route as their href
+
+**Defect (found in independent review of `6f327fb`).** The pre-Phase-5 correction `e1b5d7e` made an
+ordinary click on the skip link or a Settings index item jump in place, but the anchors still carried raw
+fragments (`#main`, `#settings-data`, …) as their real `href`. Every activation the component leaves to the
+browser — Ctrl/Cmd-click, middle-click, "open in new tab", a copied link — followed that fragment, which
+the router reads as an unknown route and answers with 概览. Reproduced before the fix on the unfixed
+build: five new tests failed, with index hrefs of `#settings-app`, fresh and new-tab openings landing on
+`#/dashboard`, and a skip-link href of `#main`.
+
+**Correction.** `InPageLink` takes a required `href` typed `RouteHref` (`` `#/${RouteId}` ``, the return
+type of `routeHref`), so a section id no longer compiles as an href; `targetId` remains the in-page jump
+target. The Settings index passes `routeHref('settings')` and the skip link passes `routeHref(route)` for
+the route it is on. An ordinary activation is unchanged: it jumps in place, moves focus, adds no history
+entry and leaves the route alone. Every other activation lands on the correct view; the section position is
+not encoded in the URL. No second `#` syntax, no History API routing, and section ids do not become routes.
+
+**Tests.** `tests/e2e/in-page-navigation.spec.ts`, 16 → 23 tests on Chromium desktop, all passing after
+the fix:
+
+- all eight Settings index items expose `href="#/settings"`, and each, opened in a fresh browser context,
+  settles on `#/settings` with the 设置 heading;
+- a real Ctrl/Cmd-click (`ControlOrMeta`) and a real middle-click on a Settings index item each open a new
+  tab on `#/settings`, while the original tab stays on `#/settings`;
+- the skip link's href equals the current route on all six routes (`#/dashboard`, `#/work`, `#/honors`,
+  `#/ledger`, `#/reports`, `#/settings`), and each, opened in a fresh context, keeps that route;
+- an ordinary section jump and an ordinary skip-link activation leave `history.length` unchanged; the
+  earlier pointer, keyboard, focus, scroll and Back/Forward assertions are kept as they were;
+- route normalisation is unchanged, now including `#settings-data` and `#main`, which still normalise to
+  `#/dashboard`.
+
+`tests/unit/in-page-link.test.tsx` pins the href contract and holds a compile-time check that `#main` is
+rejected as an href; widening the prop's type makes that check fail the typecheck.
+
+## 10. Release-engineering backlog before the next Windows build
+
+Recorded here, not implemented in Phase 5 — the Windows release scripts are unchanged by the review
+correction. Before the next Windows platform build:
+
+- `scripts/windows/build-release.mjs` must stop defaulting silently to the RC3 release id
+  (`arg('--release-id', '2026.09.24-win-rc3')`), and `scripts/windows/generate-winres.mjs` must stop
+  defaulting silently to RC2 (`'2026.09.24-win-rc2'`): the release id must be given explicitly, and a
+  missing one must fail the build;
+- the installer's `AppVersion` and `AppVerName` must use the displayVersion rather than the release id;
+- `AppPublisher` and the PE `CompanyName` must use the configured community or store publisher identity,
+  as `docs/versioning-and-publisher.md` specifies (`Rhymer-Lcy` for community builds; the store identity
+  stays unresolved until it exists).
+
+## 11. Commits
 
 Phase 5: `82c01d0` `e1b5d7e` `7a93fa8` `37a65c2` `581df72` `45674c3` `546c01c` `54863f4` `e882cc1`
 `f86bc73` `107e189` `74a54ef` `fb60c33` `0180178` `cbccff0` `e0494ec` `ce85f1c` `d0c6d65` `2b76674`
@@ -270,4 +324,6 @@ Phase 5: `82c01d0` `e1b5d7e` `7a93fa8` `37a65c2` `581df72` `45674c3` `546c01c` `
 
 Narrow closeout: `c8b5a8c` (ledger renders one presentation), `e0ff1a9` (Windows numeric version),
 `ce17b41` (UOS archive gate contract), `aae4bcd` (trashed-hierarchy purge tests), `afa43ec` (ledger
-screenshots), then this record and the design-record notes it prompted.
+screenshots), `0f361a0` and `6f327fb` (this record and the design-record notes).
+
+Review correction: one commit — the in-page link href contract, its tests and these records.

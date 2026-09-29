@@ -98,17 +98,19 @@ rather than packaging decisions (below). Nothing was built: no installer and no 
 produced. The remaining rows are release engineering and are left for the next packaging phase, which
 starts from this specification.
 
-| where                                           | before the closeout                 | now / must become                                             |
-| ----------------------------------------------- | ----------------------------------- | ------------------------------------------------------------- |
-| `civic-work-desk.iss` `AppVersion`              | `{#CivicReleaseId}`                 | must become the displayVersion, e.g. `0.2.0-rc.1`             |
-| `civic-work-desk.iss` `AppVerName`              | name + releaseId                    | must become name + displayVersion                             |
-| `civic-work-desk.iss` `AppPublisher`            | `CivicWorkDesk`                     | must become `Rhymer-Lcy` (community) or the verified identity |
-| `civic-work-desk.iss` `VersionInfoVersion`      | `package.json#version` passed as is | **done:** windowsFileVersion from the parser, e.g. `0.2.0.0`  |
-| `civic-work-desk.iss` `#ifndef CivicAppVersion` | fell back to `"0.1.0"`              | **done:** `#error`, like the other required defines           |
-| `generate-winres.mjs` `FileVersion` and binary  | `${appVersion}.0`, `parseInt` split | **done:** windowsFileVersion from the parser                  |
-| `generate-winres.mjs` `CompanyName`, copyright  | `CivicWorkDesk`                     | must become the publisher display name                        |
-| `generate-winres.mjs` `ProductVersion`          | `${appVersion} (${releaseId})`      | displayVersion (releaseId); must drop the releaseId later     |
-| `scripts/uos/build-release.sh`                  | copies `package.json#version`       | unchanged; it already records `releaseId` apart               |
+| where                                           | before the closeout                       | now / must become                                             |
+| ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| `civic-work-desk.iss` `AppVersion`              | `{#CivicReleaseId}`                       | must become the displayVersion, e.g. `0.2.0-rc.1`             |
+| `civic-work-desk.iss` `AppVerName`              | name + releaseId                          | must become name + displayVersion                             |
+| `civic-work-desk.iss` `AppPublisher`            | `CivicWorkDesk`                           | must become `Rhymer-Lcy` (community) or the verified identity |
+| `civic-work-desk.iss` `VersionInfoVersion`      | `package.json#version` passed as is       | **done:** windowsFileVersion from the parser, e.g. `0.2.0.0`  |
+| `civic-work-desk.iss` `#ifndef CivicAppVersion` | fell back to `"0.1.0"`                    | **done:** `#error`, like the other required defines           |
+| `generate-winres.mjs` `FileVersion` and binary  | `${appVersion}.0`, `parseInt` split       | **done:** windowsFileVersion from the parser                  |
+| `generate-winres.mjs` `CompanyName`, copyright  | `CivicWorkDesk`                           | must become the publisher display name                        |
+| `generate-winres.mjs` `ProductVersion`          | `${appVersion} (${releaseId})`            | displayVersion (releaseId); must drop the releaseId later     |
+| `scripts/uos/build-release.sh`                  | copies `package.json#version`             | unchanged; it already records `releaseId` apart               |
+| `build-release.mjs` `--release-id`              | defaults silently to `2026.09.24-win-rc3` | must be given explicitly; a missing one must fail the build   |
+| `generate-winres.mjs` `--release-id`            | defaults silently to `2026.09.24-win-rc2` | must be given explicitly; a missing one must fail             |
 
 **The defect the closeout removed, as measured.** `generate-winres.mjs` built its binary version by
 splitting `${appVersion}.0` on dots and taking `parseInt(part) || 0` of the first four parts, so it never

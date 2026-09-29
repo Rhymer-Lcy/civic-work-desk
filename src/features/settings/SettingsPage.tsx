@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { routeHref } from '@/app/router';
 import { useData } from '@/app/store/data-store';
 import { InPageLink } from '@/components/common';
 import { PageHeader } from '@/components/layout/AppShell';
@@ -29,20 +30,25 @@ export function SettingsPage(): ReactNode {
          * A section index, not a second navigation.
          *
          * Eight stacked sections in one scroll meant reaching 回收站 from the top was a long journey
-         * past thirteen category rows (audit S-1). Plain in-page anchors: they work without
-         * JavaScript, they are reachable by keyboard in document order, and they put the wide
-         * viewport's spare width to a use that is not decoration. Hidden below 80rem, where the
-         * single column is short enough to scroll and the index would just be more to scroll past.
+         * past thirteen category rows (audit S-1). Real anchors, reachable by keyboard in document
+         * order, that put the wide viewport's spare width to a use that is not decoration. Hidden
+         * below 80rem, where the single column is short enough to scroll and the index would just be
+         * more to scroll past.
          *
          * `InPageLink` rather than a bare `href="#…"`: the application routes on the fragment, and a
-         * plain anchor set `location.hash` to the section id, which the router read as an unknown route
-         * and answered with 概览. The jump is done in place and focus lands on the section.
+         * section id there is an unknown route that the router answers with 概览. An ordinary click
+         * jumps in place and focuses the section; the href every other path uses (a new tab, a copied
+         * link) is `#/settings`, which opens this page — at its top, not at the section.
          */}
         <nav className={styles.index} aria-label="设置分区">
           <ul className={styles.indexList}>
             {SECTIONS.map((section) => (
               <li key={section.id}>
-                <InPageLink className={styles.indexLink} targetId={section.id}>
+                <InPageLink
+                  className={styles.indexLink}
+                  href={routeHref('settings')}
+                  targetId={section.id}
+                >
                   {section.label}
                 </InPageLink>
               </li>

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
 import { gotoApp, navigate } from './helpers';
 
 /**
@@ -56,6 +56,34 @@ async function expectStillOn(page: Page, route: string, heading: string): Promis
   await expect(page.getByRole('heading', { level: 1, name: heading, exact: true })).toBeVisible();
 }
 
+/**
+ * Open `href` the way a copied link or a new tab would: in a brand-new browser context, with no state
+ * from the page it came from, and report where the application settles.
+ */
+async function openFresh(
+  browser: Browser,
+  from: Page,
+  href: string,
+): Promise<{ hash: string; heading: string }> {
+  const context = await browser.newContext();
+  try {
+    const fresh = await context.newPage();
+    await fresh.goto(`${new URL(from.url()).origin}/${href}`);
+    await expect(fresh.getByRole('navigation', { name: '主导航' })).toBeVisible();
+    await settle(fresh);
+    return {
+      hash: await fresh.evaluate(() => window.location.hash),
+      heading: (await fresh.locator('main h1').first().textContent()) ?? '',
+    };
+  } finally {
+    await context.close();
+  }
+}
+
+async function historyLength(page: Page): Promise<number> {
+  return page.evaluate(() => window.history.length);
+}
+
 test.describe('settings section index', () => {
   test.beforeEach(async ({ page }) => {
     // The index is shown from 80rem up; below that the single column is short enough to scroll.
@@ -104,6 +132,93 @@ test.describe('settings section index', () => {
     await expectStillOn(page, 'work', '工作');
     await page.goForward();
     await expectStillOn(page, 'settings', '设置');
+  });
+
+  test('an ordinary section jump leaves history.length unchanged', async ({ page }) => {
+    const before = await historyLength(page);
+    await page
+      .getByRole('navigation', { name: '设置分区' })
+      .getByRole('link', { name: '数据与备份', exact: true })
+      .click();
+    await expectStillOn(page, 'settings', '设置');
+    expect(await historyLength(page)).toBe(before);
+  });
+});
+
+/*
+ * The browser-visible href is what a modified click, "open in new tab" and "copy link address" use.
+ * The router owns the fragment, so that href must be a real route: a raw `#settings-data` opens as an
+ * unknown route and lands on 概览. It names the view, not the section — the section position is not
+ * encoded in the URL, and does not need to be.
+ */
+test.describe('in-page links expose a valid route as their href', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoApp(page, 'settings');
+  });
+
+  test('every Settings index item has href="#/settings", never a section id', async ({ page }) => {
+    const links = page.getByRole('navigation', { name: '设置分区' }).getByRole('link');
+    await expect(links).toHaveCount(8);
+    for (const link of await links.all()) {
+      await expect(link).toHaveAttribute('href', '#/settings');
+    }
+  });
+
+  test('every Settings index href, opened fresh, loads Settings and not 概览', async ({
+    page,
+    browser,
+  }) => {
+    const links = page.getByRole('navigation', { name: '设置分区' }).getByRole('link');
+    await expect(links).toHaveCount(8);
+    for (const link of await links.all()) {
+      const href = (await link.getAttribute('href')) ?? '';
+      expect(await openFresh(browser, page, href)).toEqual({ hash: '#/settings', heading: '设置' });
+    }
+  });
+
+  for (const how of ['Ctrl/Cmd-click', 'middle-click'] as const) {
+    test(`a ${how} on a Settings index item opens Settings in the new tab and leaves this one alone`, async ({
+      page,
+      context,
+    }) => {
+      const link = page
+        .getByRole('navigation', { name: '设置分区' })
+        .getByRole('link', { name: '数据与备份', exact: true });
+      const opened = context.waitForEvent('page');
+      if (how === 'middle-click') await link.click({ button: 'middle' });
+      else await link.click({ modifiers: ['ControlOrMeta'] });
+      const tab = await opened;
+      await expect(tab.getByRole('navigation', { name: '主导航' })).toBeVisible();
+      await settle(tab);
+      expect(await tab.evaluate(() => window.location.hash)).toBe('#/settings');
+      await expect(tab.getByRole('heading', { level: 1, name: '设置', exact: true })).toBeVisible();
+      await expectStillOn(page, 'settings', '设置');
+    });
+  }
+
+  test('the skip link carries the current route on every route, and that href opens it', async ({
+    page,
+    browser,
+  }) => {
+    for (const { route, heading } of ROUTE_HEADINGS) {
+      await navigate(page, heading);
+      const skip = page.getByRole('link', { name: '跳到主要内容' });
+      await expect(skip).toHaveAttribute('href', `#/${route}`);
+      const href = (await skip.getAttribute('href')) ?? '';
+      expect(await openFresh(browser, page, href)).toEqual({ hash: `#/${route}`, heading });
+    }
+  });
+
+  test('an ordinary skip-link activation leaves history.length unchanged', async ({ page }) => {
+    await navigate(page, '台账');
+    const before = await historyLength(page);
+    const skip = page.getByRole('link', { name: '跳到主要内容' });
+    await skip.focus();
+    await page.keyboard.press('Enter');
+    await expectStillOn(page, 'ledger', '台账');
+    await expect(page.locator('main#main')).toBeFocused();
+    expect(await historyLength(page)).toBe(before);
   });
 });
 
@@ -160,6 +275,9 @@ test.describe('route links are unchanged', () => {
       { hash: '#work', expected: '#/work', heading: '工作' },
       { hash: '#//ledger/', expected: '#/ledger', heading: '台账' },
       { hash: '#/nonsense', expected: '#/dashboard', heading: '概览' },
+      // Section ids are not routes, and do not become routes: a raw fragment still normalises away.
+      { hash: '#settings-data', expected: '#/dashboard', heading: '概览' },
+      { hash: '#main', expected: '#/dashboard', heading: '概览' },
     ] as const;
     for (const { hash, expected, heading } of cases) {
       await page.goto(`/${hash}`);
