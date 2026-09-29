@@ -113,6 +113,7 @@ export default defineConfig({
         '**/update-safety.spec.ts',
         '**/client-awareness.spec.ts',
         '**/runtime-generation.spec.ts',
+        '**/bootstrap.spec.ts',
       ],
     },
     {

@@ -45,6 +45,30 @@ export const UPDATE_ORIGIN = `http://127.0.0.1:${String(UPDATE_PORT)}`;
 
 const DIST = resolve('dist');
 
+/*
+ * The Windows update bootstrap (Phase 6), served exactly as civic-server serves it: the same two files
+ * that deploy/windows/src/internal/httpserve embeds, under the same paths, with the same policy header
+ * read out of bootstrap.go, so the page is tested under the restrictions it ships with.
+ */
+const BOOTSTRAP_DIR = resolve('deploy/windows/src/internal/httpserve/bootstrap');
+const BOOTSTRAP_FILES = new Map([
+  ['/api/civic/start', { file: 'start.html', type: 'text/html; charset=utf-8', policy: true }],
+  [
+    '/api/civic/start.js',
+    { file: 'start.js', type: 'text/javascript; charset=utf-8', policy: false },
+  ],
+]);
+
+function bootstrapPolicy(): string {
+  const source = readFileSync(
+    resolve('deploy/windows/src/internal/httpserve/bootstrap.go'),
+    'utf8',
+  );
+  const declaration = /const bootstrapPolicy = ((?:"[^"]*"\s*\+?\s*)+)/.exec(source)?.[1];
+  if (declaration === undefined) throw new Error('bootstrapPolicy not found in bootstrap.go');
+  return [...declaration.matchAll(/"([^"]*)"/g)].map((match) => match[1]).join('');
+}
+
 const TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -121,6 +145,16 @@ export async function startUpdateServer(): Promise<UpdateServer> {
     const path = decodeURIComponent(url.pathname);
     if (path === '/api/civic/runtime') {
       serveRuntime(request, response);
+      return;
+    }
+    const bootstrap = BOOTSTRAP_FILES.get(path);
+    if (bootstrap !== undefined) {
+      response.writeHead(200, {
+        'Content-Type': bootstrap.type,
+        'Cache-Control': 'no-store',
+        ...(bootstrap.policy ? { 'Content-Security-Policy': bootstrapPolicy() } : {}),
+      });
+      response.end(readFileSync(join(BOOTSTRAP_DIR, bootstrap.file)));
       return;
     }
     if (path.startsWith('/api/')) {
