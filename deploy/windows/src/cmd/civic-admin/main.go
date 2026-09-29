@@ -2,8 +2,11 @@
 //
 //	civic-admin.exe preflight --root <dir> [--release <id>]   check before anything destructive
 //	civic-admin.exe activate  --root <dir> --release <id>     verify, then point current.txt at it
-//	civic-admin.exe verify    --root <dir> [--release <id>]   check a release against its manifest
-//	civic-admin.exe rollback  --root <dir>                    swap current.txt back to previous.txt
+//	civic-admin.exe verify    --root <dir> [--release <id> [--expect-active]]
+//	                                                          check a release against its manifest
+//	civic-admin.exe rollback  --root <dir>                    swap current.txt back to previous.txt,
+//	                                                          unless that would put an older browser-
+//	                                                          database schema in front of the records
 //	civic-admin.exe deactivate --root <dir>                   stop the server; leave records alone
 //
 // ## The ordering that makes failure safe
@@ -65,6 +68,7 @@ func main() {
 	releaseID := fs.String("release", "", "release id")
 	reportPath := fs.String("report", "", "write a preflight report to this file")
 	stage := fs.String("stage", "all", "preflight stage: machine, directory, runtime or all")
+	expectActive := fs.Bool("expect-active", false, "verify: also require --release to be the active release")
 	_ = fs.Parse(os.Args[2:])
 
 	tree, err := resolveTree(*root)
@@ -90,7 +94,7 @@ func main() {
 	case "activate":
 		finish(cmdActivate(tree, *releaseID))
 	case "verify":
-		finish(cmdVerify(tree, *releaseID))
+		finish(cmdVerify(tree, *releaseID, *expectActive))
 	case "rollback":
 		finish(cmdRollback(tree))
 	case "deactivate":
@@ -105,7 +109,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr,
 		"usage: civic-admin.exe <preflight|activate|verify|rollback|deactivate> --root <dir> "+
-			"[--release <id>] [--stage machine|directory|runtime|all] [--report <file>]")
+			"[--release <id>] [--expect-active] [--stage machine|directory|runtime|all] [--report <file>]")
 }
 
 func resolveTree(root string) (layout.Tree, error) {
@@ -408,8 +412,27 @@ func portChecks(tree layout.Tree, releaseID string) []check {
 		"held by a program that is not CivicWorkDesk; the canonical origin cannot be changed, so this must be freed first"}}
 }
 
-func cmdVerify(tree layout.Tree, releaseID string) int {
+// cmdVerify checks a release against its manifest. With expectActive it also requires that release to be
+// the active one.
+//
+// That second half is what the installer's final check needs. RC1-RC3 verified whatever current.txt
+// named, so an activation that was refused -- a busy port, a payload that failed verification -- left the
+// previous release active, the check passed on that previous release, and Setup reported a finished
+// installation of a version that was not running.
+func cmdVerify(tree layout.Tree, releaseID string, expectActive bool) int {
 	id := releaseID
+	if expectActive {
+		if id == "" {
+			fmt.Fprintln(os.Stderr, "error: --expect-active needs --release")
+			return exitUsage
+		}
+		active, err := tree.ActiveRelease()
+		if err != nil || active != id {
+			fmt.Fprintf(os.Stderr, "error: release %s is not the active release (active: %s)\n",
+				id, orNone(active, err))
+			return exitRelease
+		}
+	}
 	if id == "" {
 		var err error
 		if id, err = tree.ActiveRelease(); err != nil {
@@ -483,14 +506,22 @@ func cmdActivate(tree layout.Tree, releaseID string) int {
 	}
 	fmt.Printf("verified: %s\n", res.Summary())
 
+	previous, prevErr := tree.ActiveRelease()
+	sameVersion := prevErr == nil && previous == releaseID
+
+	// Never put an application in front of records a newer one has already migrated. This is checked
+	// before anything is stopped or rewritten, so a refusal leaves the running version exactly as it was.
+	if prevErr == nil && !sameVersion {
+		if code := guardDataGeneration(tree, previous, releaseID, "activate", false); code != exitOK {
+			return code
+		}
+	}
+
 	// Stop whatever we own before repointing, so the browser cannot be handed a server that is serving
 	// the previous release from a directory that is about to stop being current.
 	if code := stopOwnedServer(tree); code != exitOK && code != exitRelease {
 		return code
 	}
-
-	previous, prevErr := tree.ActiveRelease()
-	sameVersion := prevErr == nil && previous == releaseID
 
 	// Bind test before the rename. This is the check that turns "the files are correct" into "this
 	// machine can actually serve them", and doing it before activation is what keeps a failure
@@ -591,6 +622,15 @@ func cmdRollback(tree layout.Tree) int {
 		fmt.Fprintf(os.Stderr, "error: refusing to roll back to a release that does not verify\n")
 		return exitRelease
 	}
+	// Rolling back is the one path where the older application is the whole point, so an unknown
+	// schema on either side is a refusal too: this cannot be allowed on a guess.
+	if cerr != nil {
+		fmt.Fprintf(os.Stderr, "error: refusing to roll back: the active release cannot be read (%v)\n", cerr)
+		return exitRelease
+	}
+	if code := guardDataGeneration(tree, current, previous, "rollback", true); code != exitOK {
+		return code
+	}
 	if code := stopOwnedServer(tree); code != exitOK && code != exitRelease {
 		return code
 	}
@@ -632,6 +672,60 @@ func cmdDeactivate(tree layout.Tree) int {
 		return exitOK
 	}
 	return code
+}
+
+// guardDataGeneration refuses to switch from one release to another whose application uses an older
+// browser-database schema. See release.ErrOlderDataGeneration for what that would do to the records.
+//
+// strict decides what an unreadable source release means. A rollback refuses: the older application is
+// the whole point of a rollback, so it must not happen on a guess. An activation proceeds with a warning:
+// the installer is also the repair path out of a broken installation, and refusing whenever the old
+// release is unreadable would leave a user with no way forward but uninstalling. The destination's own
+// schema must always be readable.
+func guardDataGeneration(tree layout.Tree, fromID, toID, action string, strict bool) int {
+	toDir, err := tree.Release(toID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return exitUsage
+	}
+	to, err := release.DataGeneration(toDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: refusing to %s: cannot establish the browser-database schema of %s: %v\n",
+			action, toID, err)
+		return exitRelease
+	}
+	fromDir, err := tree.Release(fromID)
+	var from release.Generation
+	if err == nil {
+		from, err = release.DataGeneration(fromDir)
+	}
+	if err != nil {
+		if strict {
+			fmt.Fprintf(os.Stderr, "error: refusing to %s: cannot establish the browser-database schema of %s: %v\n",
+				action, fromID, err)
+			return exitRelease
+		}
+		fmt.Fprintf(os.Stderr, "warning: the schema of the release being replaced (%s) cannot be read: %v; "+
+			"proceeding, because %s is the way out of a damaged installation\n", fromID, err, action)
+		return exitOK
+	}
+	if err := release.CheckTransition(from, to); err != nil {
+		fmt.Fprintf(os.Stderr, "error: refusing to %s: %v\n", action, err)
+		fmt.Fprintf(os.Stderr, "拒绝%s：版本 %s 使用的数据格式（第 %d 版）比当前版本 %s 的（第 %d 版）旧。\n"+
+			"浏览器中的记录已由较新的版本升级，较旧的版本可能在编辑或删除时损坏上下级关系。\n"+
+			"不支持把数据降级；请继续使用当前版本。\n",
+			actionZh(action), toID, to.Schema, fromID, from.Schema)
+		return exitRelease
+	}
+	fmt.Printf("browser-database schema: %s -> %s (allowed)\n", from, to)
+	return exitOK
+}
+
+func actionZh(action string) string {
+	if action == "rollback" {
+		return "回退"
+	}
+	return "启用"
 }
 
 func orNone(value string, err error) string {
