@@ -353,6 +353,12 @@ Each time the gate run was stopped, and every gate was run again from the start 
   tab. What protects the upgrade is procedural: the Ready page asks to save and close the old pages
   before installing, the tester notice says the same, and the check page itself refuses while old tabs
   are open. From 0.2.0 on, the product's own guard (Phase 5.1) blocks this in the new generation.
+- **One fail-closed case is implemented but not tested.** When the waiting worker is replaced while the
+  check page waits for its answer, `askFresh` reports `unknown` (`waiting-worker-changed`) instead of
+  using the answer. The update-check suite exercises the other unknown cases (no protocol, no answer, a
+  late answer, a malformed answer, another protocol version) in Chromium and Edge, but none replaces the
+  worker mid-question; found while preparing the final report, after the freeze, and left for review
+  rather than changing the frozen source.
 - **The static scan does not read `deploy/`.** Its Phase-5.1 rules admit one caller of
   `/api/civic/runtime` and one sender of `SKIP_WAITING`, both in the application; the update check page
   is a second of each, by design. It is covered instead by the Go tests (the served bytes are the
@@ -394,9 +400,10 @@ installer file itself.
 | Authenticode                              | NotSigned (unsigned)                                                                                                                                                       |
 | payload                                   | 30 files in the release manifest                                                                                                                                           |
 
-The commits that follow `5ccf809` on the branch add only this section and the candidate's provenance
-files (`release/windows/provenance/2026.09.30-win-0.2.0-rc.1-*` and the installer's `.sha256`); they
-change nothing the installer was built from.
+The commits that follow `5ccf809` on the branch change only this record (section 12 and a known
+limitation in section 11) and add the candidate's provenance files
+(`release/windows/provenance/2026.09.30-win-0.2.0-rc.1-*` and the installer's `.sha256`); they change
+nothing the installer was built from.
 
 ### 12.2 Product payload parity (section 23 of the brief)
 
