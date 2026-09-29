@@ -27,6 +27,23 @@ export interface PublishedReleases {
   readonly releases: readonly PublishedRelease[];
 }
 
+export interface RejectedRelease {
+  readonly releaseId: string;
+  readonly displayVersion: string;
+  readonly sha256: string;
+  readonly status: string;
+  readonly reason: string;
+  readonly installer?: string;
+  readonly size?: number;
+  readonly deploymentSourceCommit?: string;
+  readonly productBaselineCommit?: string;
+  readonly rejectedOn?: string;
+}
+
+export interface RejectedReleases {
+  readonly releases: readonly RejectedRelease[];
+}
+
 export const RELEASE_ID_PATTERN: RegExp;
 
 export function businessDateUtc8(now?: Date): string;
@@ -40,6 +57,7 @@ export function deriveReleaseIdentity(input: {
     readonly publisherDisplayName: string;
   };
   readonly published: PublishedReleases;
+  readonly rejected: RejectedReleases;
   readonly today: string;
   readonly purpose?: ReleasePurpose;
 }): ReleaseIdentity;

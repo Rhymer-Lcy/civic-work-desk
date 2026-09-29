@@ -1,0 +1,17 @@
+{
+  "description": "Windows candidates that were built and frozen but rejected before publication. Their engineering release ids are spent exactly like published ones: scripts/windows/release-identity.mjs refuses to build or audit any of them again, so a rejected artifact's identity can never become the identity of a different one. The binaries are not tracked; each entry records what identifies the rejected bytes. The display version of a rejected candidate is NOT spent, because it was never published. Add an entry when a candidate is rejected; never edit or remove one.",
+  "releases": [
+    {
+      "releaseId": "2026.09.29-win-0.2.0-rc.1",
+      "displayVersion": "0.2.0-rc.1",
+      "installer": "CivicWorkDesk-Windows-x64-0.2.0-rc.1-Setup.exe",
+      "size": 6951434,
+      "sha256": "4fe9296dbbaf20a85a19d742cfd9a7ae86a2e99c16518ec125718a66fd10eae5",
+      "deploymentSourceCommit": "a31cb4396ad2b72cd830aef92e96fffa13be6053",
+      "productBaselineCommit": "3b71dbc86607186a80de06a3b852a857786eb5a2",
+      "status": "rejected-before-publication",
+      "rejectedOn": "2026-09-29",
+      "reason": "After an upgrade from RC3 the browser kept running RC3's service-worker-cached interface; applying an update in one tab reloaded the others; /__civic/platform was answered by the service worker; a classic scrollbar shifted the application bar. Corrected in Phase 5.1 (docs/phase-5.1-runtime-update-safety.md)."
+    }
+  ]
+}

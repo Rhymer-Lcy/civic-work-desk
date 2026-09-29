@@ -17,7 +17,11 @@
  *   - its date is a real calendar date, and not later than today in UTC+8 (the business calendar);
  *   - neither the id, nor its display version, nor its tag appears in published-releases.json -- a
  *     published candidate's identity is spent, and a second "0.2.0-rc.1" would make two different
- *     installers answer to one name.
+ *     installers answer to one name;
+ *   - the id does not appear in rejected-releases.json -- a candidate that was built, frozen and then
+ *     rejected before publication has spent its engineering id too, so its bytes can never be confused
+ *     with a later build's. Its display version is not spent: it was never published, so the rebuilt
+ *     candidate may carry the same public version under a new id.
  *
  * The publisher comes from product-identity.json and never from a literal in a build script: RC1-RC3
  * wrote "CivicWorkDesk" as the publisher, which is the product's own name and nobody's identity.
@@ -50,6 +54,8 @@ function validCalendarDate(year, month, day) {
  *   packageVersion: string,
  *   identity: { productNameZh: string, productNameEn: string, publisherDisplayName: string },
  *   published: { releases: ReadonlyArray<{ releaseId: string, tag: string, displayVersion?: string }> },
+ *   rejected: { releases: ReadonlyArray<{ releaseId: string, displayVersion: string, sha256: string,
+ *     status: string, reason: string }> },
  *   today: string,
  *   purpose?: 'build' | 'audit',
  * }} input
@@ -65,6 +71,7 @@ export function deriveReleaseIdentity({
   packageVersion,
   identity,
   published,
+  rejected,
   today,
   purpose = 'build',
 }) {
@@ -129,6 +136,30 @@ export function deriveReleaseIdentity({
     if (spent.tag === tagName) fail(`the tag ${tagName} is already published`);
   }
 
+  // A rejected candidate's id is refused for every purpose: nothing may be built or audited under it.
+  // The registry itself is checked first, so a truncated or hand-damaged file fails closed instead of
+  // silently refusing nothing.
+  if (!rejected || !Array.isArray(rejected.releases)) {
+    fail('rejected-releases.json is missing or has no releases list');
+  }
+  for (const entry of rejected.releases) {
+    const complete =
+      typeof entry?.releaseId === 'string' &&
+      RELEASE_ID_PATTERN.test(entry.releaseId) &&
+      typeof entry.displayVersion === 'string' &&
+      /^[0-9a-f]{64}$/.test(entry.sha256 ?? '') &&
+      entry.status === 'rejected-before-publication' &&
+      typeof entry.reason === 'string' &&
+      entry.reason.trim() !== '';
+    if (!complete) fail(`rejected-releases.json has an incomplete entry: ${JSON.stringify(entry)}`);
+    if (entry.releaseId === releaseId) {
+      fail(
+        `${releaseId} was rejected before publication (SHA-256 ${entry.sha256.slice(0, 12)}...); ` +
+          'its engineering id is spent -- build the new candidate under a new id',
+      );
+    }
+  }
+
   const setupBase = `CivicWorkDesk-Windows-x64-${version.displayVersion}-Setup`;
   return Object.freeze({
     releaseId,
@@ -162,6 +193,7 @@ export function loadReleaseIdentity(
     packageVersion: read('package.json').version,
     identity: read('product-identity.json'),
     published: read(join('scripts', 'windows', 'published-releases.json')),
+    rejected: read(join('scripts', 'windows', 'rejected-releases.json')),
     today,
     purpose,
   });
