@@ -6,8 +6,24 @@
   box-sizing: border-box;
 }
 
+/*
+ * `scrollbar-gutter: stable` keeps the viewport's scrollbar space reserved on every route
+ * (Phase 5.1).
+ *
+ * Without it a classic scrollbar exists only on routes whose content is taller than the window, and
+ * it narrows the width the application bar is laid out in: the action slot's right edge moved 15 px
+ * between routes at 1366 and 1920, and above the bar's 1920 px maximum the whole centred bar moved
+ * by half a scrollbar (7.5 px in Edge on Windows). Overlay scrollbars (phones, macOS) reserve
+ * nothing either way, so nothing changes there.
+ *
+ * It must be on the root element. The document scrolls in the viewport, and the viewport takes its
+ * `scrollbar-gutter` from the root, never from `body` — measured: the same declaration on `body`
+ * leaves both shifts in place. It also keeps the gutter while `body.dialog-open` hides the
+ * overflow, so opening a dialog no longer moves the page behind it.
+ */
 html {
   -webkit-text-size-adjust: 100%;
+  scrollbar-gutter: stable;
 }
 
 body {

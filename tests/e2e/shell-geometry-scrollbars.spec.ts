@@ -143,9 +143,6 @@ for (const viewport of VIEWPORTS) {
       worst: { delta, where },
       frames: Object.fromEntries(frames),
     });
-    // Reproduction marker, set only once both preconditions have held so that it cannot turn a
-    // browser without scrollbars into a pass. The correction removes it.
-    testInfo.fail(true, 'uncorrected shell: a classic scrollbar moves the bar between routes');
     expect(delta, `largest route-to-route shift at ${size} (${where})`).toBeLessThanOrEqual(1);
 
     /*
@@ -170,3 +167,42 @@ for (const viewport of VIEWPORTS) {
     ).toBeGreaterThanOrEqual(CONTROL_MIN_SHIFT);
   });
 }
+
+/*
+ * A modal dialog locks background scrolling with `body.dialog-open { overflow: hidden }`, which removes
+ * a classic scrollbar. With the gutter reserved at the root the bar stays where it was; with the gutter
+ * back to `auto` the same dialog moved the action slot 15 px in Edge and Chromium on Windows.
+ */
+test('opening a dialog on a page that scrolls does not move the bar', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 420 });
+  await gotoApp(page, 'work');
+  expect(await classicScrollbarWidth(page), 'classic scrollbar width').toBeGreaterThan(0);
+
+  const openAndMeasure = async (): Promise<{ before: Frame; during: Frame }> => {
+    const before = await frame(page);
+    await page.getByRole('button', { name: '新增记录' }).first().click();
+    const dialog = page.getByRole('dialog', { name: '新增工作记录' });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator('body')).toHaveClass(/dialog-open/);
+    const during = await frame(page);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    return { before, during };
+  };
+  const shift = ({ before, during }: { before: Frame; during: Frame }): number =>
+    Math.max(
+      Math.abs(before.brandLeft - during.brandLeft),
+      Math.abs(before.slotRight - during.slotRight),
+    );
+
+  const corrected = await openAndMeasure();
+  expect(corrected.before.scrolls, 'the page behind the dialog scrolls').toBe(true);
+  expect(shift(corrected), 'bar shift while the dialog is open').toBeLessThanOrEqual(1);
+
+  await page.evaluate(() => {
+    document.documentElement.style.scrollbarGutter = 'auto';
+  });
+  expect(shift(await openAndMeasure()), 'negative control: gutter auto').toBeGreaterThanOrEqual(
+    CONTROL_MIN_SHIFT,
+  );
+});
