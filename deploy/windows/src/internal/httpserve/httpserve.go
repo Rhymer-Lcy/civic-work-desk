@@ -144,6 +144,12 @@ func Handler(cfg Config) http.Handler {
 // logging records method, path, status, bytes and duration. Nothing else: no IP (it is always
 // 127.0.0.1), no user agent, no query string, no cookies, no referer. The log is meant to be safe to
 // forward with a diagnostic report without anyone having to read it first.
+//
+// One addition: a request that arrived under any host other than the canonical 127.0.0.1:8765 is marked
+// with that host. Records live in browser storage bound to the exact origin, so a person who opened
+// http://localhost:8765/ sees an empty application and concludes their records are gone. The marker is
+// how a diagnostic report tells that case apart from real data loss. It changes nothing about what is
+// served: the request is answered exactly as before.
 func logging(log Logger, counter *atomic.Uint64, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -153,10 +159,45 @@ func logging(log Logger, counter *atomic.Uint64, next http.Handler) http.Handler
 			return
 		}
 		n := counter.Add(1)
-		log(fmt.Sprintf("%s req=%d %s %s -> %d %dB %.1fms",
+		line := fmt.Sprintf("%s req=%d %s %s -> %d %dB %.1fms",
 			start.Format("2006-01-02T15:04:05.000Z07:00"), n, r.Method, r.URL.Path,
-			rec.status, rec.bytes, float64(time.Since(start).Microseconds())/1000.0))
+			rec.status, rec.bytes, float64(time.Since(start).Microseconds())/1000.0)
+		if marker := NonCanonicalHost(r.Host); marker != "" {
+			line += " host=" + marker
+		}
+		log(line)
 	})
+}
+
+// CanonicalHost is the only Host header the application should ever be reached under.
+const CanonicalHost = "127.0.0.1:8765"
+
+// NonCanonicalHost returns a loggable form of host when it is not the canonical one, and "" when it is.
+//
+// The header is client-supplied, so only a short run of host-name characters is kept; anything else is
+// replaced, which keeps a hostile value from forging a log line.
+func NonCanonicalHost(host string) string {
+	if host == CanonicalHost {
+		return ""
+	}
+	if host == "" {
+		return "(none)"
+	}
+	var b strings.Builder
+	for _, c := range host {
+		if b.Len() >= 64 {
+			b.WriteString("...")
+			break
+		}
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '.', c == ':', c == '-', c == '[', c == ']':
+			b.WriteRune(c)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }
 
 type recorder struct {
