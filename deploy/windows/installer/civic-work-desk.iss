@@ -1,9 +1,11 @@
-; CivicWorkDesk -- Windows x64 per-user installer (Phase 4 field-validation candidate)
+; CivicWorkDesk -- Windows x64 per-user installer
 ;
-; This file carries NO release-candidate number. RC2 shipped with VersionInfoDescription hard-coded
-; to "RC1", so the installer's own Properties dialog told a user it was a release it was not -- the
-; sort of defect that a build cannot notice because nothing downstream reads it. The label now comes
-; from the build via CivicReleaseLabel, and an acceptance check reads it back out of the built bytes.
+; This file carries NO release identity. Every version string, the publisher and the release id arrive
+; as defines from scripts/windows/build-release.mjs, which derives them once from package.json,
+; product-identity.json and the release id (scripts/windows/release-identity.mjs). A missing define is a
+; compile error, never a default. RC2 shipped with VersionInfoDescription hard-coded to "RC1", and RC1-RC3
+; all named "CivicWorkDesk" -- the product -- as their publisher; scripts/windows/assert-release-identity.mjs
+; reads every one of these fields back out of the built bytes.
 ;
 ; Built with Inno Setup 7. Its licence grants permission to use it "for any purpose, including
 ; commercial applications"; condition 3 invites but does not require an acknowledgement, which the
@@ -16,13 +18,21 @@
 ; install this without asking anyone for rights. Everything lands under %LOCALAPPDATA%\CivicWorkDesk
 ; and the Start Menu entry is the per-user one.
 ;
+; ## Supported systems
+;
+; Windows 11 x64 (primary) and Windows 10 22H2 x64 (build 19045, legacy target). MinVersion and
+; ArchitecturesAllowed below are the first gate, with their refusals reworded in [Messages]; the bundled
+; civic-admin preflight is the second, and the one that tells Windows Server and other Windows 10
+; versions apart (internal/platform in the Go module).
+;
 ; ## The ordering that makes a failure safe
 ;
 ; Files are extracted into releases\<id>\, which is a new directory and therefore inherently a staging
 ; area: while extraction runs, current.txt still names whatever was working before. Only afterwards does
-; [Run] call `civic-admin activate`, which verifies the payload against its own manifest, proves the
-; server can bind 127.0.0.1:8765 and answer, and only then rewrites current.txt. A failure at any
-; earlier point leaves the previous version usable.
+; [Run] call `civic-admin activate`, which verifies the payload against its own manifest, refuses an
+; older browser-database schema, proves the server can bind 127.0.0.1:8765 and answer, and only then
+; rewrites current.txt. A failure at any earlier point leaves the previous version usable, and the final
+; check requires THIS release to be the active one before Setup may report success.
 ;
 ; Preflight runs before a single file is written, in InitializeSetup, so a machine that cannot run this
 ; is told so instead of being left with a half-install.
@@ -36,31 +46,43 @@
 #ifndef CivicAppVersion
   #error Define CivicAppVersion with the numeric Windows version (four numbers, e.g. 0.2.0.0)
 #endif
+#ifndef CivicDisplayVersion
+  #error Define CivicDisplayVersion with the display version, e.g. 0.2.0-rc.1
+#endif
+#ifndef CivicPublisher
+  #error Define CivicPublisher from product-identity.json#publisherDisplayName
+#endif
+#ifndef CivicSchemaVersion
+  #error Define CivicSchemaVersion with the browser-database schema of this release
+#endif
 #ifndef CivicOutDir
-  #define CivicOutDir "..\..\..\release\windows"
+  #error Define CivicOutDir
 #endif
 #ifndef CivicOutBase
-  #define CivicOutBase "CivicWorkDesk-Windows-x64-Setup"
-#endif
-#ifndef CivicReleaseLabel
-  #error Define CivicReleaseLabel with the release-candidate label, e.g. RC3
+  #error Define CivicOutBase
 #endif
 
 #define CivicAppName "政务工作记录台"
 #define CivicAppNameEn "CivicWorkDesk"
-#define CivicPublisher "CivicWorkDesk"
 #define CivicOrigin "http://127.0.0.1:8765/"
 #define CivicIcon "civic-work-desk.ico"
+; The year the release is dated, from the release id (YYYY.MM.DD-...), so the copyright line cannot drift.
+#define CivicCopyrightYear Copy(CivicReleaseId, 1, 4)
 
 [Setup]
 AppId={{8B3F2C71-4D5E-4A19-9C42-7E1D6F0B8A53}
 AppName={#CivicAppName}
-AppVersion={#CivicReleaseId}
-AppVerName={#CivicAppName} {#CivicReleaseId}
-VersionInfoVersion={#CivicAppVersion}
-VersionInfoProductName={#CivicAppNameEn}
-VersionInfoDescription={#CivicAppNameEn} Windows x64 {#CivicReleaseLabel} (field-validation candidate)
+AppVersion={#CivicDisplayVersion}
+AppVerName={#CivicAppName} {#CivicDisplayVersion}
 AppPublisher={#CivicPublisher}
+AppCopyright=© {#CivicCopyrightYear} {#CivicPublisher}. 保留所有权利。
+VersionInfoVersion={#CivicAppVersion}
+VersionInfoProductVersion={#CivicAppVersion}
+VersionInfoTextVersion={#CivicAppVersion}
+VersionInfoProductTextVersion={#CivicDisplayVersion}
+VersionInfoCompany={#CivicPublisher}
+VersionInfoProductName={#CivicAppName} ({#CivicAppNameEn})
+VersionInfoDescription={#CivicAppName} {#CivicDisplayVersion} 安装程序（Windows x64）
 AppPublisherURL=https://github.com/Rhymer-Lcy/civic-work-desk
 AppSupportURL=https://github.com/Rhymer-Lcy/civic-work-desk/issues
 AppUpdatesURL=https://github.com/Rhymer-Lcy/civic-work-desk/releases
@@ -73,11 +95,10 @@ DisableProgramGroupPage=yes
 UsePreviousAppDir=yes
 UsePreviousGroup=yes
 
-; RC1 hid the directory page entirely. RC2 offers it on a CLEAN install -- a user with a small system
-; drive, or a policy about where programs live, needs somewhere else to put this -- while `auto` keeps it
-; suppressed when a previous installation is detected, so an upgrade cannot quietly become a SECOND
-; installation in a different place. UsePreviousAppDir above is what supplies that remembered path; the
-; combination is verified by the acceptance suite rather than assumed from Inno's documentation.
+; RC2 offers the directory page on a CLEAN install -- a user with a small system drive, or a policy about
+; where programs live, needs somewhere else to put this -- while `auto` keeps it suppressed when a
+; previous installation is detected, so an upgrade cannot quietly become a SECOND installation in a
+; different place. Whichever way the path was decided, the Ready page states it (UpdateReadyMemo).
 DisableDirPage=auto
 
 ; The icon the installer itself carries, and the one Windows shows for the uninstall entry.
@@ -90,11 +111,14 @@ UninstallDisplayName={#CivicAppName}
 UninstallDisplayIcon={app}\bin\civic-launch.exe,0
 CreateUninstallRegKey=yes
 
-; --- x64 only ---------------------------------------------------------------------------------------
-ArchitecturesAllowed=x64compatible
-; Windows 11 is 10.0.22000 and later. Inno checks this itself, so an old machine is refused by the
-; installer's own gate as well as by the preflight below.
-MinVersion=10.0.22000
+; --- x64 Windows 11, or Windows 10 22H2 ---------------------------------------------------------------
+; x64os, not x64compatible: x64compatible also admits Windows 11 on ARM64 running x64 code under
+; emulation, which this release does not support. Setup itself stays a 32-bit program so that it can
+; start on an x86 or ARM64 machine and say why it will not install, instead of failing to launch.
+ArchitecturesAllowed=x64os
+; 19045 is Windows 10 22H2; every Windows 11 build is higher. Windows Server and the Insider builds in
+; between are refused by the preflight, which can read the product type.
+MinVersion=10.0.19045
 
 OutputDir={#CivicOutDir}
 OutputBaseFilename={#CivicOutBase}
@@ -110,10 +134,15 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 
 [Messages]
 chinesesimplified.WelcomeLabel1=安装{#CivicAppName}
-chinesesimplified.WelcomeLabel2=即将安装{#CivicAppName}（版本 {#CivicReleaseId}）。%n%n本程序仅安装到当前用户可写的目录，不需要管理员权限，不安装任何运行环境，也不修改系统设置。安装和使用不依赖互联网。%n%n这是一个待现场验证的候选版本，尚未通过 Windows 兼容性认证。%n%n如果{#CivicAppName}正在运行，请先关闭。
+chinesesimplified.WelcomeLabel2=即将安装{#CivicAppName}（版本 {#CivicDisplayVersion}，发布者 {#CivicPublisher}）。%n%n本程序仅安装到当前用户可写的目录，不需要管理员权限，不安装任何运行环境，也不修改系统设置。安装和使用不依赖互联网。%n%n这是一个待现场验证的候选版本，尚未通过 Windows 兼容性认证。支持的系统：Windows 11 x64，或 Windows 10 22H2 x64。%n%n如果{#CivicAppName}正在运行，请先关闭。
 chinesesimplified.FinishedHeadingLabel=安装完成
-chinesesimplified.FinishedLabel=已安装{#CivicAppName}。%n%n从开始菜单或桌面打开即可使用。程序会在本机启动一个只监听 127.0.0.1:8765 的本地服务，再用你默认的浏览器打开固定访问地址：{#CivicOrigin}%n%n如问题仍然存在，请运行“收集诊断信息”，并将生成的诊断文件（TXT）反馈给维护人员。
+chinesesimplified.FinishedLabel=已安装{#CivicAppName} {#CivicDisplayVersion}。%n%n从开始菜单或桌面打开即可使用。程序会在本机启动一个只监听 127.0.0.1:8765 的本地服务，再用你默认的浏览器打开固定访问地址：{#CivicOrigin}%n%n如果是从旧版本升级：请先关闭所有已打开的{#CivicAppName}页面，再从开始菜单打开；页面顶部如提示“有新版本可用”，请点“应用更新”。%n%n如问题仍然存在，请运行“收集诊断信息”，并将生成的诊断文件（TXT）反馈给维护人员。
 chinesesimplified.ClickFinish=点击“完成”结束安装。
+; Inno's own refusals, reworded so a person is told what IS supported. The originals name a bare version
+; number ("需要 Windows 版本 10.0.19045 或更高") and a list of architecture codes.
+chinesesimplified.WinVersionTooLowError=这台计算机的 Windows 版本不在支持范围内，无法安装{#CivicAppName}。%n%n支持的系统：Windows 11 x64，或 Windows 10 22H2（内部版本 19045）x64。%n%n未写入任何安装文件。
+chinesesimplified.OnlyOnTheseArchitectures={#CivicAppName}只能安装在使用 x64（Intel 或 AMD 64 位）处理器的 64 位 Windows 上。%n%n不支持 32 位 Windows，也不支持 ARM64 设备（包括 x64 仿真）。%n%n未写入任何安装文件。
+chinesesimplified.WindowsVersionNotSupported=这台计算机的 Windows 版本不在支持范围内，无法安装{#CivicAppName}。%n%n支持的系统：Windows 11 x64，或 Windows 10 22H2（内部版本 19045）x64。
 
 [CustomMessages]
 chinesesimplified.LaunchAfterInstall=立即打开{#CivicAppName}
@@ -187,11 +216,11 @@ Name: "{group}\{cm:MaintenanceGroup}\{cm:PlatformName}"; Filename: "{app}\bin\ci
 Name: "{group}\{cm:MaintenanceGroup}\{cm:UninstallName}"; Filename: "{uninstallexe}"
 
 [Run]
-; Activation is the last step and the only destructive one. It verifies the payload, proves the server
-; serves it, and only then repoints current.txt.
+; Activation is the last step and the only destructive one. It verifies the payload, refuses an older
+; browser-database schema, proves the server serves it, and only then repoints current.txt.
 Filename: "{app}\bin\civic-admin.exe"; \
     Parameters: "activate --root ""{app}"" --release {#CivicReleaseId}"; \
-    StatusMsg: "正在校验并启用版本 {#CivicReleaseId}…"; \
+    StatusMsg: "正在校验并启用版本 {#CivicDisplayVersion}…"; \
     Flags: runhidden waituntilterminated
 Filename: "{app}\bin\civic-launch.exe"; Description: "{cm:LaunchAfterInstall}"; \
     WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent unchecked
@@ -239,8 +268,7 @@ end;
 
   The Desktop is tried first because it needs no explanation, then the profile root. Both are durable.
   Setup's temp directory is the LAST resort and is NOT durable -- it is deleted when Setup exits -- so
-  reaching it is reported differently: the message says so and asks the user to save the file first.
-  Describing all three as equivalent fallbacks, as RC2 did, was wrong. }
+  reaching it is reported differently: the message says so and asks the user to save the file first. }
 function DiagnosticCandidates(Stamp: string): TArrayOfString;
 var
   Names: TArrayOfString;
@@ -334,6 +362,17 @@ begin
             '未创建应用快捷方式，也未启用任何新版本。';
 end;
 
+{ True on Windows 10 22H2 -- the legacy target, which is supported but past the end of support. The
+  preflight has already refused every other Windows 10 build and every server edition, so the build
+  number alone identifies it here. }
+function IsWindows10LegacyTarget(): Boolean;
+var
+  Version: TWindowsVersion;
+begin
+  GetWindowsVersionEx(Version);
+  Result := (Version.Major = 10) and (Version.Build = 19045);
+end;
+
 function InitializeSetup(): Boolean;
 var
   Code: Integer;
@@ -348,15 +387,22 @@ begin
   Code := RunPreflight('machine', '');
   if Code = 0 then
   begin
+    { Informs; never blocks. The same sentence is civic-diag's and the preflight's
+      (platform.EndOfSupportNotice in the Go module), so every surface says one thing. }
+    if IsWindows10LegacyTarget() and not WizardSilent() then
+      MsgBox('Windows 10 已于 2025 年 10 月 14 日结束支持。本程序可以在 Windows 10 22H2 上安装和使用，' +
+             '但建议尽早升级到 Windows 11。', mbInformation, MB_OK);
     Result := True;
     exit;
   end;
 
   Shown := '这台计算机还不能安装政务工作记录台。' + #13#10#13#10;
   if Code = -1 then
-    Shown := Shown + '· 安装前检查程序无法运行，可能被安全软件拦截。' + #13#10
+    Shown := Shown + '· 安装前检查程序无法运行，可能被安全策略或安全软件拦截。' + #13#10 +
+                     '  请不要为此关闭安全软件，请把情况反馈给维护人员。' + #13#10
   else
-    Shown := Shown + '· 系统或处理器架构不满足要求（本候选版本仅支持 Windows 11 x64）。' + #13#10;
+    Shown := Shown + '· Windows 版本或处理器架构不在支持范围内。' + #13#10 +
+                     '  支持的系统：Windows 11 x64，或 Windows 10 22H2（内部版本 19045）x64。' + #13#10;
 
   Shown := Shown + #13#10 + NothingInstalledSentence() + #13#10#13#10 + DiagnosticSentence();
   MsgBox(Shown, mbCriticalError, MB_OK);
@@ -394,6 +440,81 @@ begin
   Result := False;
 end;
 
+{ The release id currently active in a directory, or '' when nothing is installed there. }
+function ActiveReleaseIn(Dir: string): string;
+var
+  Raw: AnsiString;
+begin
+  Result := '';
+  if LoadStringFromFile(AddBackslash(Dir) + 'current.txt', Raw) then
+    Result := Trim(String(Raw));
+end;
+
+{ The browser-database schema of an installed release: the databaseSchemaVersion in its
+  deployment-health.json, 1 when the release predates the field (RC1-RC3), -1 when unreadable. }
+function InstalledSchemaVersion(Dir, ReleaseId: string): Integer;
+var
+  Raw: AnsiString;
+  Text, Digits: string;
+  At, I: Integer;
+begin
+  Result := -1;
+  if not LoadStringFromFile(AddBackslash(Dir) + 'releases\' + ReleaseId + '\app\deployment-health.json', Raw) then
+    exit;
+  Text := String(Raw);
+  At := Pos('"databaseSchemaVersion":', Text);
+  if At = 0 then
+  begin
+    Result := 1;
+    exit;
+  end;
+  I := At + Length('"databaseSchemaVersion":');
+  while (I <= Length(Text)) and (Text[I] = ' ') do
+    I := I + 1;
+  Digits := '';
+  while (I <= Length(Text)) and (Text[I] >= '0') and (Text[I] <= '9') do
+  begin
+    Digits := Digits + Text[I];
+    I := I + 1;
+  end;
+  Result := StrToIntDef(Digits, -1);
+end;
+
+{ What this run will do, in the words the Ready page uses. }
+function InstallKindText(): string;
+var
+  Active: string;
+begin
+  Active := ActiveReleaseIn(WizardDirValue);
+  if Active = '{#CivicReleaseId}' then
+    Result := '修复（重新安装同一版本 {#CivicDisplayVersion}，沿用原安装位置）'
+  else if Active <> '' then
+    Result := '升级（从已安装的 ' + Active + ' 升级到 {#CivicDisplayVersion}，沿用原安装位置）'
+  else if WizardForm.PrevAppDir <> '' then
+    Result := '重新安装（沿用上一次的安装位置）'
+  else
+    Result := '全新安装';
+end;
+
+{ The Ready page always states the effective installation directory and what kind of run this is.
+
+  On an upgrade or a repair the directory page is skipped (DisableDirPage=auto) and Inno's own memo can
+  omit the directory entirely, so a person could not see where the program was going. This memo is built
+  from WizardDirValue, which is the directory that will actually be used in every case. }
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
+  MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+begin
+  Result := '安装位置：' + NewLine + Space + WizardDirValue + NewLine + NewLine +
+            '安装类型：' + NewLine + Space + InstallKindText() + NewLine + NewLine +
+            '版本：' + NewLine + Space + '{#CivicDisplayVersion}（{#CivicReleaseId}）' + NewLine + NewLine +
+            '固定访问地址：' + NewLine + Space + '{#CivicOrigin}' + NewLine;
+  if MemoTasksInfo <> '' then
+    Result := Result + NewLine + MemoTasksInfo + NewLine;
+  if ActiveReleaseIn(WizardDirValue) <> '' then
+    Result := Result + NewLine + '升级后：请关闭所有已打开的{#CivicAppName}页面，再从开始菜单打开；' +
+              NewLine + Space + '页面顶部如提示“有新版本可用”，请点“应用更新”。' + NewLine;
+end;
+
 { True when bin\civic-server.exe is absent or can be opened for writing -- i.e. no process still holds
   its image. This is the condition Setup's own file copy needs, asked directly rather than inferred
   from a timeout. }
@@ -417,6 +538,30 @@ begin
   end;
 end;
 
+{ Refuse, before anything is copied, to install this release over one whose application uses a newer
+  browser-database schema. civic-admin refuses the same activation; saying it here, in words, is what
+  keeps the person from finishing a wizard that then leaves the newer version running. }
+function NewerSchemaInstalled(var Message: string): Boolean;
+var
+  Active: string;
+  Installed: Integer;
+begin
+  Result := False;
+  Active := ActiveReleaseIn(ExpandConstant('{app}'));
+  if (Active = '') or (Active = '{#CivicReleaseId}') then
+    exit;
+  Installed := InstalledSchemaVersion(ExpandConstant('{app}'), Active);
+  if Installed > {#CivicSchemaVersion} then
+  begin
+    Message := '已安装的版本 ' + Active + ' 使用较新的数据格式（第 ' + IntToStr(Installed) + ' 版），' +
+               '本安装程序的版本 {#CivicDisplayVersion} 使用第 {#CivicSchemaVersion} 版。' + #13#10#13#10 +
+               '浏览器中的记录已由较新的版本升级，较旧的版本可能在编辑或删除时损坏上下级关系，' +
+               '而数据格式不能降级。' + #13#10#13#10 +
+               '请继续使用已安装的版本。未写入任何文件。';
+    Result := True;
+  end;
+end;
+
 { Stop a local service left running by a previous installation, then check the runtime preconditions,
   before a single file is copied.
 
@@ -425,15 +570,21 @@ end;
   could not delete civic-server.exe because the local service was up, and the following reinstall then
   aborted on the locked file, leaving the tree holding one orphaned binary and nothing else.
 
-  Order matters here. The running service is stopped FIRST, so that the port check afterwards is not
-  looking at our own local service and calling it a blocker -- an upgrade legitimately runs while the
-  previous version is up. }
+  Order matters here. The schema check comes first, because it must refuse before anything is stopped.
+  The running service is stopped next, so that the port check afterwards is not looking at our own local
+  service and calling it a blocker -- an upgrade legitimately runs while the previous version is up. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  OldAdmin: string;
+  OldAdmin, Refusal: string;
   ResultCode, I: Integer;
 begin
   Result := '';
+
+  if NewerSchemaInstalled(Refusal) then
+  begin
+    Result := Refusal;
+    exit;
+  end;
 
   if DirExists(ExpandConstant('{app}\bin')) then
   begin
@@ -450,15 +601,10 @@ begin
       if not Exec(OldAdmin, 'deactivate --root "' + ExpandConstant('{app}') + '"',
                   '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       begin
-        { The subject of the RC2 wording was ambiguous: "（<path> 无法执行）" reads as though the
-          PROGRAM could not run, when what failed was the stop tool. The path leaves the primary
-          sentence and becomes a labelled technical detail below the instruction.
-
-          DiagnosticSentence() must NOT be used here. It reports the last preflight report, and a
+        { DiagnosticSentence() must NOT be used here. It reports the last preflight report, and a
           passing stage deletes its own report -- so on the ordinary path into this branch the
           variable is empty and the sentence would announce that the Desktop, profile and temp
-          directory are all unwritable. That would be an invented failure. Caught in review of this
-          very change. }
+          directory are all unwritable. That would be an invented failure. }
         Result := '无法停止正在运行的政务工作记录台：停止工具无法执行。' + #13#10#13#10 +
                   '请从开始菜单运行“维护工具 → 停止本地服务”，然后重新安装。' + #13#10#13#10 +
                   '技术细节（反馈时请一并提供）：' + #13#10 + OldAdmin;
@@ -476,8 +622,7 @@ begin
       end;
 
       { The executables are released a moment after the process exits. Give Windows that moment, or the
-        copy that follows races the handle being closed. Waiting on state\server.json would be wrong: an
-        interrupted uninstall may already have deleted it while the service was still up. }
+        copy that follows races the handle being closed. }
       for I := 1 to 60 do
       begin
         if CanWriteServerBinary() then
@@ -507,18 +652,20 @@ var
   ResultCode: Integer;
 begin
   { ssPostInstall runs after every [Run] entry flagged waituntilterminated, so activation has already
-    happened. Ask it to verify what it enabled: without this, a silent failure would be followed by a
-    "finished" page, which is the most misleading outcome available. }
+    happened. The check names THIS release and requires it to be the active one: RC1-RC3 verified
+    whatever current.txt named, so an activation that had been refused left the previous release
+    active, the check passed on that, and Setup reported a finished installation of a version that was
+    not running. }
   if CurStep <> ssPostInstall then
     exit;
 
   if not Exec(ExpandConstant('{app}\bin\civic-admin.exe'),
-              'verify --root "' + ExpandConstant('{app}') + '"',
+              'verify --root "' + ExpandConstant('{app}') + '" --release {#CivicReleaseId} --expect-active',
               '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     ResultCode := -1;
 
   if ResultCode <> 0 then
-    MsgBox('版本文件已解压，但启用校验未通过。' + #13#10#13#10 +
+    MsgBox('版本文件已解压，但版本 {#CivicDisplayVersion} 没有被启用。' + #13#10#13#10 +
            '之前可用的版本（如果有）没有被破坏，仍然可以正常使用。' + #13#10 +
            '请从开始菜单运行“维护工具 → 收集诊断信息”，' + #13#10 +
            '并将生成的诊断文件（TXT）反馈给维护人员。',
