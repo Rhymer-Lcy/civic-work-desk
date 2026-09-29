@@ -95,6 +95,7 @@ release/windows/*.log
 # as tester-collected probe output: reviewed and transcribed into docs/ deliberately, never committed raw.
 # Their measured results are in docs/phase-4-windows-rc1.md.
 release/windows/acceptance-*.txt
+release/windows/acceptance-*.json
 
 # The tester instructions beside the installer are a build-derived copy of
 # deploy/windows/installer/README-测试说明.txt. Tracking both copies is how they drift apart; the source is
