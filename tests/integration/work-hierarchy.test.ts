@@ -307,6 +307,41 @@ describe('trash, restore and purge', () => {
     expect(await refusal(purgeAllDeleted())).toBe('has-live-descendants');
   });
 
+  it('purges a batch-trashed chain leaf first, refusing every record still named as parent', async () => {
+    const root = await create('根任务');
+    const child = await create('子任务', root.id);
+    const grandchild = await create('孙任务', child.id);
+    await softDeleteSubtree(root.id);
+
+    expect(await refusal(purgeRecord(root.id))).toBe('has-descendants');
+    expect(await refusal(purgeRecord(child.id))).toBe('has-descendants');
+    // Each refusal changed nothing.
+    expect((await records()).filter(isWorkRecord)).toHaveLength(3);
+
+    for (const record of [grandchild, child, root]) {
+      await purgeRecord(record.id);
+      await expectValid();
+    }
+    expect((await records()).filter(isWorkRecord)).toHaveLength(0);
+  });
+
+  it('purges a trashed middle subtree while its parent stays in the trash', async () => {
+    const root = await create('根任务');
+    const child = await create('子任务', root.id);
+    await create('孙任务', child.id);
+    await softDeleteSubtree(root.id);
+
+    const outcome = await purgeSubtree(child.id);
+    expect(outcome.recordsPurged).toBe(2);
+    const left = (await records()).filter(isWorkRecord);
+    expect(left.map((record) => record.id)).toEqual([root.id]);
+    expect(left[0]?.deletedAt).not.toBeNull();
+    await expectValid();
+    // Nothing names the root any more, so it goes on its own.
+    await purgeRecord(root.id);
+    expect((await records()).filter(isWorkRecord)).toHaveLength(0);
+  });
+
   it('empties the trash when parents and children are in it together', async () => {
     const { l1 } = await threeLevels();
     await softDeleteSubtree(l1.id);

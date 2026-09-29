@@ -243,3 +243,69 @@ test.describe('re-parenting, completing and deleting', () => {
     await expect(page.getByText(`上级任务「${ROOT}」仍在回收站中`)).toBeVisible();
   });
 });
+
+/*
+ * A trashed hierarchy must never become impossible to remove. The repository refuses to purge a record
+ * that something still names as parent (docs/phase-5-product-evolution.md §5), so these walk every
+ * supported way out of the trash for a whole 一级 → 二级 → 三级 tree, through the interface.
+ */
+test.describe('permanently deleting a trashed hierarchy', () => {
+  async function trashWholeTree(page: Page): Promise<void> {
+    await buildThreeLevels(page);
+    const card = await expandWorkCard(page, ROOT);
+    await card.getByRole('button', { name: '删除', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '删除带有下级任务的任务' })
+      .getByRole('button', { name: '连同 2 项下级任务一并移入回收站' })
+      .click();
+    await navigate(page, '设置');
+    await expect(page.getByText('回收站（3）')).toBeVisible();
+  }
+
+  async function purgeRow(page: Page, title: string): Promise<Locator> {
+    await page.getByRole('button', { name: `彻底删除：${title}`, exact: true }).click();
+    const confirm = page.getByRole('dialog', { name: '彻底删除这条记录？' });
+    await expect(confirm).toBeVisible();
+    return confirm;
+  }
+
+  test('deleting the root deletes the tree with it, says so first, and empties the trash', async ({
+    page,
+  }) => {
+    await trashWholeTree(page);
+    const confirm = await purgeRow(page, ROOT);
+    await expect(confirm.getByText('它的 2 项下级任务（含各级）会一并被彻底删除')).toBeVisible();
+    await confirm.getByRole('button', { name: '彻底删除', exact: true }).click();
+    await expect(page.getByText('回收站是空的')).toBeVisible();
+    await navigate(page, '工作');
+    await expect(page.getByRole('article', { name: ROOT })).toHaveCount(0);
+  });
+
+  test('leaf first, one record at a time, also empties it', async ({ page }) => {
+    await trashWholeTree(page);
+    for (const [title, left] of [
+      [GRANDCHILD, '回收站（2）'],
+      [CHILD, '回收站（1）'],
+    ] as const) {
+      const confirm = await purgeRow(page, title);
+      // A leaf has nothing beneath it by the time it is deleted, so no sub-task warning.
+      await expect(confirm.getByText('下级任务（含各级）')).toHaveCount(0);
+      await confirm.getByRole('button', { name: '彻底删除', exact: true }).click();
+      await expect(page.getByText(left)).toBeVisible();
+    }
+    const last = await purgeRow(page, ROOT);
+    await last.getByRole('button', { name: '彻底删除', exact: true }).click();
+    await expect(page.getByText('回收站是空的')).toBeVisible();
+  });
+
+  test('emptying the trash removes the whole tree at once', async ({ page }) => {
+    await trashWholeTree(page);
+    await page.getByRole('button', { name: '清空回收站' }).click();
+    const confirm = page.getByRole('dialog', { name: '清空回收站？' });
+    await confirm.getByRole('textbox').fill('清空');
+    await confirm.getByRole('button', { name: '确认清空' }).click();
+    await expect(page.getByText('回收站是空的')).toBeVisible();
+    await navigate(page, '工作');
+    await expect(page.getByRole('article', { name: GRANDCHILD })).toHaveCount(0);
+  });
+});
