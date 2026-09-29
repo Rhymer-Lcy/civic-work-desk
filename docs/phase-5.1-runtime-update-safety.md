@@ -6,8 +6,12 @@ runtime defects that packaged Windows upgrade acceptance exposed after Phase 5 w
 
 This is a post-signoff corrective phase. [phase-5-final-signoff.md](phase-5-final-signoff.md) stays as it
 was signed; it only gains a pointer to this record. No platform artifact was built, tagged or published
-here, and no Windows installer, server, launcher or UOS deployment code changed. The work stops at an
-independent review; `main` is not advanced by this phase.
+here, and no Windows installer, server, launcher or UOS deployment code changed.
+
+Sections 1 to 9 are the first round, as reviewed at `316535c`. The review accepted them and asked for one
+more correction, recorded in section 10: the product's own 应用更新 now activates a waiting worker only
+when no other application window is open. The phase is signed off in
+[phase-5.1-final-signoff.md](phase-5.1-final-signoff.md).
 
 ## 1. Why this phase exists
 
@@ -157,7 +161,9 @@ on the reload itself ("tab B still shows the document it had"), in bundled Chrom
 
 **What this cannot fix.** RC3 and earlier tabs run published code with the plugin's default reload. When
 a newer worker is activated they still reload. Only the deployment can protect them, by not activating
-while they are open; that is what section 4 prepares.
+while they are open; that is what section 4 prepares. Not reloading also means an older tab keeps
+running next to the new generation; section 10 removes that state from the product's own activation
+path, and keeps this section's behaviour as defence in depth for activations the product did not make.
 
 ## 4. Waiting-worker window awareness (defect C)
 
@@ -195,7 +201,8 @@ is to be checked in that platform's next release cycle.
 - Never returned: a URL, a query string, a fragment beyond the route name, a title, anything a page holds.
   Windows of another origin are dropped. A message that is not exactly the request, has no port, or comes
   from another origin or from a source without a URL gets no reply and triggers no enumeration.
-- **Consumer rule** for a future update page: count entries with `requester: false` and
+- **Consumer rule** (applied by the product's own update path since section 10, and by any future
+  update page): count entries with `requester: false` and
   `kind: 'application'`; if there is any, do not activate, say so, and ask the user to save and close
   those pages. No answer within the timeout (an older waiting worker, or none) is **unknown, never zero**,
   and falls back to the explicit manual warning. The update page itself is excluded as the requester; a
@@ -271,7 +278,9 @@ visibility trigger.
 
 ## 6. Gates
 
-Run at `e3dc764` (the last code commit), sequentially, on the development workstation:
+First round, run at `e3dc764` (the last code commit before review), sequentially, on the development
+workstation. The final gates, after section 10's correction, are in
+[phase-5.1-final-signoff.md](phase-5.1-final-signoff.md).
 
 | gate                                                              | command                  | result                                                                                                             |
 | ----------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
@@ -345,3 +354,94 @@ installed Edge held the first `registration.update()` back until about 60 s afte
 Chromium started the same call at once, and so did Edge in `client-awareness.spec.ts`, whose pages are
 never reloaded. Whether installation or the reload is the anchor, and the mechanism, were not established.
 It lengthens the Edge project to about a minute per update test; it does not change any outcome.
+
+## 10. Final correction: activation only when no other application window is open
+
+**The gap left by the first round.** Section 3 stops other tabs from reloading, which keeps their unsaved
+input, but the product's own 应用更新 still activated the new worker while those tabs were open. That
+left them running the previous generation's code under the new worker. A later generation may migrate
+the database (schema 2 to 3, say); an older tab must not stay able to write under the old assumptions.
+
+**The invariant.** From this generation on, the product's update path does not activate a waiting worker
+while any other application window is open. It asks the waiting worker first, over the protocol of
+section 4, and posts nothing unless the answer is complete and says so.
+
+**API** (`src/app/pwa/activation-safety.ts`, used by `service-worker-bridge.ts`):
+
+```ts
+type ActivationSafety =
+  | { status: 'safe' }
+  | { status: 'blocked'; otherApplicationWindows: number }
+  | { status: 'unknown'; reason: UnknownActivationReason };
+```
+
+`inspectActivationSafety(waitingWorker)` sends the version-1 request and reads the reply. It does not
+classify windows; it counts entries the worker marked `requester: false` and `kind: 'application'`.
+`safe` needs exactly one requester and no such entry. `unknown` covers every other case: no waiting
+worker, no answer within 3 s, a malformed answer, another protocol version, a worker that reports it is
+not waiting, no requester, a message that cannot be posted, and a different worker waiting by the time
+the answer arrives. `unknown` is never read as "no other window". `PwaController.applyUpdate()` now
+returns this result. It lets the plugin post the skip-waiting message only on `safe`, shares one attempt
+between concurrent presses, never sends twice, and asks again on every retry. The React banner only
+renders the result.
+
+| situation                                         | what happens                                                                                                                                                                |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| this page is the only application window          | activated; this page reloads once onto the new generation                                                                                                                   |
+| other application windows are open                | nothing activated, nothing reloaded; 检测到其他政务工作记录台页面仍在打开（另有 N 个）。为避免版本切换影响尚未保存的内容，请先保存并关闭其他页面，然后再应用更新。 and 重试 |
+| the answer is unknown                             | nothing activated, nothing reloaded; 暂时无法确认是否还有其他政务工作记录台页面正在使用。请保存并关闭其他页面后重试。 and 重试                                              |
+| only utility pages under `/api/` besides this one | activated (they never run the application)                                                                                                                                  |
+| a window at the legacy `/__civic/platform`        | counted: the worker answers it with the application shell                                                                                                                   |
+
+The legacy path is a conservative case. Measured: the worker answers that navigation with the shell
+(`fromServiceWorker`, title 政务工作记录台), but the shell's relative script URL resolves to
+`/__civic/assets/…`, so the interface does not start there. It is counted anyway, as section 4's
+classification commits to.
+
+**Proof that nothing is sent on a refused path.** A probe prepended to the new worker in the tests
+(`withProbe`, `tests/e2e/update-harness.ts`) records, inside that worker, every skip-waiting message and
+window query it receives and the windows that exist at the instant it activates. On every blocked and
+unknown path the probe saw zero skip-waiting messages and no activation. In the unit tests the plugin's
+sender is counted, and it stays at zero on every refused path. A static-scan rule,
+`skip-waiting-sender`, fails if any file under `src/` or `public/` sends the message or calls
+`skipWaiting` itself, so the guarded plugin call remains the only way the product activates a worker.
+Two mutations were each caught: activating whatever the answer (6 unit tests fail) and treating silence
+as safe (3 fail).
+
+**Tests** (`tests/e2e/update-safety.spec.ts`, bundled Chromium and installed Edge, persistent
+profiles, pages starting on an older generation):
+
+- A. one tab: activated, the tab reloads exactly once, the new generation's entry script runs, the probe
+  saw one skip-waiting message and only that tab at activation;
+- B. two tabs, unsaved 新增工作记录 in B: refused (另有 1 个), worker still waiting, neither tab reloaded, the
+  text intact; after B is saved and closed, 重试 asks again and activates, and the saved record is there;
+- C. three tabs: 另有 2 个, then 另有 1 个, then activation, with one fresh question per attempt;
+- D. utility pages under `/api/` do not block; a legacy `/__civic/platform` window does;
+- E. unknown, with no other tab at all: a worker without the protocol, one that never answers, a "safe"
+  answer arriving after the 3 s limit, a malformed answer, a newer protocol version. Each is refused;
+  the worker is still waiting 7 s later and the probe saw no skip-waiting message;
+- the migration property: the probed worker stands for a next generation that migrates when it
+  activates. Pressing 应用更新 from either of two tabs, repeatedly, never reached activation; once the
+  other tab closed, the windows open at activation were exactly the one that asked;
+- defence in depth, kept: a skip-waiting message sent by something other than the product (as an older
+  generation's 应用更新 does) still reloads no tab; each shows 刷新到新版本 and moves only on request.
+
+**Residual race.** The decision is taken from a snapshot. Between the worker enumerating windows and
+the skip-waiting message arriving, a window could still appear. Measured in test A: the product's
+question and its skip-waiting message reached the worker 10 ms apart in bundled Chromium and 2 ms apart
+in installed Edge. The practical race test (F) opens a tab at the same moment 应用更新 is pressed and
+accepts three outcomes: refused because the new tab was counted, the new tab opening on the new
+generation, or the new tab opening on the older generation and showing 刷新到新版本 (defence in depth).
+Running the older generation silently is the one outcome that fails it. In both browsers the run gave
+the first outcome: the new tab was counted and activation refused. Evaluated and not adopted: letting the waiting worker check and
+activate in one step. That would shrink the window to the worker's own enumeration-to-`skipWaiting`
+span, but it could not close it either: a window whose navigation is still in flight is not yet a client
+and is invisible to `clients.matchAll`. Adopting it also means either a second activation message or
+intercepting the plain skip-waiting message. That message is exactly what RC3's 应用更新 sends, and it
+cannot explain a refusal, so its button would simply stay busy. The page-side check plus the
+defence-in-depth notice is the measured, simpler design.
+
+**What still bypasses the guard, by design.** The browser activates a waiting worker by itself once no
+window uses the old one, which is safe by construction. A pre-5.1 page (RC3 and earlier) sends the plain
+skip-waiting message without asking. The latter is the deployment's job (section 8). Tabs of this
+generation and later are protected by this correction; tabs of RC3 cannot be.

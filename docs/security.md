@@ -279,7 +279,11 @@ both carry deployment state only:
   the six route names or none, and the visibility and focus flags; it never contains a URL, query,
   fragment, title or page content. Messages that are not exactly the request, or that come from
   another origin, get no reply. Unit tests assert the reply's shape and plant URL markers that must
-  not appear; the static scan allows `clients.matchAll` in this file and its built copy only.
+  not appear; the static scan allows `clients.matchAll` in this file and its built copy only. The
+  application itself asks this question before it activates an update, and activates only when no
+  other application window is open (`src/app/pwa/activation-safety.ts`); it reads the classification
+  and nothing else. The static scan also fails if code under `src/` or `public/` sends the skip-waiting
+  message or calls `skipWaiting` directly, so that guarded path stays the only one.
 - **Runtime generation** (`src/app/pwa/runtime-generation.ts`). The page asks `/api/civic/runtime`
   which interface generation the installed program expects, with a body-less GET, no credentials and
   no cache. It sends nothing about the user, and any answer other than a well-formed different

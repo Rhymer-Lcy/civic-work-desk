@@ -8,9 +8,18 @@ the Windows release candidates (Phase 4) — are recorded in `docs/phase-3-final
 
 ## [Unreleased] — Phase 5.1 runtime update safety (post-signoff correction)
 
-Four defects that packaged Windows upgrade acceptance exposed after Phase 5 was signed off. Phase 5's
-sign-off is not rewritten. **No platform release was produced**, and the unpublished Windows candidate
-`4fe9296d…` stays rejected. Full record: `docs/phase-5.1-runtime-update-safety.md`.
+Four defects that packaged Windows upgrade acceptance exposed after Phase 5 was signed off, and one
+final correction from review. Phase 5's sign-off is not rewritten. **No platform release was
+produced**, and the unpublished Windows candidate `4fe9296d…` stays rejected. Full record:
+`docs/phase-5.1-runtime-update-safety.md`; sign-off: `docs/phase-5.1-final-signoff.md`.
+
+### Changed
+
+- **应用更新 no longer switches versions while another page of the application is open.** It first asks
+  the waiting service worker which windows are open. With another application page open it switches
+  nothing and asks the user to save and close that page, then retry; if the answer cannot be
+  confirmed, it switches nothing either. A newer generation that may change the database therefore
+  never takes over while an older page could still write.
 
 ### Fixed
 
@@ -18,8 +27,9 @@ sign-off is not rewritten. **No platform release was produced**, and the unpubli
   action slot moved 15 px between routes up to 1920 px wide, and the whole bar 7.5 px above it; the
   root now reserves the scrollbar gutter (`scrollbar-gutter: stable`). Opening a dialog on a page that
   scrolls no longer moves the bar either.
-- **Applying an update in one tab no longer reloads the others.** Only the tab where 应用更新 was
-  pressed reloads; every other tab keeps its page, including unsaved input, and offers 刷新到新版本.
+- **A version switch no longer reloads tabs behind their users' backs.** When a new version takes over
+  by a route the product does not control (an older page's 应用更新, for example), no page of this
+  generation reloads by itself: each keeps its page, including unsaved input, and offers 刷新到新版本.
 
 ### Added
 
