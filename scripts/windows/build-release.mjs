@@ -17,7 +17,7 @@
  * The 0.2.0 line ships the Phase-5 application, which no frozen release carries, so the payload is built
  * here -- and built twice, from two clean exports of committed trees rather than from the working tree:
  *
- *   1. the signed-off Phase-5 product baseline (PRODUCT_BASELINE, main at sign-off);
+ *   1. the signed-off product baseline (PRODUCT_BASELINE: main at the Phase-5.1 sign-off);
  *   2. the deployment source commit this installer is built from.
  *
  * The two dist/ trees must be byte-identical, file for file. Before building, the input difference
@@ -51,8 +51,10 @@ import { loadReleaseIdentity } from './release-identity.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/* The signed-off Phase-5 product: main at the Phase-5 sign-off (docs/phase-5-final-signoff.md). */
-const PRODUCT_BASELINE = '3b71dbc86607186a80de06a3b852a857786eb5a2';
+/* The signed-off product: main at the Phase-5.1 sign-off (docs/phase-5.1-final-signoff.md). The first
+ * 0.2.0-rc.1 build used the Phase-5 sign-off, 3b71dbc; it was rejected before publication because that
+ * product lacked the Phase-5.1 update-safety corrections (scripts/windows/rejected-releases.json). */
+const PRODUCT_BASELINE = 'a0e0a4ce73e205823e3f6c0fa1d8931c7df6c69b';
 
 /* Paths whose change between the baseline and the source commit would change the product. package.json
  * and package-lock.json are compared separately, field by field. */
@@ -390,6 +392,39 @@ for (const entry of [entryJs[0][1], entryCss[0][1]]) {
   if (!existsSync(join(payload, 'app', entry)))
     fatal(`index.html loads ${entry}, which is missing`);
 }
+
+/* The interface generation (Phase 5.1): app-generation.json is part of the product build, and civic-server
+ * serves it to the page and to the update bootstrap at /api/civic/runtime. It must name exactly the entry
+ * script index.html loads, or the page and the server would disagree about which interface is current. */
+const generationDoc = JSON.parse(readFileSync(join(payload, 'app', 'app-generation.json'), 'utf8'));
+const entryHash = /^assets\/index-([A-Za-z0-9_-]{6,64})\.js$/.exec(entryJs[0][1])?.[1];
+if (
+  generationDoc.schema !== 'civic-app-generation/1' ||
+  entryHash === undefined ||
+  generationDoc.appGeneration !== `ui-${entryHash}` ||
+  generationDoc.entry !== entryJs[0][1]
+) {
+  fatal(
+    `app-generation.json does not describe the entry script index.html loads: ${JSON.stringify(generationDoc)}`,
+  );
+}
+const appGeneration = generationDoc.appGeneration;
+const baselineGeneration = JSON.parse(
+  readFileSync(join(baselineDist, 'app-generation.json'), 'utf8'),
+).appGeneration;
+if (baselineGeneration !== appGeneration) {
+  fatal(`the baseline build is ${baselineGeneration} but the payload is ${appGeneration}`);
+}
+console.log(`   interface generation ${appGeneration} (entry ${entryJs[0][1]}, ${entryCss[0][1]})`);
+
+/* The server's own version string, read from its source rather than retyped here. */
+const serverVersionMatches = [
+  ...git('show', `${sourceCommit}:deploy/windows/src/cmd/civic-server/main.go`).matchAll(
+    /^\s*serverVersion\s*=\s*"([^"]+)"/gm,
+  ),
+];
+if (serverVersionMatches.length !== 1) fatal('expected exactly one serverVersion in civic-server');
+const serverVersion = serverVersionMatches[0][1];
 const builtAt = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 const health = {
   application: 'civic-work-desk',
@@ -405,6 +440,7 @@ const health = {
   deploymentSourceCommit: sourceCommit,
   builtAt,
   entry: { js: entryJs[0][1], css: entryCss[0][1] },
+  appGeneration,
   note: 'Deployment health probe. Contains no personal data and no secrets. The launcher fetches this to confirm the server at the canonical origin is serving the expected release before opening the browser; civic-admin reads databaseSchemaVersion to refuse a rollback that would put an older application in front of newer records.',
 };
 writeFileSync(
@@ -446,9 +482,12 @@ const version = [
   'applicationPayloadSource=dist/ built from deploymentSourceCommit in a clean export of the committed tree (git read-tree + checkout-index)',
   // Derived from what the checks above verified, not retyped.
   `applicationPayloadUnchanged=YES — byte-identical to a clean build of productBaselineCommit (${String(sourceFiles.length)} files), plus ${[...declaredAdditions].join(', ')}`,
+  `appGeneration=${appGeneration}`,
+  `entryScript=${entryJs[0][1]}`,
+  `entryStylesheet=${entryCss[0][1]}`,
   `deploymentSourceCommit=${sourceCommit}`,
   'canonicalOrigin=http://127.0.0.1:8765',
-  'server=civic-server/1.1 (Go net/http, standard library only)',
+  `server=${serverVersion} (Go net/http, standard library only)`,
   `goToolchain=${GO_VERSION}`,
   'goBuildFlags=-trimpath -buildvcs=false -ldflags="-s -w" (civic-launch adds -H=windowsgui); CGO_ENABLED=0 GOOS=windows GOARCH=amd64',
   `nodeToolchain=${NODE_VERSION} (build time only)`,
