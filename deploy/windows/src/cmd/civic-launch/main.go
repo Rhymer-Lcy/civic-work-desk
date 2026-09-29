@@ -257,12 +257,17 @@ func startServer(tree layout.Tree, releaseID string) (launchlog.Outcome, error) 
 	return launchlog.OK, nil
 }
 
+// openBrowser opens the update bootstrap, not the application root (Phase 6). After an upgrade the root
+// can keep running the previous version from the browser's service-worker cache; the bootstrap, which is
+// always answered by this program's server, confirms the version the browser will run before entering
+// the application (internal/httpserve/bootstrap).
 func openBrowser(tree layout.Tree, origin, releaseID string) int {
-	if err := winproc.OpenInDefaultBrowser(origin + "/"); err != nil {
+	start := origin + httpserve.StartPath
+	if err := winproc.OpenInDefaultBrowser(start); err != nil {
 		fail(fmt.Sprintf(
 			"本地服务已就绪（程序版本 %s），但无法自动打开浏览器。\n"+
 				"这通常表示系统没有设置默认浏览器，或默认浏览器被禁止启动。\n\n"+
-				"请在浏览器地址栏手动输入固定访问地址： %s/", releaseID, origin), err)
+				"请在浏览器地址栏手动输入以下地址： %s", releaseID, start), err)
 		record(tree, "open", launchlog.BrowserFailed, exitInternal, releaseID, err)
 		return exitInternal
 	}
@@ -282,7 +287,7 @@ func cmdPlatform() int {
 			return code
 		}
 	}
-	if err := winproc.OpenInDefaultBrowser(canonicalOrigin + "/__civic/platform"); err != nil {
+	if err := winproc.OpenInDefaultBrowser(canonicalOrigin + httpserve.PlatformPath); err != nil {
 		fail("无法打开浏览器检查页面。", err)
 		record(tree, "platform", launchlog.BrowserFailed, exitInternal, releaseID, err)
 		return exitInternal

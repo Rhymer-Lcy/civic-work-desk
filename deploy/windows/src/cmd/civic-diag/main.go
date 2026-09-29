@@ -313,7 +313,7 @@ func main() {
 
 	section(w, "8. 如何反馈")
 	w("  请将这份诊断文件（TXT）原样反馈给维护人员。")
-	w("  如果程序还能打开，也请访问一次 %s/__civic/platform ，", canonicalOrigin)
+	w("  如果程序还能打开，也请访问一次 %s/api/civic/platform ，", canonicalOrigin)
 	w("  点“复制全部结果”，把那段文字一并反馈。")
 	w("  请不要为了让程序运行而关闭 Windows 安全中心、SmartScreen 或其他安全软件。")
 
