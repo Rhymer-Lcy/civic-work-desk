@@ -501,12 +501,79 @@ check(
   healthDoc.installRoot,
 );
 check(
-  healthDoc.serverVersion === 'civic-server/1.1',
+  healthDoc.serverVersion === 'civic-server/1.2',
   'the server names its own version and no release-candidate label',
   healthDoc.serverVersion,
 );
 const firstPid = healthDoc.pid;
 info('server pid', String(firstPid));
+
+// The browser-facing endpoints under /api/civic/ (Phase 6): what the update bootstrap and the application
+// rely on, answered by this server with no caching, from the release that is actually active.
+const installedGeneration = JSON.parse(
+  readFileSync(join(INSTALL_ROOT, 'releases', RELEASE_ID, 'app', 'app-generation.json'), 'utf8'),
+);
+const runtime = await get('/api/civic/runtime');
+let runtimeDoc = {};
+try {
+  runtimeDoc = JSON.parse(runtime.body);
+} catch {
+  /* reported below */
+}
+check(
+  runtime.status === 200 &&
+    runtime.headers.get('content-type') === 'application/json; charset=utf-8' &&
+    runtime.headers.get('cache-control') === 'no-store',
+  '/api/civic/runtime answers JSON that is never cached',
+  `${runtime.status} ${runtime.headers.get('content-type')} ${runtime.headers.get('cache-control')}`,
+);
+check(
+  runtimeDoc.schema === 'civic-runtime/1' &&
+    runtimeDoc.appGeneration === installedGeneration.appGeneration &&
+    runtimeDoc.releaseId === RELEASE_ID &&
+    runtimeDoc.canonicalOrigin === ORIGIN,
+  'the runtime generation is the active release app-generation.json',
+  `${runtimeDoc.appGeneration} / ${installedGeneration.appGeneration}`,
+);
+const startPage = await get('/api/civic/start');
+check(
+  startPage.status === 200 &&
+    startPage.headers.get('cache-control') === 'no-store' &&
+    (startPage.headers.get('content-security-policy') ?? '').includes("script-src 'self'") &&
+    startPage.body.includes('<script src="/api/civic/start.js"></script>'),
+  '/api/civic/start is the bootstrap page, not cached, under its own policy',
+  `${startPage.status} ${startPage.headers.get('cache-control')}`,
+);
+const startScript = await get('/api/civic/start.js');
+check(
+  startScript.status === 200 &&
+    startScript.headers.get('content-type') === 'text/javascript; charset=utf-8' &&
+    startScript.body.includes('CIVIC_WINDOW_CLIENTS'),
+  '/api/civic/start.js is the bootstrap script',
+);
+const platformPage = await get('/api/civic/platform');
+check(
+  platformPage.status === 200 &&
+    platformPage.headers.get('cache-control') === 'no-store' &&
+    platformPage.body.includes('浏览器平台检查'),
+  'the platform check is served at /api/civic/platform',
+);
+const legacyPlatform = await get('/__civic/platform');
+check(
+  legacyPlatform.status === 302 && legacyPlatform.headers.get('location') === '/api/civic/platform',
+  'the old platform address only redirects to the new one',
+  `${legacyPlatform.status} -> ${legacyPlatform.headers.get('location')}`,
+);
+check((await get('/api/civic/unknown')).status === 404, 'anything else under /api/ is 404');
+// The launch opened the bootstrap in the default browser, not the application root.
+const serverLog = () => {
+  const path = join(INSTALL_ROOT, 'logs', 'server.log');
+  return existsSync(path) ? readFileSync(path, 'utf8') : '';
+};
+check(
+  await waitFor(() => / GET \/api\/civic\/start -> 200 /.test(serverLog()), 20000),
+  'the launch opened /api/civic/start in the default browser (server.log)',
+);
 
 const appHealth = await get('/deployment-health.json');
 check(appHealth.status === 200, 'application deployment-health.json served');
