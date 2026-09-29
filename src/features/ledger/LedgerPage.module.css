@@ -1,7 +1,11 @@
 /*
- * Two presentations, one dataset. Below 60rem the table is removed from the accessibility tree
- * entirely (`display: none`) and the card list takes over, rather than restyling table cells into
- * blocks while leaving their row/cell roles behind.
+ * Two presentations, one dataset. Below 60rem the card list is rendered instead of the table, rather
+ * than restyling table cells into blocks while leaving their row/cell roles behind.
+ *
+ * The choice is made in script (`LEDGER_TABLE_QUERY`, src/styles/breakpoints.ts), and only the chosen
+ * presentation is rendered. This file used to render both and hide one with `display: none` under
+ * `@media (min-width: 60rem)`; nothing here switches between them any more, so neither rule belongs
+ * here again (tests/unit/breakpoints.test.ts checks).
  */
 /*
  * The wrapper is only a scroll container when it has to be.
@@ -14,7 +18,6 @@
  * scrolls with the table, which is the honest trade rather than a broken pin.
  */
 .tableWrap {
-  display: none;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -31,16 +34,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-
-@media (min-width: 60rem) {
-  .tableWrap {
-    display: block;
-  }
-
-  .cards {
-    display: none;
-  }
 }
 
 /*
@@ -191,19 +184,18 @@
   white-space: pre-wrap;
 }
 
-/* Printing always uses the table. */
+/*
+ * Printing always uses the table: the page renders it whenever print is in progress (`usePrinting`),
+ * at any window width. The cards are deliberately not hidden here — if an engine ever printed without
+ * that switch, a card list on paper is better than a blank page.
+ */
 @media print {
   .tableWrap {
-    display: block !important;
     border: 0;
   }
 
   .table {
     min-width: 0;
-  }
-
-  .cards {
-    display: none !important;
   }
 
   .table th {

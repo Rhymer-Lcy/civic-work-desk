@@ -17,6 +17,8 @@ import { filenameStamp } from '@/utils/clock';
 import { Button, EmptyState, HonorBadge, StatusBadge, UrgencyBadge } from '@/components/common';
 import { useToast } from '@/components/common';
 import { PageHeader } from '@/components/layout/AppShell';
+import { useMediaQuery, usePrinting } from '@/app/use-media-query';
+import { LEDGER_TABLE_QUERY } from '@/styles/breakpoints';
 import { FilterBar } from '../work/FilterBar';
 import styles from './LedgerPage.module.css';
 
@@ -27,7 +29,12 @@ import styles from './LedgerPage.module.css';
  * name through `td::before { content: attr(data-label) }`. That works visually but leaves the
  * table semantics in place while removing the visual table, so a screen reader still announced
  * "row 12, column 4" over what was rendered as a paragraph. Here the two presentations are
- * genuinely different markup, chosen by a media query.
+ * genuinely different markup.
+ *
+ * Only one of them is rendered. Until Phase 5 both were, for every row, and CSS hid one: at 5,000
+ * records that doubled the DOM the page built, and switching to 台账 was measurably slower for it
+ * (docs/phase-5-evidence.md §3). The choice is `LEDGER_TABLE_QUERY`, read synchronously on the first
+ * render, and printing always takes the table, whatever the window width.
  */
 
 export function LedgerPage(): ReactNode {
@@ -44,6 +51,9 @@ export function LedgerPage(): ReactNode {
   const index = useMemo(() => indexRecords(data.records), [data.records]);
   const units = useMemo(() => distinctUnits(data.records), [data.records]);
   const years = useMemo(() => distinctYears(data.records), [data.records]);
+  const wide = useMediaQuery(LEDGER_TABLE_QUERY, true);
+  const printing = usePrinting();
+  const presentation: LedgerPresentation = wide || printing ? 'table' : 'cards';
 
   const exportXlsx = async (): Promise<void> => {
     setExporting(true);
@@ -116,72 +126,95 @@ export function LedgerPage(): ReactNode {
             {data.settings.appTitle} · 工作台账 · 共 {results.length} 条 · 导出日期 {data.today}
           </p>
 
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <caption className="visually-hidden">
-                工作与荣誉台账，共 {results.length} 条记录
-              </caption>
-              {/*
-               * Declared widths, in percentages so the table still fills a 1920 viewport and a
-               * 1280 one. The title and the remark get the room; 类别 and the two deadline columns
-               * get exactly what their content needs and no more.
-               */}
-              <colgroup>
-                <col className={styles.colDate} />
-                <col className={styles.colKind} />
-                <col className={styles.colLevel} />
-                <col className={styles.colTitle} />
-                <col className={styles.colCategory} />
-                <col className={styles.colStatus} />
-                <col className={styles.colDeadline} />
-                <col className={styles.colDeadline} />
-                <col className={styles.colVerdict} />
-                <col className={styles.colCounterpart} />
-                <col className={styles.colRemark} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">日期</th>
-                  <th scope="col">类别</th>
-                  <th scope="col">层级</th>
-                  <th scope="col">事项 / 荣誉名称</th>
-                  <th scope="col">业务分类</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">上报时限</th>
-                  <th scope="col">完成时限</th>
-                  <th scope="col">时限判定</th>
-                  <th scope="col">对接单位 / 人</th>
-                  <th scope="col">备注</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((record) => (
-                  <LedgerRow
-                    key={record.id}
-                    record={record}
-                    hierarchy={ledgerHierarchy(index, record)}
-                    today={data.today}
-                    categoryName={categoryNameOf(record, data.categories)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <ul className={styles.cards}>
-            {results.map((record) => (
-              <LedgerCard
-                key={record.id}
-                record={record}
-                hierarchy={ledgerHierarchy(index, record)}
-                today={data.today}
-                categoryName={categoryNameOf(record, data.categories)}
-              />
-            ))}
-          </ul>
+          {presentation === 'table' ? (
+            <LedgerTable
+              results={results}
+              index={index}
+              today={data.today}
+              categories={data.categories}
+            />
+          ) : (
+            <ul className={styles.cards} data-ledger-presentation="cards">
+              {results.map((record) => (
+                <LedgerCard
+                  key={record.id}
+                  record={record}
+                  hierarchy={ledgerHierarchy(index, record)}
+                  today={data.today}
+                  categoryName={categoryNameOf(record, data.categories)}
+                />
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </>
+  );
+}
+
+type LedgerPresentation = 'table' | 'cards';
+
+function LedgerTable({
+  results,
+  index,
+  today,
+  categories,
+}: {
+  readonly results: readonly AnyRecord[];
+  readonly index: WorkIndex;
+  readonly today: string;
+  readonly categories: readonly { readonly id: string; readonly name: string }[];
+}): ReactNode {
+  return (
+    <div className={styles.tableWrap} data-ledger-presentation="table">
+      <table className={styles.table}>
+        <caption className="visually-hidden">工作与荣誉台账，共 {results.length} 条记录</caption>
+        {/*
+         * Declared widths, in percentages so the table still fills a 1920 viewport and a
+         * 1280 one. The title and the remark get the room; 类别 and the two deadline columns
+         * get exactly what their content needs and no more.
+         */}
+        <colgroup>
+          <col className={styles.colDate} />
+          <col className={styles.colKind} />
+          <col className={styles.colLevel} />
+          <col className={styles.colTitle} />
+          <col className={styles.colCategory} />
+          <col className={styles.colStatus} />
+          <col className={styles.colDeadline} />
+          <col className={styles.colDeadline} />
+          <col className={styles.colVerdict} />
+          <col className={styles.colCounterpart} />
+          <col className={styles.colRemark} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">日期</th>
+            <th scope="col">类别</th>
+            <th scope="col">层级</th>
+            <th scope="col">事项 / 荣誉名称</th>
+            <th scope="col">业务分类</th>
+            <th scope="col">状态</th>
+            <th scope="col">上报时限</th>
+            <th scope="col">完成时限</th>
+            <th scope="col">时限判定</th>
+            <th scope="col">对接单位 / 人</th>
+            <th scope="col">备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((record) => (
+            <LedgerRow
+              key={record.id}
+              record={record}
+              hierarchy={ledgerHierarchy(index, record)}
+              today={today}
+              categoryName={categoryNameOf(record, categories)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
