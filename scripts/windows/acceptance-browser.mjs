@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
- * Browser-side acceptance for the Windows RC1, against the INSTALLED origin.
+ * Browser-side acceptance for a Windows release, against the INSTALLED origin.
  *
- *   node scripts/windows/acceptance-browser.mjs [--release-id <id>]
+ *   node scripts/windows/acceptance-browser.mjs --release-id <id> [--channel msedge|chromium]
  *
- * Requires the release under test to be installed (acceptance-deploy.mjs --keep leaves it in place).
+ * Requires the release under test to be installed (acceptance-deploy.mjs leaves it in place). The release
+ * id is required: it used to default to an RC2 id, which is how a suite quietly stops covering the thing
+ * being shipped. The browser defaults to the installed Microsoft Edge -- the browser Windows 10 and 11
+ * ship with -- rather than Playwright's bundled Chromium build.
  *
  * ## Why this is separate from the installer acceptance
  *
@@ -19,8 +22,8 @@
  * installation directory. Proving that needs the same browser profile to outlive an uninstall, so the
  * profile is created on disk under the scratch directory and reused across the phases below.
  *
- * Chromium is used because it is the engine of Edge and of the 360 browser, which is what colleagues
- * have. That makes it the right rehearsal and NOT a certification: one engine on one machine.
+ * Edge is Chromium, the same engine as the 360 browser colleagues also have. That makes it the right
+ * rehearsal and NOT a certification: one engine on one machine.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -29,25 +32,43 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from '@playwright/test';
+import { chromium as playwrightChromium } from '@playwright/test';
+import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 function argValue(name, fallback) {
   const i = process.argv.indexOf(name);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')
+    ? process.argv[i + 1]
+    : fallback;
 }
 
-// The suite is release-agnostic: the same checks have to pass for every candidate, and hard-coding one
-// id is how a suite quietly stops covering the thing being shipped.
-const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc2');
-const SETUP_BASE = `CivicWorkDesk-Windows-x64-${RELEASE_ID.replace('-win-', '-')}-Setup`;
+const IDENTITY = loadReleaseIdentity(
+  ROOT,
+  argValue('--release-id', undefined),
+  argValue('--today', undefined) ?? businessDateUtc8(),
+);
+const RELEASE_ID = IDENTITY.releaseId;
+const CHANNEL = argValue('--channel', 'msedge');
+if (!['msedge', 'chromium'].includes(CHANNEL)) {
+  console.error(`error: --channel must be msedge or chromium, not ${CHANNEL}`);
+  process.exit(2);
+}
+/* The same persistent-context API either way; only the executable differs. */
+const chromium = {
+  launchPersistentContext: (dir, options) =>
+    playwrightChromium.launchPersistentContext(dir, {
+      ...options,
+      ...(CHANNEL === 'msedge' ? { channel: 'msedge' } : {}),
+    }),
+};
 const ORIGIN = 'http://127.0.0.1:8765';
 const INSTALL_ROOT = join(
   process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
   'CivicWorkDesk',
 );
-const SETUP = join(ROOT, 'release', 'windows', `${SETUP_BASE}.exe`);
-const WORK = join(tmpdir(), 'civic-rc1-browser-acceptance');
+const SETUP = join(ROOT, 'release', 'windows', IDENTITY.installerName);
+const WORK = join(tmpdir(), 'civic-browser-acceptance');
 const PROFILE = join(WORK, 'chromium-profile');
 const DOWNLOADS = join(WORK, 'downloads');
 
@@ -184,9 +205,12 @@ if (!existsSync(bin('civic-launch.exe'))) {
   process.exit(2);
 }
 
-console.log('CivicWorkDesk Windows RC1 -- browser-side acceptance at the installed origin');
+console.log(
+  `CivicWorkDesk Windows ${IDENTITY.displayVersion} -- browser-side acceptance at the installed origin`,
+);
 console.log('');
 console.log(`  origin  : ${ORIGIN}/`);
+console.log(`  browser : ${CHANNEL}`);
 console.log(`  profile : ${PROFILE}`);
 
 rmSync(WORK, { recursive: true, force: true });
@@ -195,6 +219,11 @@ mkdirSync(DOWNLOADS, { recursive: true });
 
 const health = await ensureServer();
 info('server release', health.releaseId);
+check(
+  health.releaseId === RELEASE_ID,
+  'the installed release is the one under test',
+  health.releaseId,
+);
 
 // ---------------------------------------------------------------------------------------------------
 // Phase 1: platform capabilities and the origin invariant
@@ -330,7 +359,7 @@ check(
 // ---------------------------------------------------------------------------------------------------
 section('2. records, backup and exports');
 
-const MARKER = `RC1验收-${Date.now()}`;
+const MARKER = `验收-${Date.now()}`;
 
 // Today, as the browser's own clock sees it. Node and the browser share the machine clock, so the date
 // computed here is the date the application will place the record in -- which is what puts it inside the
@@ -368,6 +397,83 @@ await page.getByRole('navigation', { name: '主导航' }).waitFor();
 const listText = await settledBodyText(page);
 check(listText.includes(`${MARKER}-甲`), 'a record written through the UI is present after reload');
 check(listText.includes(`${MARKER}-乙`), 'the second record is present too');
+
+// The Phase-5 hierarchy, driven through the interface at the installed origin: a 2级子任务 under 甲 and
+// a 3级子任务 under that, then the structure view, then the level-3 limit.
+const L2 = `${MARKER}-二级`;
+const L3 = `${MARKER}-三级`;
+async function addChild(parentTitle, title) {
+  const card = page.getByRole('article', { name: parentTitle });
+  const toggle = card.getByRole('button', { name: /展开详情|收起详情/ }).first();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await card.getByRole('button', { name: '添加下级任务', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新增下级任务' });
+  await dialog.waitFor();
+  await dialog.getByRole('textbox', { name: '事项', exact: true }).fill(title);
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+}
+let hierarchyBuilt = true;
+try {
+  await addChild(`${MARKER}-甲`, L2);
+  await addChild(L2, L3);
+} catch (err) {
+  hierarchyBuilt = false;
+  info('hierarchy error', String(err).split('\n')[0]);
+}
+check(hierarchyBuilt, 'a 2级 and a 3级 sub-task were added through the interface');
+const l2Card = page.getByRole('article', { name: L2 });
+const l3Card = page.getByRole('article', { name: L3 });
+check(
+  (await l2Card.getByText('2级子任务').count()) > 0 &&
+    (await l2Card.getByText(`上级：${MARKER}-甲`).count()) > 0,
+  'the 2级子任务 names its level and its parent on its own row',
+);
+check(
+  (await l3Card.getByText(`上级：${MARKER}-甲 / ${L2}`).count()) > 0,
+  'the 3级子任务 names its full path',
+);
+const l3Toggle = l3Card.getByRole('button', { name: /展开详情|收起详情/ }).first();
+if ((await l3Toggle.getAttribute('aria-expanded')) !== 'true') await l3Toggle.click();
+check(
+  (await l3Card.getByRole('button', { name: '添加下级任务', exact: true }).count()) === 0,
+  'a 3级子任务 offers no fourth level',
+);
+await page
+  .getByRole('group', { name: '工作视图' })
+  .getByRole('button', { name: '任务结构' })
+  .click();
+const tree = page.getByRole('list', { name: '任务结构' });
+check(
+  (await tree.count()) > 0 && (await tree.innerText()).includes(L3),
+  'the 任务结构 view shows the three levels',
+);
+const storedTree = await page.evaluate(
+  () =>
+    new Promise((done) => {
+      const open = indexedDB.open('civic-work-desk');
+      open.onsuccess = () => {
+        const db = open.result;
+        const req = db.transaction('records').objectStore('records').getAll();
+        req.onsuccess = () => {
+          db.close();
+          done({ version: db.version, rows: req.result });
+        };
+      };
+    }),
+);
+const byTitle = new Map(storedTree.rows.map((r) => [r.title, r]));
+check(
+  storedTree.version === 20,
+  'the database is at schema 2 (IndexedDB version 20)',
+  `version ${storedTree.version}`,
+);
+check(
+  byTitle.get(L3)?.parentWorkId === byTitle.get(L2)?.id &&
+    byTitle.get(L2)?.parentWorkId === byTitle.get(`${MARKER}-甲`)?.id &&
+    byTitle.get(`${MARKER}-甲`)?.parentWorkId === null,
+  'IndexedDB holds the chain 甲 <- 二级 <- 三级 by parentWorkId',
+);
 
 const idbCount = await page.evaluate(async () => {
   const dbs = (await indexedDB.databases?.()) ?? [];
@@ -412,6 +518,16 @@ if (jsonButton) {
     /* reported next */
   }
   check(parsed !== null, 'the backup is valid JSON');
+  check(
+    parsed?.backupFormatVersion === 3 && parsed?.schemaVersion === 2,
+    'the backup is format 3 of schema 2',
+    `format ${parsed?.backupFormatVersion}, schema ${parsed?.schemaVersion}`,
+  );
+  const backedUp = new Map((parsed?.payload?.records ?? []).map((r) => [r.title, r]));
+  check(
+    backedUp.get(L3)?.parentWorkId === backedUp.get(L2)?.id && backedUp.get(L2)?.parentWorkId,
+    'the backup carries the hierarchy',
+  );
 } else {
   record('FAIL', 'a JSON backup control was found on the settings page', buttonNames.join(' | '));
 }
@@ -873,18 +989,18 @@ console.log(`  failed : ${failures}`);
 console.log('');
 console.log(
   failures === 0
-    ? '  RESULT: PASS in Chromium on this workstation. NOT a browser certification.'
+    ? `  RESULT: PASS in ${CHANNEL === 'msedge' ? 'Microsoft Edge' : 'Chromium'} on this workstation. NOT a browser certification.`
     : '  RESULT: FAIL -- see the [FAIL] lines above.',
 );
 
 writeFileSync(
   join(ROOT, 'release', 'windows', `acceptance-browser-${RELEASE_ID}.txt`),
   [
-    'CivicWorkDesk Windows RC1 -- browser-side acceptance at the installed origin',
+    `CivicWorkDesk Windows ${IDENTITY.displayVersion} -- browser-side acceptance at the installed origin`,
     '',
     `origin      : ${ORIGIN}/`,
     `release     : ${RELEASE_ID}`,
-    `engine      : Chromium (Playwright), persistent profile`,
+    `engine      : ${CHANNEL === 'msedge' ? 'Microsoft Edge' : 'Chromium'} (Playwright), persistent profile`,
     `checks      : ${results.length} (${failures} failed)`,
     '',
     ...results.map(
@@ -892,7 +1008,7 @@ writeFileSync(
     ),
     '',
     failures === 0
-      ? 'RESULT: PASS in Chromium on the development workstation. No browser is certified by this.'
+      ? `RESULT: PASS in ${CHANNEL === 'msedge' ? 'Microsoft Edge' : 'Chromium'} on the development workstation. No browser is certified by this.`
       : 'RESULT: FAIL.',
     '',
   ].join('\n'),
