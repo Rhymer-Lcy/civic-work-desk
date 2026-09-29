@@ -208,18 +208,19 @@ with no failing gate.
 
 ## Documentation
 
-| File                               | Contents                                                         |
-| ---------------------------------- | ---------------------------------------------------------------- |
-| `docs/legacy-audit.md`             | What the prototype did, and 40+ findings with line numbers       |
-| `docs/architecture.md`             | Layering, data flow, bundle strategy, PWA                        |
-| `docs/data-model.md`               | Schema, the date model, invariants, soft delete                  |
-| `docs/migration.md`                | Field-by-field legacy mapping and conflict policy                |
-| `docs/security.md`                 | Trust boundary, threat model, CSP, dependency policy             |
-| `docs/ux-audit.md`                 | UX problems, redesign decisions, responsive and a11y rules       |
-| `docs/qa-plan.md`                  | What is tested, results, defects found, and what is _not_ tested |
-| `docs/dependencies.md`             | Every dependency justified                                       |
-| `docs/release-checklist.md`        | Gates before packaging and before deploying                      |
-| `docs/decisions/0001-pwa-first.md` | Why a PWA and not a native wrapper                               |
+| File                               | Contents                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `docs/legacy-audit.md`             | What the prototype did, and 40+ findings with line numbers                            |
+| `docs/architecture.md`             | Layering, data flow, bundle strategy, PWA                                             |
+| `docs/data-model.md`               | Schema, the date model, invariants, soft delete                                       |
+| `docs/migration.md`                | Field-by-field legacy mapping and conflict policy                                     |
+| `docs/security.md`                 | Trust boundary, threat model, CSP, dependency policy                                  |
+| `docs/ux-audit.md`                 | UX problems, redesign decisions, responsive and a11y rules                            |
+| `docs/qa-plan.md`                  | What is tested, results, defects found, and what is _not_ tested                      |
+| `docs/dependencies.md`             | Every dependency justified                                                            |
+| `docs/release-checklist.md`        | Gates before packaging and before deploying                                           |
+| `docs/decisions/0001-pwa-first.md` | Why a PWA and not a native wrapper                                                    |
+| `docs/phase-5-final-signoff.md`    | Phase 5 (task hierarchy, schema v2) sign-off, invariants and the next-release backlog |
 
 ## Deployment and supported platforms
 

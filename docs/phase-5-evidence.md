@@ -66,10 +66,10 @@ checks; a registry with a changed digest fails both the digest check and the sig
 - The GitHub release `windows-v2026.09.24-rc3` is published as a pre-release (not a draft), with the
   installer asset at 6,894,533 bytes and digest `sha256:4b8bc1d2…71e96`. No newer release exists.
 - No tracked file under `release/` changed on this branch (`git diff 40c8330..HEAD -- release` is empty).
-- Remote refs: `main` at `fa12b03` and `phase-4/windows-offline-distribution` at `40c8330`, as when the
-  phase began; tags `rc1`–`rc3` unchanged. This branch was first pushed for independent review at
-  `6f327fb`; the push of the review correction is reported outside this file, which is part of what is
-  pushed.
+- Remote refs before integration: `main` at `fa12b03` and `phase-4/windows-offline-distribution` at
+  `40c8330`, as when the phase began; tags `rc1`–`rc3` unchanged. This branch was pushed for independent
+  review at `6f327fb` and, after the review correction, at `e254226`. Its integration into `main` is
+  recorded in [phase-5-final-signoff.md](phase-5-final-signoff.md).
 
 ## 3. Performance at 5,000 work records
 

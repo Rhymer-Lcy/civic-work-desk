@@ -1,6 +1,7 @@
 # Phase 5 — product evolution: design record
 
-**Status:** design, written before implementation (2026-09-29, dates in UTC+8).
+**Status:** design, written before implementation (2026-09-29, dates in UTC+8). Signed off on
+2026-09-29 — see [phase-5-final-signoff.md](phase-5-final-signoff.md).
 **Branch:** `phase-5/product-evolution`, from `40c8330` (the Phase-4 RC3 head).
 **Scope:** the shared application and its data model. No platform package is built or published in this
 phase — see §17.
