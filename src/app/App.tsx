@@ -11,6 +11,7 @@ import { SettingsPage } from '@/features/settings/SettingsPage';
 import { WorkPage } from '@/features/work/WorkPage';
 import { requestPersistentStorage } from '@/services/storage/persistence';
 import { PrimaryActionProvider } from './primary-action';
+import type { ActivationSafety } from './pwa/activation-safety';
 import { watchRuntimeGeneration } from './pwa/runtime-generation';
 import { registerServiceWorker } from './pwa/service-worker-bridge';
 import type { UpdateState } from './pwa/service-worker-bridge';
@@ -36,6 +37,8 @@ function AppRoot(): ReactNode {
   const { state, refresh } = useDataContext();
   const [updateState, setUpdateState] = useState<UpdateState>('idle');
   const [applying, setApplying] = useState(false);
+  /** The last refused activation attempt, shown until the next attempt succeeds. */
+  const [refusal, setRefusal] = useState<ActivationSafety | null>(null);
   // A ref, not state: the controller is never rendered, so storing it in state would force an
   // extra render pass on mount for no visible change.
   const controllerRef = useRef<ReturnType<typeof registerServiceWorker> | null>(null);
@@ -94,8 +97,8 @@ function AppRoot(): ReactNode {
         updateState === 'update-ready' ? (
           <Panel tone="warning">
             <div className={styles.updateBar}>
-              <p className={styles.updateText}>
-                有新版本可用。现在应用会重新加载页面；请先保存正在编辑的内容。
+              <p className={styles.updateText} aria-live="polite">
+                {updateReadyText(refusal)}
               </p>
               <Button
                 size="sm"
@@ -103,11 +106,19 @@ function AppRoot(): ReactNode {
                 icon={<RefreshCw size={14} />}
                 busy={applying}
                 onClick={() => {
+                  const pwa = controllerRef.current;
+                  if (!pwa) return;
                   setApplying(true);
-                  void controllerRef.current?.applyUpdate();
+                  // Activates only if no other application window is open (Phase 5.1). A refusal
+                  // leaves this page as it is; the button then retries, which asks again.
+                  void pwa.applyUpdate().then((result) => {
+                    if (result.status === 'safe') return; // this page reloads once the worker switches
+                    setRefusal(result);
+                    setApplying(false);
+                  });
                 }}
               >
-                应用更新
+                {refusal ? '重试' : '应用更新'}
               </Button>
             </div>
           </Panel>
@@ -151,6 +162,17 @@ function AppRoot(): ReactNode {
       )}
     </AppShell>
   );
+}
+
+/** The update prompt's text: the offer itself, or why the last attempt did not switch versions. */
+function updateReadyText(refusal: ActivationSafety | null): string {
+  if (refusal?.status === 'blocked') {
+    return `检测到其他政务工作记录台页面仍在打开（另有 ${String(refusal.otherApplicationWindows)} 个）。为避免版本切换影响尚未保存的内容，请先保存并关闭其他页面，然后再应用更新。`;
+  }
+  if (refusal?.status === 'unknown') {
+    return '暂时无法确认是否还有其他政务工作记录台页面正在使用。请保存并关闭其他页面后重试。';
+  }
+  return '有新版本可用。现在应用会重新加载页面；请先保存正在编辑的内容。';
 }
 
 function RouteView({

@@ -72,6 +72,8 @@ export interface UpdateServer {
   setRuntime(reply: RuntimeReply): void;
   /** Serve this build directory instead of `dist/` (worker script included). */
   setRoot(directory: string): void;
+  /** Serve `body` for exactly this path instead of the file, or stop doing so with `null`. */
+  setFileOverride(path: string, body: string | null): void;
   /** Number of requests `/api/civic/runtime` has received. */
   runtimeRequests(): number;
   close(): Promise<void>;
@@ -91,6 +93,7 @@ export async function startUpdateServer(): Promise<UpdateServer> {
   let transform: (script: string) => string = (script) => script;
   let runtime: RuntimeReply = { kind: 'absent' };
   let runtimeCount = 0;
+  const overrides = new Map<string, string>();
 
   const serveRuntime = (request: IncomingMessage, response: ServerResponse): void => {
     runtimeCount += 1;
@@ -122,6 +125,11 @@ export async function startUpdateServer(): Promise<UpdateServer> {
     }
     if (path.startsWith('/api/')) {
       send(response, 404, 'text/plain; charset=utf-8', 'not found');
+      return;
+    }
+    const override = overrides.get(path);
+    if (override !== undefined) {
+      send(response, 200, TYPES[extname(path)] ?? 'application/octet-stream', override);
       return;
     }
     if (path === '/sw.js') {
@@ -158,6 +166,10 @@ export async function startUpdateServer(): Promise<UpdateServer> {
     },
     setRoot(directory) {
       root = resolve(directory);
+    },
+    setFileOverride(path, body) {
+      if (body === null) overrides.delete(path);
+      else overrides.set(path, body);
     },
     runtimeRequests: () => runtimeCount,
     close: () =>
@@ -364,4 +376,108 @@ export function makeOlderGeneration(): OlderGeneration {
       rmSync(root, { recursive: true, force: true });
     },
   };
+}
+
+/*
+ * ---------------------------------------------------------------------------------------------------
+ * Worker probe (Phase 5.1, activation guard)
+ *
+ * Prepended to a NEW worker's script, the probe records inside that worker, in a cache of its own:
+ * every skip-waiting message it receives, every window-awareness query it receives (each with the time
+ * it arrived), and, at the moment it activates, the windows of the origin that exist then. So "no
+ * skip-waiting message was sent" and "no older application window was open when the next generation
+ * took over" are observations made in the worker, not inferences from the page. It runs before the
+ * generated worker's own listeners and changes nothing they do.
+ * ---------------------------------------------------------------------------------------------------
+ */
+const PROBE_CACHE = 'civic-test-probe';
+const WORKER_PROBE = `/* civic-test-probe */
+self.addEventListener('message', function (event) {
+  var data = event.data;
+  var kind = data && data.type === 'SKIP_WAITING' ? 'skip-waiting'
+    : data && data.type === 'CIVIC_WINDOW_CLIENTS' ? 'clients-query' : null;
+  if (!kind) return;
+  var at = Date.now();
+  event.waitUntil(caches.open('${PROBE_CACHE}').then(function (cache) {
+    return cache.put('/' + kind + '/' + at + '-' + Math.random().toString(36).slice(2), new Response(String(at)));
+  }));
+});
+self.addEventListener('activate', function (event) {
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (found) {
+    var windows = found.map(function (client) { var url = new URL(client.url); return url.pathname + url.hash; });
+    return caches.open('${PROBE_CACHE}').then(function (cache) {
+      return cache.put('/activated', new Response(JSON.stringify({ at: Date.now(), windows: windows })));
+    });
+  }));
+});
+`;
+
+/** Worker-script transform that prepends the probe. */
+export const withProbe = (script: string): string => `${WORKER_PROBE}${script}`;
+
+export interface ProbeRecord {
+  /** Arrival times, in the worker, of skip-waiting messages. */
+  readonly skipWaiting: readonly number[];
+  /** Arrival times, in the worker, of window-awareness queries. */
+  readonly queries: readonly number[];
+  /** Windows (path and fragment) that existed when the probed worker activated; null if it did not. */
+  readonly activatedWith: readonly string[] | null;
+}
+
+export async function readProbe(page: Page): Promise<ProbeRecord> {
+  return page.evaluate(async (name) => {
+    const cache = await caches.open(name);
+    const keys = (await cache.keys()).map((request) => new URL(request.url).pathname);
+    const times = (prefix: string): number[] =>
+      keys
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => Number(key.slice(prefix.length).split('-')[0]))
+        .sort((a, b) => a - b);
+    const activated = await cache.match('/activated');
+    const record = activated ? ((await activated.json()) as { windows: string[] }) : null;
+    return {
+      skipWaiting: times('/skip-waiting/'),
+      queries: times('/clients-query/'),
+      activatedWith: record ? record.windows.sort() : null,
+    };
+  }, PROBE_CACHE);
+}
+
+/*
+ * Replacement protocol scripts for the fail-closed tests. Each is served as `/sw-client-awareness.js`
+ * to the NEW worker only, and answers the window query wrongly in one specific way.
+ */
+const answerAfter = (delayMs: number, reply: string): string => `
+self.addEventListener('message', function (event) {
+  if (!event.data || event.data.type !== 'CIVIC_WINDOW_CLIENTS' || !event.ports || !event.ports[0]) return;
+  var port = event.ports[0];
+  event.waitUntil(new Promise(function (resolve) {
+    setTimeout(function () { port.postMessage(${reply}); resolve(); }, ${String(delayMs)});
+  }));
+});
+`;
+const SAFE_LOOKING =
+  "{ type: 'CIVIC_WINDOW_CLIENTS_RESULT', version: 1, worker: 'installed', windows: [{ requester: true, kind: 'application', route: 'dashboard', visibility: 'visible', focused: true }] }";
+
+export const PROTOCOL_VARIANTS = {
+  /** Receives the query and never answers. */
+  silent: `self.addEventListener('message', function () {});\n`,
+  /** Answers "safe", but only after the page has stopped waiting. */
+  late: answerAfter(6_000, SAFE_LOOKING),
+  /** Answers with a list that is not a list. */
+  malformed: answerAfter(
+    0,
+    "{ type: 'CIVIC_WINDOW_CLIENTS_RESULT', version: 1, worker: 'installed', windows: 'none' }",
+  ),
+  /** Answers in a protocol version the page does not know. */
+  newerVersion: answerAfter(0, SAFE_LOOKING.replace('version: 1', 'version: 2')),
+} as const;
+
+/** The generated worker's import of the protocol; replacing it with `void 0` keeps the script valid. */
+export const PROTOCOL_IMPORT = 'importScripts("sw-client-awareness.js")';
+
+export async function entryScript(page: Page): Promise<string | null> {
+  return page.evaluate(
+    () => document.querySelector('script[src*="/assets/index-"]')?.getAttribute('src') ?? null,
+  );
 }

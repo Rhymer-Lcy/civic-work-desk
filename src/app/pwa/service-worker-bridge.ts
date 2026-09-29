@@ -1,4 +1,6 @@
 import { registerSW } from 'virtual:pwa-register';
+import { inspectActivationSafety } from './activation-safety';
+import type { ActivationSafety } from './activation-safety';
 
 /**
  * Service-worker registration and update prompting.
@@ -28,13 +30,28 @@ import { registerSW } from 'virtual:pwa-register';
  * The same transition is also driven by a plain `controllerchange` listener, because the plugin adds
  * its `controlling` listener only after the prompt has been shown, and a page can be taken over
  * before it ever showed one.
+ *
+ * ## Activation only when no other application window is open (Phase 5.1, final correction)
+ *
+ * Not reloading the other pages keeps their input, but leaves them running the previous generation's
+ * code under the new worker, and a later generation may migrate the database. So `applyUpdate` first
+ * asks the waiting worker which windows are open (`activation-safety.ts`) and lets the plugin post the
+ * skip-waiting message only when the answer is `safe`. A `blocked` or `unknown` answer activates
+ * nothing and reloads nothing; the caller explains it and offers a retry, which asks again. The
+ * `activated-elsewhere` handling above stays as defence in depth, for an activation this page did not
+ * make: an older generation's 应用更新, or the browser itself once every window has closed.
  */
 
 export type UpdateState = 'idle' | 'update-ready' | 'offline-ready' | 'activated-elsewhere';
 
 export interface PwaController {
-  /** Apply a waiting update and reload this page once the new worker controls it. */
-  readonly applyUpdate: () => Promise<void>;
+  /**
+   * Ask the waiting worker whether any other application window is open, and activate it only if none
+   * is. Resolves with the answer: on `safe` the skip-waiting message has been sent and this page reloads
+   * once the new worker controls it; on `blocked` or `unknown` nothing was sent. Calls made while one is
+   * in flight share it, and a call after activation was requested sends nothing again.
+   */
+  readonly applyUpdate: () => Promise<ActivationSafety>;
   /** Reload this page, at its user's request, onto the worker that now controls it. */
   readonly reloadPage: () => void;
   /**
@@ -48,6 +65,8 @@ export interface PwaController {
 
 export interface RegisterOptions {
   readonly onStateChange: (state: UpdateState) => void;
+  /** How long the waiting worker has to answer; see `DEFAULT_INSPECTION_TIMEOUT_MS`. */
+  readonly inspectionTimeoutMs?: number;
 }
 
 let controller: PwaController | null = null;
@@ -141,10 +160,43 @@ export function registerServiceWorker(options: RegisterOptions): PwaController {
     },
   });
 
+  /** In-flight activation attempt, shared by concurrent calls. */
+  let attempt: Promise<ActivationSafety> | null = null;
+  /** Set once the skip-waiting message has been sent; nothing is sent twice. */
+  let activationRequested = false;
+
+  const activateIfAlone = async (): Promise<ActivationSafety> => {
+    let registration: ServiceWorkerRegistration | undefined;
+    try {
+      registration = await serviceWorkerContainer()?.getRegistration();
+    } catch {
+      return { status: 'unknown', reason: 'query-failed' };
+    }
+    const waiting = registration?.waiting ?? null;
+    const safety = await inspectActivationSafety(waiting, {
+      ...(options.inspectionTimeoutMs === undefined
+        ? {}
+        : { timeoutMs: options.inspectionTimeoutMs }),
+    });
+    if (safety.status !== 'safe') return safety;
+    // The answer is about this worker; a different one waiting now has not been asked.
+    if (registration?.waiting !== waiting) {
+      return { status: 'unknown', reason: 'waiting-worker-changed' };
+    }
+    activationRequested = true;
+    coordinator.accept();
+    // The plugin posts the skip-waiting message to the registration's waiting worker.
+    await update(true);
+    return safety;
+  };
+
   controller = {
-    applyUpdate: async () => {
-      coordinator.accept();
-      await update(true);
+    applyUpdate: () => {
+      if (activationRequested) return Promise.resolve({ status: 'safe' });
+      attempt ??= activateIfAlone().finally(() => {
+        attempt = null;
+      });
+      return attempt;
     },
     reloadPage: coordinator.reload,
     checkForUpdate: async () => {

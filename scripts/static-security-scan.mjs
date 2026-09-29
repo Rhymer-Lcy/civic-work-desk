@@ -235,6 +235,25 @@ const RULES = [
     ],
     appliesToDist: true,
   },
+  {
+    id: 'skip-waiting-sender',
+    description: 'Code in src/ or public/ that activates a waiting service worker by itself',
+    reason:
+      'Phase 5.1: a waiting worker is activated only through the plugin call in ' +
+      'src/app/pwa/service-worker-bridge.ts, after the waiting worker has reported no other ' +
+      'application window. A second path could activate it while an older page is still open.',
+    pattern: /["']SKIP_WAITING["']|\bmessageSkipWaiting\s*\(|\.skipWaiting\s*\(/g,
+    samples: [
+      "worker.postMessage({ type: 'SKIP_WAITING' })",
+      'wb.messageSkipWaiting()',
+      'self.skipWaiting()',
+    ],
+    scope: /\.(tsx?|jsx?|mjs|cjs|html)$/,
+    // Only application source and the worker extension are held to it; the generated worker in dist/
+    // legitimately answers the message, and tests send it on purpose to model an older page.
+    allow: [/^(?!src[/\\]|public[/\\])/],
+    appliesToDist: false,
+  },
 ];
 
 /**
