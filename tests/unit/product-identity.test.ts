@@ -58,12 +58,12 @@ describe('product identity', () => {
 });
 
 describe('product version', () => {
-  it('is SemVer, on the 0.2.0 line while Phase 5 is in development', () => {
+  it('is SemVer, the first 0.2.0 release candidate cut by the Windows release phase', () => {
     const match = SEMVER.exec(pkg.version);
     expect(match, `package.json version ${pkg.version} is not SemVer`).not.toBeNull();
     expect(`${match?.[1] ?? ''}.${match?.[2] ?? ''}.${match?.[3] ?? ''}`).toBe('0.2.0');
-    // A development build must say so; a final 0.2.0 is cut only by a release phase.
-    expect(match?.[4]).toBe('dev.0');
+    // Phase 6 cut rc.1 from the signed-off dev.0 line; a final 0.2.0 is cut only after field validation.
+    expect(match?.[4]).toBe('rc.1');
   });
 
   it('is not a date-based release id, which belongs to provenance, not to the product', () => {
