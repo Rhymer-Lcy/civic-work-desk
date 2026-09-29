@@ -50,6 +50,9 @@ pre-publication review; **nothing was published, tagged or released**. The earli
 
 - civic-admin's check that no payload file shadows the server's own paths could never fire (it built
   `//__civic/...`); it now covers `/__civic/` and `/api/`.
+- A silent uninstall (`/VERYSILENT /SUPPRESSMSGBOXES`) no longer leaves its closing notice waiting on the
+  screen for someone to press OK; the installer's other message boxes are silenced in silent runs too.
+  Interactive runs are unchanged.
 
 ## [Unreleased] — Phase 5.1 runtime update safety (post-signoff correction)
 

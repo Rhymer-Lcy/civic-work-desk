@@ -192,6 +192,9 @@ read from disk; `civic-admin` refuses a payload with a file under `/api/` or `/_
   do not show it.
 - **Finish page**: one sentence on what the check page does after an upgrade.
 - **Activation** refuses a release that cannot state its interface generation (`358cfab`).
+- **Silent runs never wait on a dialog.** Every message box a silent install or uninstall can reach is a
+  `SuppressibleMsgBox`, so `/SUPPRESSMSGBOXES` silences it; an interactive run shows the same boxes as
+  before (`9f5aa4f`, section 10.5).
 
 ## 6. Release identity and the rejected-release registry
 
@@ -299,6 +302,21 @@ runner had called it first, so it was run again, separately, against that instal
   `3f7d0db`).
 - civic-admin's check that no payload file shadows the server's reserved paths built `//__civic/...`
   from `app/__civic/...` and could never fire (`830a604`, now tested for both namespaces).
+
+### 10.5 A silent uninstall that waited for someone to press OK (pre-existing since RC1)
+
+Preparing the product gates, a `unins000.exe /VERYSILENT /SUPPRESSMSGBOXES` run was still alive five
+minutes later. Inno's uninstaller copies itself to `%TEMP%` as `_unins.tmp` and returns at once; the copy
+had finished the work (files and the uninstall key were gone) and was showing the closing notice
+“政务工作记录台已卸载。……” in a window titled “政务工作记录台 卸载”, because a plain `MsgBox` ignores
+`/SUPPRESSMSGBOXES`. Every scripted uninstall therefore left that dialog on the screen, and no acceptance
+suite noticed, because each waited for `unins000.exe` alone. `9f5aa4f` makes that notice and the four
+other message boxes a silent run can reach suppressible (the Windows 10 notice was already skipped when
+silent). `6d3b693` adds `scripts/windows/silent-uninstall.mjs`, which waits, bounded, for the second phase
+of an uninstall to end by itself; the UX acceptance asserts it for each of this release's uninstalls and
+the upgrade acceptance for its last one. A second phase that is still waiting is closed the way its OK
+button would close it, so no run leaves a dialog behind. RC3's uninstaller carries the same plain
+`MsgBox` (the notice dates from the first installer commit, `ead96d2`) and cannot be changed.
 
 ## 11. Known limitations
 
