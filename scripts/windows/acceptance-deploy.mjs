@@ -27,6 +27,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
+import { silentUninstall } from './silent-uninstall.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 function argValue(name) {
@@ -284,11 +285,9 @@ function runSetup(extraArgs = []) {
   return { code: result.status, log, logText: existsSync(log) ? readFileSync(log, 'utf8') : '' };
 }
 
+/** Pre-cleaning only; silent-uninstall.mjs waits for the uninstaller's second phase. */
 function runUninstall() {
-  const unins = join(INSTALL_ROOT, 'unins000.exe');
-  if (!existsSync(unins)) return { code: -1, detail: 'unins000.exe is not present' };
-  const result = sh(unins, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
-  return { code: result.status };
+  return silentUninstall(INSTALL_ROOT, { waitMs: 15_000 });
 }
 
 function launchLogLines() {
@@ -363,7 +362,7 @@ check(
 section('2. clean install from those bytes');
 if (existsSync(INSTALL_ROOT)) {
   info('pre-existing installation found', 'uninstalling it first so this is a clean install');
-  runUninstall();
+  await runUninstall();
   await sleep(1500);
   rmSync(INSTALL_ROOT, { recursive: true, force: true });
 }

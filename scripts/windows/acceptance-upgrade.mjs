@@ -39,6 +39,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { obtainPublishedInstaller } from './published-installer.mjs';
+import { silentUninstall } from './silent-uninstall.mjs';
 import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
 import { readZipEntry, zipEntryNames } from './zip-read.mjs';
 
@@ -184,13 +185,13 @@ async function stopServer() {
   return stop.status;
 }
 
-function cleanSlate() {
+/** Uninstall whatever is installed, waiting for the uninstaller's second phase (silent-uninstall.mjs). */
+async function cleanSlate({ waitMs = 15_000 } = {}) {
   if (existsSync(bin('civic-launch.exe'))) sh(bin('civic-launch.exe'), ['stop']);
-  if (existsSync(join(INSTALL_ROOT, 'unins000.exe'))) {
-    sh(join(INSTALL_ROOT, 'unins000.exe'), ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
-  }
+  const result = await silentUninstall(INSTALL_ROOT, { waitMs });
   rmSync(INSTALL_ROOT, { recursive: true, force: true });
   sh('reg', ['delete', APP_ID_KEY, '/f']);
+  return result;
 }
 
 const external = [];
@@ -774,7 +775,7 @@ try {
   check(false, 'the RC3 installer is the published one', String(err));
   process.exit(1);
 }
-cleanSlate();
+await cleanSlate();
 const rc3Install = sh(rc3.path, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
 check(
   rc3Install.status === 0 && current() === RC3_ID,
@@ -1441,7 +1442,12 @@ info(
 
 // ---------------------------------------------------------------------------------------------------
 section('14. summary');
-cleanSlate();
+const finalUninstall = await cleanSlate({ waitMs: 60_000 });
+check(
+  finalUninstall.code === 0 && finalUninstall.finishedByItself,
+  "this release's silent uninstall finished by itself, with no dialog left waiting",
+  `code ${finalUninstall.code}${finalUninstall.dismissed ? '; a message box had to be closed' : ''}`,
+);
 // The profiles are throwaway and may carry the Windows account's name (see openProfile). Kept only when
 // something failed, for diagnosis.
 if (failures === 0) rmSync(WORK, { recursive: true, force: true });

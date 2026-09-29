@@ -21,6 +21,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { obtainPublishedInstaller } from './published-installer.mjs';
 import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
+import { silentUninstall } from './silent-uninstall.mjs';
 import { readyPageOf } from './wizard-probe.mjs';
 
 /** The Ready page's pre-install warning, shown on a real upgrade only (Phase 6). */
@@ -165,11 +166,22 @@ function installTo(dir, extraArgs = []) {
   return sh(SETUP, args);
 }
 
-function uninstallFrom(root) {
-  const unins = join(root, 'unins000.exe');
-  if (!existsSync(unins)) return -1;
-  const r = sh(unins, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
-  return r.status;
+/**
+ * Uninstall silently and wait for the uninstaller's second phase (silent-uninstall.mjs). For this
+ * release's own uninstaller the second phase must end by itself: a message box that ignored
+ * /SUPPRESSMSGBOXES used to leave it waiting on the operator's screen. Pre-cleaning may meet another
+ * version's uninstaller, so it only tidies up.
+ */
+async function uninstallFrom(root, { expectSilent = true, waitMs = 60_000 } = {}) {
+  const r = await silentUninstall(root, { waitMs });
+  if (expectSilent && r.code !== -1) {
+    check(
+      r.finishedByItself,
+      'the silent uninstall finished by itself, with no dialog left waiting',
+      r.dismissed ? 'a message box was still open and had to be closed' : '',
+    );
+  }
+  return r.code;
 }
 
 async function waitFor(predicate, ms, every = 250) {
@@ -213,7 +225,7 @@ async function cleanSlate(...roots) {
     if (!existsSync(root)) continue;
     const launch = join(root, 'bin', 'civic-launch.exe');
     if (existsSync(launch)) sh(launch, ['stop']);
-    uninstallFrom(root);
+    await uninstallFrom(root, { expectSilent: false, waitMs: 15_000 });
     await sleep(1200);
     rmSync(root, { recursive: true, force: true });
   }
@@ -486,7 +498,7 @@ check(repair.status === 0, 'repair install exited 0', `code ${repair.status}`);
 check(existsSync(desktopLnk), 'the desktop shortcut survives a repair');
 
 // Uninstall must remove it.
-const uninstallCode = uninstallFrom(DEFAULT_ROOT);
+const uninstallCode = await uninstallFrom(DEFAULT_ROOT);
 await sleep(1500);
 check(uninstallCode === 0, 'uninstall exited 0', `code ${uninstallCode}`);
 check(!existsSync(desktopLnk), 'uninstall removed the desktop shortcut — none is orphaned');
@@ -583,7 +595,7 @@ for (const c of customCases) {
   }
 
   sh(join(c.dir, 'bin', 'civic-launch.exe'), ['stop']);
-  check(uninstallFrom(c.dir) === 0, `  ${c.name}: uninstall exited 0`);
+  check((await uninstallFrom(c.dir)) === 0, `  ${c.name}: uninstall exited 0`);
   await sleep(1200);
   check(!existsSync(join(c.dir, 'bin')), `  ${c.name}: program files removed`);
   rmSync(c.dir, { recursive: true, force: true });
@@ -780,7 +792,7 @@ if (!dIsFixed || !PREVIOUS_SETUP) {
     'nothing was installed at the default location',
   );
   sh(join(RC3_CUSTOM, 'bin', 'civic-launch.exe'), ['stop']);
-  uninstallFrom(RC3_CUSTOM);
+  await uninstallFrom(RC3_CUSTOM);
   await sleep(1200);
   rmSync(RC3_CUSTOM, { recursive: true, force: true });
 }
@@ -956,7 +968,7 @@ if (!dIsFixed) {
     if (!reportPath || !existsSync(reportPath)) {
       check(false, `  ${c.name}: a diagnostic report was produced`, reportPath ?? '(none)');
       sh(join(c.dir, 'bin', 'civic-launch.exe'), ['stop']);
-      uninstallFrom(c.dir);
+      await uninstallFrom(c.dir);
       rmSync(c.dir, { recursive: true, force: true });
       continue;
     }
@@ -985,7 +997,7 @@ if (!dIsFixed) {
 
     rmSync(reportPath, { force: true });
     sh(join(c.dir, 'bin', 'civic-launch.exe'), ['stop']);
-    uninstallFrom(c.dir);
+    await uninstallFrom(c.dir);
     await sleep(1200);
     rmSync(c.dir, { recursive: true, force: true });
   }
