@@ -369,7 +369,8 @@ func payloadServableChecks(releaseDir string) []check {
 		}
 		// A payload file under the reserved namespace would be shadowed by the generated endpoints and
 		// could never be served. Catch it here rather than letting it silently 404 in the field.
-		if strings.HasPrefix("/"+strings.TrimPrefix(e.Path, "app"), httpserve.ReservedPrefix) {
+		served := "/" + strings.TrimPrefix(e.Path, "app/")
+		if strings.HasPrefix(served, httpserve.ReservedPrefix) || strings.HasPrefix(served, httpserve.APIPrefix) {
 			reserved = append(reserved, e.Path)
 		}
 	}
@@ -381,9 +382,16 @@ func payloadServableChecks(releaseDir string) []check {
 			fmt.Sprintf("%d payload file(s)", len(entries))})
 	}
 	if len(reserved) > 0 {
-		out = append(out, check{"no file shadows /__civic/", "FAIL", fmt.Sprintf("%v", reserved)})
+		out = append(out, check{"no file shadows /__civic/ or /api/", "FAIL", fmt.Sprintf("%v", reserved)})
 	} else {
-		out = append(out, check{"no file shadows /__civic/", "PASS", ""})
+		out = append(out, check{"no file shadows /__civic/ or /api/", "PASS", ""})
+	}
+	// The generation /api/civic/runtime serves and the update bootstrap relies on (Phase 6). A release
+	// that cannot state it would leave the bootstrap unable to decide, so it is not activated.
+	if gen, err := httpserve.LoadAppGeneration(appDir); err != nil {
+		out = append(out, check{"interface generation", "FAIL", err.Error()})
+	} else {
+		out = append(out, check{"interface generation", "PASS", gen.AppGeneration})
 	}
 	return out
 }
