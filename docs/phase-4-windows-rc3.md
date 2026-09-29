@@ -326,3 +326,11 @@ is a call for whoever owns that suite.
 Windows compatibility is **not** certified by this build. Everything above was measured on one
 development workstation. `targetTested=NO` — no colleague machine has run this build. That is what
 field validation is for, and it is the reason RC3 is a prerelease.
+
+> **Note, 2026-09-29 (UTC+8, Phase 5).** The sentence above was true when RC3 was published. Since then
+> RC3 has been run on one colleague machine, far enough to exercise its version gate: that machine, first
+> reported as Windows 7 32-bit, is Windows 10 Pro 22H2 (build 19045.6466), 64-bit on an x64 processor,
+> and RC3 refused to install there, as its Windows-11-only requirement specifies
+> (docs/windows-10-legacy-compatibility.md). RC3 has still not been installed or functionally validated on
+> any colleague machine, and Windows compatibility remains not certified. The published artifact and its
+> release notes are unchanged.

@@ -69,8 +69,10 @@ the trash. Treat an exported backup exactly as sensitively as the records themse
 
 - store it somewhere the source device's loss would not also destroy;
 - do not email it or put it on a shared drive without considering who can read that location;
-- the file carries a SHA-256 of its payload, so tampering is detectable on import — but the
-  checksum is integrity, not confidentiality.
+- the file carries a SHA-256 checksum over its whole canonical envelope except the checksum field
+  (format v3, `scope: "envelope"`; v1/v2 files cover only their payload), so corruption, or an edit that
+  did not recompute it, is detected on import — but the checksum is integrity, not authentication (anyone
+  who can edit the file can recompute it) and not confidentiality.
 
 **What "backup succeeded" can honestly mean.** Browsers expose no API that confirms a user kept a
 downloaded file. The application therefore claims only what it can observe: the file was built and

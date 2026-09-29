@@ -1,7 +1,69 @@
 # Changelog
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-This project is internal and unversioned; entries are grouped by phase.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Entries are grouped by phase.
+The product version lives in `package.json` and follows SemVer; platform packages carry their own
+release ids (`docs/versioning-and-publisher.md`). The deployment phases — the UOS release (Phase 3) and
+the Windows release candidates (Phase 4) — are recorded in `docs/phase-3-final-signoff.md` and
+`docs/phase-4-windows-rc1.md` to `rc3.md`, and published as GitHub Releases.
+
+## [Unreleased] — Phase 5 product evolution
+
+The shared application gains a three-level task hierarchy and the data-model change it needs, while every
+older archive stays readable. **No platform release was produced**: no Windows installer, no UOS package,
+no store package. Windows RC3 and the signed-off UOS `-5` remain exactly as published. Full record:
+`docs/phase-5-product-evolution.md`, `docs/phase-5-evidence.md` and `docs/phase-5-final-signoff.md`.
+
+### Added
+
+- **A three-level task hierarchy.** A work record can have 2级子任务, which can have 3级子任务; the level
+  is derived from the relationship, never typed. Honours never take part. Add a sub-task from any level-1
+  or level-2 task; move a task under another parent (or to the top level) through a 调整层级 dialog — no
+  drag and drop. A level-3 task offers no fourth level.
+- **任务结构**, an outline view of the hierarchy that 工作 can switch to from its list, built from nested
+  lists with written levels, child progress and collapse. Filters keep a match's parents visible as labelled context.
+- **Safe hierarchy operations.** Nothing happens to a descendant silently: a task with live sub-tasks
+  asks whether to trash them with it or move them up a level first; a batch trashed together restores
+  together; a record still named as a parent is never purged on its own, and a whole trashed tree can
+  always be removed — as one subtree, leaf first, or by emptying the trash. Completing a parent never
+  completes its children, or the reverse; marking a parent done with open sub-tasks asks first.
+- **Legacy `subtasks[]` import.** Sub-tasks in a legacy file become 2级子任务 with deterministic ids; one
+  that cannot become a record is reported, not dropped silently.
+- A **back-to-top** control on long pages, keyboard- and reduced-motion-aware.
+- Planning documents only: Windows 10 22H2 x64 legacy compatibility, UOS application store readiness,
+  HarmonyOS feasibility, and the product-version and publisher policy.
+
+### Changed
+
+- **Database schema v1 → v2.** Work records gain `parentWorkId`; the v1 schema block is unchanged and an
+  opened v1 database is migrated in place, every existing task becoming top-level. Backups keep format
+  v3 and declare schema 2; older schema-1 backups are verified as received and then migrated. A merge
+  that would produce a cycle, a fourth level or a dangling parent is refused whole.
+- **Exports carry the hierarchy.** The XLSX export adds 任务层级, 上级任务, 任务路径, 记录ID and 上级记录ID;
+  the DOCX report and the ledger show each task's level and parent path. JSON remains the only format
+  that can restore.
+- **A stable application bar.** The brand, the six destinations and the action slot no longer move when
+  the page changes; measured at 0 px of movement across all six pages at 1366, 1920 and 2560 px.
+- **The ledger renders one presentation** — the table on a wide screen, the card list on a narrow one,
+  the table when printing — instead of building both and hiding one.
+- **Product version** moved to the `0.2.0` development line with a recorded product identity; the
+  Windows numeric file version is now derived by one fail-closed parser (`0.2.0-rc.1` → `0.2.0.0`, never
+  `0.2.0.1`). Nothing was built with it.
+
+### Fixed
+
+- **In-page links no longer break the router.** The skip link and the Settings section index used raw
+  fragments that the hash router read as unknown routes, sending the user to 概览. An ordinary click now
+  jumps in place without changing the route, and the link's real href is a valid route, so a new tab or
+  a copied link opens the right page.
+- **The UOS archive gate asks the right question.** A signed-off archive is verified against its own
+  registered digest and provenance; only a new candidate is compared with the current build.
+
+### Performance
+
+At 5,000 work records, measured interleaved against the pre-Phase-5 build in one session: switching to
+台账 went from 1,594 ms to 954 ms (medians of 15), and switching to 工作 from 151 ms to 103 ms. The
+工作 search went from about 70 to 87 ms (+17 ms, +24%) — presentation work for a fixed page of 30
+results that does not grow with the archive; accepted as a non-blocking observation.
 
 ## [Unreleased] — Phase 2 product & UX production readiness
 

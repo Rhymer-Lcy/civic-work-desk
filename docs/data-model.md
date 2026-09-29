@@ -459,5 +459,6 @@ correct one so each assertion states what actually regressed.
 ## `localStorage`
 
 Used **only** for ephemeral UI preferences, under the `cwd.pref.` prefix, against an allow-list
-(`lastRoute`, `workSort`, `ledgerSort`, `reportPeriodType`). No record data ever touches it. That
+(`lastRoute`, `workSort`, `ledgerSort`, `reportPeriodType`, and since Phase 5 `workView`). No record data
+ever touches it. That
 inversion is the point: the legacy prototype put the whole database there and nothing else.

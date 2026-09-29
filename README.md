@@ -9,19 +9,20 @@ its own.
 
 ## What it does
 
-| View               | Purpose                                                                                                              |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| **概览** Dashboard | What needs attention today: overdue, due today, in progress, active long-term work; month calendar; backup health    |
-| **工作** Work      | The work record list — search, filter, sort, expand, edit, progress notes                                            |
-| **荣誉** Honors    | The honour archive with its own fields: level, document number, personal role, evidence location                     |
-| **台账** Ledger    | Every record as a dense table (desktop) or card list (phone); genuine `.xlsx` export; print                          |
-| **报告** Reports   | Month / quarter / year reports with accurate counts; genuine `.docx` export                                          |
-| **设置** Settings  | Product wording, categories, groups, option lists, backup & restore, storage diagnostics, trash, destructive actions |
+| View               | Purpose                                                                                                                                                                                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **概览** Dashboard | What needs attention today: overdue, due today, in progress, active long-term work; month calendar; backup health                                                                                                                                                                              |
+| **工作** Work      | Work records in up to three levels — 1级任务 / 2级子任务 / 3级子任务 — shown as a list (with each task's level and parent path) or as a 任务结构 outline; add a sub-task, move a task under another parent, search, filter (matches keep their parents as context), sort, edit, progress notes |
+| **荣誉** Honors    | The honour archive with its own fields: level, document number, personal role, evidence location                                                                                                                                                                                               |
+| **台账** Ledger    | Every record as a dense table (desktop) or card list (phone); genuine `.xlsx` export; print                                                                                                                                                                                                    |
+| **报告** Reports   | Month / quarter / year reports with accurate counts; genuine `.docx` export                                                                                                                                                                                                                    |
+| **设置** Settings  | Product wording, categories, groups, option lists, backup & restore, storage diagnostics, trash, destructive actions                                                                                                                                                                           |
 
 ## Privacy and offline model
 
 - Records live in **IndexedDB** in your browser profile on your own device.
-- `localStorage` holds only UI preferences (last route, sort order). Never record data.
+- `localStorage` holds only ephemeral UI preferences, such as the last route, sort order and selected
+  Work view — an allow-list of keys. Never record data.
 - The service worker caches the **application shell only**. No record, backup or generated report
   enters the Cache API — asserted by a test that searches every cache entry for a planted string.
 - Exports are downloads you initiate. Nothing is uploaded, ever.
@@ -30,8 +31,14 @@ its own.
 browser profile can read the data. Use full-disk encryption and lock your screen.
 `docs/security.md` states the threat model, including what it does _not_ protect against.
 
-**Back up regularly.** Clearing browser data, changing machine, or reinstalling will destroy the
-store. The JSON backup is the only format that can restore it.
+**Back up regularly.** Records live in the browser's site data for the origin the application is served
+from — `http://127.0.0.1:8765/` for the Windows and UOS deployments — not in the installation folder.
+Both uninstallers deliberately leave that site data alone, so uninstalling and reinstalling does not by
+itself delete it: opened again at the same address, in the same browser and browser profile, the records
+are normally still there. That is not a guarantee. They are lost, or out of reach, when the browser's
+site data is cleared, the browser profile is deleted or replaced, another browser or profile is used, the
+application is opened at a different origin, or the machine or profile is lost. The canonical JSON backup
+is the only format that can restore them.
 
 ## Prerequisites
 
@@ -101,7 +108,9 @@ application detects this and says so in Settings. See `docs/decisions/0001-pwa-f
 
 ## Installing as an app
 
-Load the application over HTTPS or on `localhost`, then:
+Load the application over HTTPS, or from a loopback address — `http://127.0.0.1:8765/` in the Windows
+and UOS deployments, or `localhost` in development. Browsers treat loopback as a potentially trustworthy
+origin, so it is a secure context like HTTPS. Then:
 
 - **Chrome / Edge** — an install button appears in Settings → 安装与离线使用, or use the address-bar
   install icon.
@@ -114,14 +123,22 @@ half-filled form.
 
 ## Backup and restore
 
-**JSON is the only backup.** XLSX and DOCX are reports — they have no ids, no progress entries and
-no settings, and cannot restore an archive.
+**JSON is the only backup.** It is the one canonical format, and the only one that can restore or merge
+into the application's database. XLSX and DOCX are reports. The XLSX export does carry, for work
+records, 任务层级, 上级任务, 任务路径, 记录ID and 上级记录ID, so its rows stay traceable and can be joined
+unambiguously when titles repeat; the DOCX report shows each work item's level and parent path. Both still
+leave out progress notes, settings and the trash, carry no ids for honours, and cannot be imported —
+record ids in a spreadsheet do not make it a backup.
 
 Export: Settings → 数据与备份 → 导出 JSON 备份. The filename is deterministic and sortable:
 `civic-work-desk-backup-20260921-143052.json`.
 
-The file carries an application id, its own format version, the database schema version, the export
-timestamp, entity counts and a SHA-256 of its payload.
+The file carries an application id, its own format version (3), the database schema version, the export
+timestamp, entity counts, a completeness declaration, the data revision it was taken at, and a SHA-256
+checksum with `scope: "envelope"`: it covers the canonical serialisation of the whole file except the
+checksum field itself — payload and metadata alike. It detects corruption, or an edit that did not
+recompute it; it is not a signature or authentication, since anyone who can edit the file can recompute
+it. (Files in the older formats 1 and 2 checksum only their payload, and are verified that way.)
 
 Restore: Settings → 导入 / 还原备份, choose **合并** or **替换**:
 
@@ -141,9 +158,14 @@ export updates it.
 Export a backup from the old application and import it here. It accepts the versioned envelope,
 the `{works, honors}` split shape and the bare array.
 
-Nothing is discarded or silently rewritten. Values that cannot be mapped cleanly — a date written
-`1月`, a phone recorded as `82393933.0`, unrecognised status wording — are preserved verbatim and
-listed as warnings for you to resolve. Full rules in `docs/migration.md`.
+Nothing is dropped silently. Values that can be carried over losslessly are; values that cannot be
+mapped cleanly — a date written `1月`, a phone recorded as `82393933.0`, unrecognised status wording —
+are preserved verbatim and listed as warnings for you to resolve, and unrecognised fields are kept in the
+record's `legacyResidue`. An item that cannot become a record at all — a row with no usable title, or a
+legacy sub-task that is not an object or has no title — is not imported, and the preview lists it as a
+rejection or a warning. Legacy
+`subtasks[]` become 2级子任务 under their parent. The preview shows what will and will not be imported
+before anything is written. Full rules in `docs/migration.md`.
 
 ## Repository structure
 
@@ -233,8 +255,14 @@ opens the browser. Sign-off and evidence: `docs/phase-3-final-signoff.md`.
 > non-elevated user, in Chromium. 118 deployment checks, 176 distribution-experience checks and 70
 > browser checks passed.
 
-That sentence is the whole claim, and it is deliberately weaker than the UOS one above: **no colleague's
-machine has run this build.** Nothing is known yet about managed-desktop policy, endpoint security
+That sentence is the whole claim, and it is deliberately weaker than the UOS one above. RC3 has been run
+on **one** colleague machine, far enough to exercise its version gate: that machine, first reported as
+Windows 7 32-bit, is Windows 10 Pro 22H2 (build 19045.6466), 64-bit on an x64 processor, and RC3 refused
+to install there, exactly as its Windows-11-only requirement specifies
+([docs/windows-10-legacy-compatibility.md](docs/windows-10-legacy-compatibility.md)). RC3 has **not**
+been installed or functionally validated on any colleague machine, and Windows compatibility is **not**
+certified. Windows 10 22H2 x64 is a planned legacy-compatibility target only, until the field evidence
+that document lists exists. Nothing is known yet about managed-desktop policy, endpoint security
 software, redirected profiles, or 360 Browser specifically. The installer is **unsigned** (verified:
 `NotSigned`), so SmartScreen may warn.
 
@@ -273,7 +301,8 @@ sha256sum -c SHA256SUMS.txt                                             # every 
 sh install.sh                                                           # no sudo, user-level
 ```
 
-The outer `.sha256` authenticates the archive; the inner `SHA256SUMS.txt` covers every file inside it.
+The outer `.sha256` confirms the download is complete and uncorrupted — it comes from the same release
+page, so it does not prove who published the file; the inner `SHA256SUMS.txt` covers every file inside it.
 The installer re-verifies the bundle itself before it copies anything, and again after staging.
 
 ## Licence

@@ -10,7 +10,8 @@ that does not map cleanly.
 Any value that cannot be mapped losslessly is preserved — as a `text` date, as `statusLabel`, or in
 `legacyResidue` — and a warning naming the field appears in the import preview. The only row that is
 rejected outright is one with no usable title, because a record with no subject cannot be filed or
-found again.
+found again. Likewise, a legacy sub-task that is not an object or has no title is not imported (see
+"Sub-tasks" below); each such item is reported in the preview, never dropped silently.
 
 ## Accepted formats
 
@@ -61,6 +62,37 @@ a row count.
 | `progress[]`                 | rows in `progressEntries` | each gets its own stable id                              |
 | `createdAt`                  | `createdAt`               | adopted only if a finite, positive number                |
 | anything else                | `legacyResidue`           | with a warning                                           |
+
+### Sub-tasks (`subtasks[]`, Phase 5)
+
+A work row's `subtasks` array becomes **2级子任务** — ordinary work records whose `parentWorkId` is the
+row they came from (docs/phase-5-product-evolution.md §7). Each element maps as follows; the first
+present key wins.
+
+| element key                        | becomes                                               |
+| ---------------------------------- | ----------------------------------------------------- |
+| `title`, `text`, `name`, `content` | `title`; an element with none is not imported, warned |
+| `date`                             | `occurredOn`                                          |
+| `deadline`                         | `reportDeadline` (the legacy meaning of `deadline`)   |
+| `due`                              | `completionDeadline`                                  |
+| `done` (boolean)                   | 已完成 / 待办                                         |
+| `done` or `status` (string)        | the legacy status table, with its warnings            |
+| `doneTime`, `completedTime`        | `completedOn`                                         |
+| `remark`, `note`                   | `remark`                                              |
+| anything else                      | the sub-task's `legacyResidue`, warned                |
+| an element that is not an object   | not imported, warned, with its original text          |
+
+- Ids are deterministic, `<parentId>::sub-<key>` — the element's own `id`, or its 1-based position — so
+  importing the same file twice yields conflicts, not duplicates.
+- Category, group and counterpart are **not** copied from the parent; nothing is invented.
+- A sub-task is placed only when its parent will exist, like a progress note: it is rejected with a
+  rejected parent row, and when the parent row is skipped as a merge conflict it is placed only if the
+  conflict is with an identical record — a different record that merely shares the id never adopts
+  sub-tasks that were not its own. Each such rejection is listed in the preview with its reason.
+- A non-array `subtasks` value, like any other structured unknown field, is kept in the row's
+  `legacyResidue` as canonical JSON text, with a warning.
+- The mapping is verified against synthetic fixtures only; no real file from the newer prototype was
+  available.
 
 ### Honour records
 
