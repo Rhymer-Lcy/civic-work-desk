@@ -4,5 +4,10 @@ import type { ProductVersion } from './product-version.mjs';
 export function buildVersionResource(
   target: { readonly description: string; readonly internal: string; readonly original: string },
   version: ProductVersion,
-  releaseId: string,
+  release: {
+    readonly releaseId: string;
+    readonly publisher: string;
+    readonly productNameZh: string;
+    readonly productNameEn: string;
+  },
 ): Buffer;
