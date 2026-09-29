@@ -249,8 +249,16 @@ const watchExternal = (p) =>
   });
 watchExternal(page);
 
-await page.goto(`${ORIGIN}/`, { waitUntil: 'load' });
+// Enter the way the launcher does (Phase 6): through the update bootstrap, which on a first run finds no
+// worker, confirms the server's own interface is the installed generation, and hands over to `/`.
+await page.goto(`${ORIGIN}/api/civic/start`, { waitUntil: 'load' });
+await page.waitForURL((url) => url.pathname === '/', { timeout: 60_000 });
 await page.getByRole('navigation', { name: '主导航' }).waitFor({ timeout: 30_000 });
+check(
+  new URL(page.url()).pathname === '/',
+  'the update bootstrap entered the application on a first run, without asking anything',
+  page.url(),
+);
 
 const platform = await page.evaluate(async () => {
   const out = {
