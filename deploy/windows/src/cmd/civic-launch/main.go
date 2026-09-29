@@ -12,10 +12,12 @@
 // prove it owns, and only starts one when there is none -- so the second click opens a browser tab and
 // does nothing else.
 //
-// ## Messages are in Chinese
+// ## Messages are in Chinese, and a person started from a shortcut sees them
 //
 // Everything a user can see here is user-facing text on a colleague's machine. Engineering detail goes
-// to the log and to the diagnostic report, not to the dialog.
+// to the log and to the diagnostic report. Without a console -- which is every start from a shortcut --
+// failures and the status/stop reports are shown in a dialog (output.go), and every launch outcome is
+// appended to logs\launch.log for the diagnostics tool.
 package main
 
 import (
@@ -27,6 +29,7 @@ import (
 	"time"
 
 	"civicworkdesk/windows/internal/httpserve"
+	"civicworkdesk/windows/internal/launchlog"
 	"civicworkdesk/windows/internal/layout"
 	"civicworkdesk/windows/internal/redact"
 	"civicworkdesk/windows/internal/serverstate"
@@ -50,38 +53,33 @@ const (
 	exitBusy     = 6
 )
 
+const usageText = "用法: civic-launch.exe [open|status|stop|platform]\n"
+
 func main() {
 	args := os.Args[1:]
 	command := "open"
 	if len(args) > 0 {
 		command = args[0]
 	}
+	var code int
 	switch command {
 	case "open":
-		os.Exit(cmdOpen())
+		code = cmdOpen()
 	case "status":
-		os.Exit(cmdStatus())
+		code = cmdStatus()
 	case "stop":
-		os.Exit(cmdStop())
+		code = cmdStop()
 	case "platform":
-		os.Exit(cmdPlatform())
+		code = cmdPlatform()
 	case "-h", "--help", "help":
-		fmt.Println("用法: civic-launch.exe [open|status|stop|platform]")
-		os.Exit(exitOK)
+		say("%s", usageText)
+		code = exitOK
 	default:
-		fmt.Fprintf(os.Stderr, "未知的子命令: %s\n用法: civic-launch.exe [open|status|stop|platform]\n", command)
-		os.Exit(exitUsage)
+		fail(fmt.Sprintf("未知的子命令: %s\n%s", command, usageText), nil)
+		code = exitUsage
 	}
-}
-
-// fail prints a Chinese explanation for the user and a technical line for the record.
-func fail(userText string, detail error) {
-	fmt.Fprintln(os.Stderr, userText)
-	if detail != nil {
-		fmt.Fprintf(os.Stderr, "\n技术细节: %v\n", detail)
-	}
-	fmt.Fprintln(os.Stderr,
-		"\n如问题仍然存在，请运行“收集诊断信息”，并将生成的诊断文件（TXT）反馈给维护人员。")
+	showTranscript()
+	os.Exit(code)
 }
 
 func resolve() (layout.Tree, string, error) {
@@ -101,9 +99,10 @@ func cmdOpen() int {
 	if err != nil {
 		if errors.Is(err, layout.ErrNoActiveRelease) {
 			fail("没有找到已安装的版本。请重新运行安装包。", err)
-			return exitRelease
+		} else {
+			fail("无法定位安装目录。", err)
 		}
-		fail("无法定位安装目录。", err)
+		record(tree, "open", launchlog.NoRelease, exitRelease, "", err)
 		return exitRelease
 	}
 
@@ -116,19 +115,21 @@ func cmdOpen() int {
 			// Another click is already starting the server. Waiting for it and opening the browser is
 			// the behaviour a user expects from a second double-click.
 			if h, werr := serverstate.WaitUntilHealthy(canonicalOrigin, tree.Root, releaseID, healthTimeout); werr == nil {
-				return openBrowser(canonicalOrigin, h.ReleaseID)
+				return openBrowser(tree, canonicalOrigin, h.ReleaseID)
 			}
 			fail("程序正在启动中，请稍候几秒后重试。", err)
+			record(tree, "open", launchlog.StartingElsewhere, exitBusy, releaseID, err)
 			return exitBusy
 		}
 		fail("无法获取启动锁。", err)
+		record(tree, "open", launchlog.Internal, exitInternal, releaseID, err)
 		return exitInternal
 	}
 	defer lock.Release()
 
 	// 1. Is a server we own already healthy? Reuse it.
 	if h, ok := ownedHealthyServer(tree, releaseID); ok {
-		return openBrowser(canonicalOrigin, h.ReleaseID)
+		return openBrowser(tree, canonicalOrigin, h.ReleaseID)
 	}
 
 	// 2. Is something else on the port? Say so precisely, and do not touch it.
@@ -141,19 +142,25 @@ func cmdOpen() int {
 					"（它的安装目录是 %s，程序版本 %s。）\n"+
 					"请关闭那一个，或直接使用它。",
 				canonicalHostPort, redact.Paths(probe.Health.InstallRoot), probe.Health.ReleaseID), nil)
+			// The other installation's directory is left out of the log: it may be a name somebody chose,
+			// and the release id is what tells the two installations apart.
+			record(tree, "open", launchlog.PortOtherInstall, exitPortBusy, releaseID,
+				fmt.Errorf("port held by another CivicWorkDesk installation serving release %s", probe.Health.ReleaseID))
 		default:
 			fail(fmt.Sprintf(
 				"端口 %s 已被其他程序占用，政务工作记录台无法启动。\n\n"+
 					"程序不会强行结束无法确认归属的进程，也不会改用其他端口。\n"+
 					"更换端口会改变浏览器来源，原有记录不会在新的来源下显示。\n\n"+
 					"请关闭占用该端口的程序后重试。", canonicalHostPort), probe.Err)
+			record(tree, "open", launchlog.PortForeign, exitPortBusy, releaseID, probe.Err)
 		}
 		return exitPortBusy
 	}
 
 	// 3. Nothing is there. Start our own.
-	if err := startServer(tree, releaseID); err != nil {
-		fail("启动本地服务失败。", err)
+	if outcome, err := startServer(tree, releaseID); err != nil {
+		fail(startFailureText(outcome), err)
+		record(tree, "open", outcome, exitInternal, releaseID, err)
 		return exitInternal
 	}
 
@@ -161,9 +168,33 @@ func cmdOpen() int {
 	h, err := serverstate.WaitUntilHealthy(canonicalOrigin, tree.Root, releaseID, healthTimeout)
 	if err != nil {
 		fail("本地服务已启动，但没有在预期时间内正常响应。", err)
+		record(tree, "open", launchlog.HealthTimeout, exitInternal, releaseID, err)
 		return exitInternal
 	}
-	return openBrowser(canonicalOrigin, h.ReleaseID)
+	return openBrowser(tree, canonicalOrigin, h.ReleaseID)
+}
+
+// startFailureText says what a person can do about each way civic-server.exe can be kept from starting.
+//
+// None of them tells the person to switch a protection off. A policy block belongs to an administrator,
+// and an anti-malware or application-control block is exactly the case in which the maintainer, not the
+// tester, has to decide what happens next.
+func startFailureText(outcome launchlog.Outcome) string {
+	switch outcome {
+	case launchlog.ServerBlockedPolicy:
+		return "本地服务程序被 Windows 的安全策略阻止运行（例如 AppLocker 或软件限制策略）。\n\n" +
+			"这类策略由计算机管理员设置，需要由管理员处理；本程序不会尝试绕过它。"
+	case launchlog.ServerBlockedCI:
+		return "本地服务程序被 Windows 的应用程序控制阻止运行（例如“智能应用控制”或应用程序控制策略）。\n\n" +
+			"本候选版本尚未进行代码签名，这类保护可能因此阻止它。请不要为此关闭系统保护。"
+	case launchlog.ServerBlockedAV:
+		return "安全软件阻止了本地服务程序运行，或已将它隔离。\n\n请不要为此关闭安全软件。"
+	case launchlog.ServerMissing:
+		return "找不到本地服务程序，它可能已被安全软件隔离或删除。\n\n" +
+			"可以重新运行安装包修复安装；请不要为此关闭安全软件。"
+	default:
+		return "启动本地服务失败。"
+	}
 }
 
 // ownedHealthyServer returns the health of a running server this installation started, if there is
@@ -193,18 +224,19 @@ func ownedHealthyServer(tree layout.Tree, releaseID string) (health httpserve.He
 	return probe.Health, true
 }
 
-func startServer(tree layout.Tree, releaseID string) error {
+// startServer starts civic-server.exe detached, and on failure says which kind of failure it was.
+func startServer(tree layout.Tree, releaseID string) (launchlog.Outcome, error) {
 	exe := filepath.Join(tree.Bin(), serverExeName)
 	if _, err := os.Stat(exe); err != nil {
 		// Fall back to the release's own copy. The bin\ copy is what the installer puts in place; the
 		// release copy is what it was taken from, and either is a legitimate thing to run.
 		releaseDir, rerr := tree.Release(releaseID)
 		if rerr != nil {
-			return err
+			return launchlog.ServerMissing, err
 		}
 		exe = filepath.Join(releaseDir, "server", serverExeName)
 		if _, err2 := os.Stat(exe); err2 != nil {
-			return fmt.Errorf("找不到服务程序 %s", exe)
+			return launchlog.ServerMissing, fmt.Errorf("找不到服务程序 %s: %w", exe, err2)
 		}
 	}
 	cmd := exec.Command(exe, "--root", tree.Root, "--release", releaseID)
@@ -215,22 +247,26 @@ func startServer(tree layout.Tree, releaseID string) error {
 	cmd.SysProcAttr = detachedProcess()
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("无法启动 %s: %w", exe, err)
+		outcome, _ := launchlog.ClassifyStartError(err)
+		return outcome, fmt.Errorf("无法启动 %s: %w", exe, err)
 	}
 	// Release the child handle. Keeping it would make the launcher the reaper of a process it is about
 	// to outlive, and a terminated-but-unreaped server stays visible to OpenProcess -- which is the
 	// confusing state the identity code has to work around.
 	_ = cmd.Process.Release()
-	return nil
+	return launchlog.OK, nil
 }
 
-func openBrowser(origin, releaseID string) int {
+func openBrowser(tree layout.Tree, origin, releaseID string) int {
 	if err := winproc.OpenInDefaultBrowser(origin + "/"); err != nil {
 		fail(fmt.Sprintf(
 			"本地服务已就绪（程序版本 %s），但无法自动打开浏览器。\n"+
+				"这通常表示系统没有设置默认浏览器，或默认浏览器被禁止启动。\n\n"+
 				"请在浏览器地址栏手动输入固定访问地址： %s/", releaseID, origin), err)
+		record(tree, "open", launchlog.BrowserFailed, exitInternal, releaseID, err)
 		return exitInternal
 	}
+	record(tree, "open", launchlog.OK, exitOK, releaseID, nil)
 	return exitOK
 }
 
@@ -238,6 +274,7 @@ func cmdPlatform() int {
 	tree, releaseID, err := resolve()
 	if err != nil {
 		fail("没有找到已安装的版本。", err)
+		record(tree, "platform", launchlog.NoRelease, exitRelease, "", err)
 		return exitRelease
 	}
 	if _, ok := ownedHealthyServer(tree, releaseID); !ok {
@@ -247,7 +284,9 @@ func cmdPlatform() int {
 	}
 	if err := winproc.OpenInDefaultBrowser(canonicalOrigin + "/__civic/platform"); err != nil {
 		fail("无法打开浏览器检查页面。", err)
+		record(tree, "platform", launchlog.BrowserFailed, exitInternal, releaseID, err)
 		return exitInternal
 	}
+	record(tree, "platform", launchlog.OK, exitOK, releaseID, nil)
 	return exitOK
 }
