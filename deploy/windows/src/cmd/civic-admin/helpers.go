@@ -10,7 +10,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"civicworkdesk/windows/internal/layout"
 	"civicworkdesk/windows/internal/redact"
@@ -331,38 +330,4 @@ func userPrograms() string {
 		return ""
 	}
 	return filepath.Join(appData, "Microsoft", "Windows", "Start Menu", "Programs")
-}
-
-var (
-	ntdll             = syscall.NewLazyDLL("ntdll.dll")
-	procRtlGetVersion = ntdll.NewProc("RtlGetVersion")
-)
-
-type osVersionInfoEx struct {
-	OSVersionInfoSize uint32
-	MajorVersion      uint32
-	MinorVersion      uint32
-	BuildNumber       uint32
-	PlatformID        uint32
-	CSDVersion        [128]uint16
-	ServicePackMajor  uint16
-	ServicePackMinor  uint16
-	SuiteMask         uint16
-	ProductType       byte
-	Reserved          byte
-}
-
-// windowsVersion reads the real version through RtlGetVersion.
-//
-// GetVersionEx lies: since Windows 8.1 it reports 6.2 to any program without a compatibility manifest,
-// so a check built on it would report Windows 8 on a Windows 11 machine and block every install.
-// RtlGetVersion is not subject to that shimming.
-func windowsVersion() (major int, build int) {
-	info := osVersionInfoEx{}
-	info.OSVersionInfoSize = uint32(unsafe.Sizeof(info))
-	r, _, _ := procRtlGetVersion.Call(uintptr(unsafe.Pointer(&info)))
-	if r != 0 {
-		return 0, 0
-	}
-	return int(info.MajorVersion), int(info.BuildNumber)
 }

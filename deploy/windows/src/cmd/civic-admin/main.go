@@ -31,6 +31,7 @@ import (
 
 	"civicworkdesk/windows/internal/httpserve"
 	"civicworkdesk/windows/internal/layout"
+	"civicworkdesk/windows/internal/platform"
 	"civicworkdesk/windows/internal/redact"
 	"civicworkdesk/windows/internal/release"
 	"civicworkdesk/windows/internal/serverstate"
@@ -160,18 +161,26 @@ func machineChecks() []check {
 	var checks []check
 	add := func(name, status, detail string) { checks = append(checks, check{name, status, detail}) }
 
-	major, build := windowsVersion()
-	if major >= 10 && build >= 22000 {
-		add("Windows 11", "PASS", fmt.Sprintf("build %d", build))
+	// One policy, shared with civic-diag: Windows 11 x64, or Windows 10 22H2 x64. RC1-RC3 accepted
+	// build 22000 or later and read the architecture from PROCESSOR_ARCHITECTURE, which called Windows
+	// Server 2025 "Windows 11" and an x64 process emulated on ARM64 "AMD64".
+	facts := platform.Probe()
+	verdict := platform.Classify(facts)
+	osDetail := fmt.Sprintf("%s; version %d.%d, product type %d", verdict.System, facts.Major, facts.Minor,
+		facts.ProductType)
+	if verdict.OSSupported {
+		add("supported Windows version", "PASS", osDetail)
 	} else {
-		add("Windows 11", "FAIL",
-			fmt.Sprintf("build %d; this build targets Windows 11 (build 22000 or later)", build))
+		add("supported Windows version", "FAIL", osDetail+" -- "+verdict.OSReason)
 	}
-	if arch := os.Getenv("PROCESSOR_ARCHITECTURE"); strings.EqualFold(arch, "AMD64") {
-		add("x64 architecture", "PASS", arch)
+	if verdict.ArchSupported {
+		add("x64 architecture", "PASS", "native "+verdict.Arch+" (IsWow64Process2)")
 	} else {
-		add("x64 architecture", "FAIL",
-			fmt.Sprintf("PROCESSOR_ARCHITECTURE=%s; this build is x64 only", arch))
+		add("x64 architecture", "FAIL", "native "+verdict.Arch+" -- "+verdict.ArchReason)
+	}
+	if verdict.Legacy {
+		// Information only: end of support is a reason to upgrade, not a reason to refuse.
+		add("Windows 10 end of support", "INFO", platform.EndOfSupportNotice)
 	}
 	if menu := userPrograms(); menu == "" {
 		add("Start Menu writable", "FAIL", "APPDATA is not set")
