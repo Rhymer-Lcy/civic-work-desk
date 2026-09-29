@@ -223,6 +223,7 @@ with no failing gate.
 | `docs/decisions/0001-pwa-first.md`        | Why a PWA and not a native wrapper                                                                               |
 | `docs/phase-5-final-signoff.md`           | Phase 5 (task hierarchy, schema v2) sign-off, invariants and the next-release backlog                            |
 | `docs/phase-5.1-runtime-update-safety.md` | Phase 5.1 post-signoff correction: scrollbar geometry, multi-tab updates, window awareness, interface generation |
+| `docs/phase-5.1-final-signoff.md`         | Phase 5.1 sign-off: final gates, the update activation guard, known limits                                       |
 
 ## Deployment and supported platforms
 
