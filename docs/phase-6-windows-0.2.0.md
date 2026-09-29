@@ -13,7 +13,7 @@ not marked superseded. `main` is unchanged.
 | displayVersion     | `0.2.0-rc.1`; Windows file version `0.2.0.0`; publisher `Rhymer-Lcy`                                                |
 | data formats       | databaseSchemaVersion 2, backupFormatVersion 3                                                                      |
 | rejected candidate | SHA-256 `4fe9296dbbaf20a85a19d742cfd9a7ae86a2e99c16518ec125718a66fd10eae5`: **remains REJECTED BEFORE PUBLICATION** |
-| frozen candidate   | section 12                                                                                                          |
+| frozen candidate   | `ebb59400…`, section 12                                                                                             |
 
 ## 1. Branches and the port of the first Phase-6 work
 
@@ -266,6 +266,13 @@ Rehearsal installers were built from intermediate pushed commits, under the same
 develop the acceptance before freezing. **They are not candidates**: each was overwritten by the next, and
 the last was deleted before the frozen build.
 
+| rehearsal | source commit | bytes     | SHA-256 (not a candidate)                                          |
+| --------- | ------------- | --------- | ------------------------------------------------------------------ |
+| 1         | `9d4ad21`     | 6,968,115 | `5fa150365e03160e6a6cfa39bf01cd3f626e86f788ae0ba0a2faab0de452a379` |
+| 2         | `746f8fe`     | 6,970,801 | `472c6e156ddba5d1c5cba9e652bcad297db0bfefaa3d8cf0012e4b80e0e51e51` |
+| 3         | `efb3bcc`     | 6,970,712 | `d18de8d51c5c3fc66d16c383796f454a872e511ac3d9069c04a67ca655385b42` |
+| 4         | `d104035`     | 6,974,318 | `42f9825c5e4826dc59febf19aa295e4fb7e73d926b1bad36d0c41db975473a0b` |
+
 ### 10.1 An RC3 upgrade blocked by this phase's own check (rehearsal 1, `9d4ad21`)
 
 The installer exited with code 7 (“cannot proceed”). The pre-install runtime preflight runs civic-admin's
@@ -354,8 +361,8 @@ Each time the gate run was stopped, and every gate was run again from the start 
   cannot open while the program is stopped; offline use is `/` directly, served by the worker. The
   launcher always starts the server first.
 - **Edge's delayed first `update()`** (about 60 s after a fresh install and reload, docs/phase-5.1 §9)
-  was not observed in these flows: the new worker was found within 0.2–2.3 s. The 150 s bound and 重试
-  remain for the case where it happens.
+  was not observed in any run that reached the check page (the frozen run's timings are in section
+  12.3). The 150 s bound and 重试 remain for the case where it happens.
 - **The installer's pre-install message.** A failed runtime preflight is always reported as a port
   conflict, whatever check failed (pre-existing since RC2). The diagnostic file it writes names the real
   cause, which is how 10.1 was diagnosed. Left for review rather than changed in this phase.
@@ -369,4 +376,99 @@ Each time the gate run was stopped, and every gate was run again from the start 
 
 ## 12. Frozen candidate and acceptance
 
-Recorded in the evidence commit that follows the freeze.
+Every figure below was composed by a script from the frozen run's own logs, its JSON records and the
+installer file itself.
+
+### 12.1 The frozen candidate
+
+| item                                      | value                                                                                                                                                                      |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| deploymentSourceCommit                    | `5ccf809da96fa7ee72dc1fbc1b82debfef7d4514`                                                                                                                                 |
+| GitHub                                    | `GET /repos/Rhymer-Lcy/civic-work-desk/commits/5ccf809` returns that SHA; the head of `phase-6/windows-0.2.0-release-v2` on GitHub is that SHA (2026-09-30T02:31:22+08:00) |
+| product baseline                          | `a0e0a4ce73e205823e3f6c0fa1d8931c7df6c69b`                                                                                                                                 |
+| engineering releaseId                     | `2026.09.30-win-0.2.0-rc.1`                                                                                                                                                |
+| displayVersion / file version / publisher | `0.2.0-rc.1` / `0.2.0.0` / `Rhymer-Lcy`                                                                                                                                    |
+| installer                                 | `CivicWorkDesk-Windows-x64-0.2.0-rc.1-Setup.exe`                                                                                                                           |
+| size                                      | 6,973,273 bytes                                                                                                                                                            |
+| SHA-256                                   | `ebb594005f8765959bf91d3ef63624c885f249a3a095a4825ced9acf81e72c1d`                                                                                                         |
+| Authenticode                              | NotSigned (unsigned)                                                                                                                                                       |
+| payload                                   | 30 files in the release manifest                                                                                                                                           |
+
+The commits that follow `5ccf809` on the branch add only this section and the candidate's provenance
+files (`release/windows/provenance/2026.09.30-win-0.2.0-rc.1-*` and the installer's `.sha256`); they
+change nothing the installer was built from.
+
+### 12.2 Product payload parity (section 23 of the brief)
+
+The build compared two clean builds, of `a0e0a4c` and of the source commit: 25
+files, byte-identical. Independently of the build script, `main` was exported again with `git archive`,
+built, and its `dist/` compared file by file with the candidate's staged `app/`:
+
+| item             | clean `main` build          | packaged candidate                                                                    |
+| ---------------- | --------------------------- | ------------------------------------------------------------------------------------- |
+| appGeneration    | `ui-CNP0PG2u`               | `ui-CNP0PG2u`                                                                         |
+| entry script     | `assets/index-CNP0PG2u.js`  | same file, SHA-256 `4a0d36e66544cd1e0564a6856501ad52c3f4fd37aa12d7f612a8cece7708d477` |
+| entry stylesheet | `assets/index-Dx_Si0bo.css` | same file, SHA-256 `85276b7ceead693f3d9da971ed302fe14b0f57865fccc4ae4eca3eabdb5442a5` |
+| files            | 25                          | 26                                                                                    |
+
+25 files are identical on both sides; the only other file is `deployment-health.json`,
+the deployment metadata the release adds. No file differs and none is missing.
+
+### 12.3 Acceptance against the frozen bytes
+
+| suite                    | checks   | failed     |
+| ------------------------ | -------- | ---------- |
+| identity (artifact)      | 66       | 0          |
+| provenance (built)       | 13       | 0          |
+| RC3 upgrade              | 158      | 0          |
+| installer UX             | 215      | 0          |
+| deploy                   | 168      | 0          |
+| identity (installed)     | 70       | 0          |
+| browser (installed Edge) | 81       | 0          |
+| privacy scan             | 34 files | 0 findings |
+
+Checks marked INFO are counted in “checks” and cannot fail.
+
+**Update check page, measured in installed Microsoft Edge** (state reached, time from opening the page
+or from pressing the button):
+
+| scenario                                        | result                                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| N: after the upgrade, RC3 had been used         | ready, 1.9 s                                                                                     |
+| A: one tab, closed before the upgrade           | ready, 2.2 s                                                                                     |
+| B: two tabs, one with unsaved text              | blocked, 0.2 s; tab A closed, 重试: blocked, 0.2 s; text saved, tab B closed, 重试: ready, 0.2 s |
+| C: three tabs                                   | blocked, 0.2 s; two closed, 重试: blocked, 0.2 s; last closed, 重试: ready, 0.2 s                |
+| D: browser check page and a service answer only | ready, 2.1 s                                                                                     |
+| a fresh profile (first run)                     | entered, 0.2 s                                                                                   |
+| after a browser restart                         | entered, 2.1 s                                                                                   |
+| after a program restart                         | entered, 0.2 s                                                                                   |
+
+The hold of about 60 s before a first `update()` that installed Edge showed in the Phase-5.1 suite
+(docs/phase-5.1-runtime-update-safety.md §9) was not observed in any of these flows.
+
+**Packaged geometry**: largest route-to-route shift over the brand, the six destinations and the action
+slot, in CSS px (classic scrollbar width measured: 15 px):
+
+| interface                                                       | 1366×768 | 1920×1080 | 2047×1001 | 2560×1440 |
+| --------------------------------------------------------------- | -------- | --------- | --------- | --------- |
+| RC3, before the upgrade (negative control)                      | 93 px    | 370 px    | 370 px    | 370 px    |
+| RC3 served at `/` after the upgrade (negative control)          | 93 px    | 370 px    | 370 px    | 370 px    |
+| this release, after the check page (profile N)                  | 0 px     | 0 px      | 0 px      | 0 px      |
+| this release, after the check page, RC3-era records (profile A) | 0 px     | 0 px      | 0 px      | 0 px      |
+
+### 12.4 Product and platform gates on the source commit
+
+| gate                                                                          | result                                                              |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `npm run verify` (format, lint, typecheck, unit, static scan, build)          | pass; 570 unit tests                                                |
+| Chromium desktop and mobile (`test:e2e`)                                      | 201 passed, 0 skipped, 0 flaky                                      |
+| installed Edge (`test:e2e:edge`)                                              | 47 passed, 0 skipped, 0 flaky                                       |
+| Firefox and WebKit (`test:e2e:cross`)                                         | 23 passed, 1 skipped, 0 flaky                                       |
+| accessibility (`test:a11y`)                                                   | 16 passed, 0 skipped, 0 flaky                                       |
+| copy audit                                                                    | pass                                                                |
+| Go tests (`test:windows`)                                                     | pass; 9 packages                                                    |
+| UOS regression (`verify:uos`, the signed-off -5 archive, digest-checked copy) | pass; 138 deployment tests (0 failed), 56 archive checks (0 failed) |
+
+The one skipped test is WebKit's offline reload in `tests/e2e/cross-browser.spec.ts`, skipped since
+before this phase for a Playwright WebKit harness fault documented in that file; the file is unchanged
+from `main`, and Chromium and Firefox run the same case.
