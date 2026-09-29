@@ -1,6 +1,16 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { BrowserContext, BrowserType, Page } from '@playwright/test';
@@ -19,7 +29,9 @@ import { expect } from '@playwright/test';
  *   - rewrite the worker script in other ways (for example to model an older worker without a
  *     message protocol this phase adds);
  *   - answer the deployment endpoint `/api/civic/runtime` in each of the shapes the application must
- *     tolerate: absent (404), failing (503), dropped connection, HTML (a SPA fallback), or JSON.
+ *     tolerate: absent (404), failing (503), dropped connection, HTML (a SPA fallback), or JSON;
+ *   - switch the whole served tree to another build, such as the older generation made by
+ *     `makeOlderGeneration`, to model a program upgrade under an open browser.
  *
  * Every test also gets its own persistent browser profile, because the behaviour under test is shared
  * between several windows of one profile, which an isolated per-test context cannot model.
@@ -58,6 +70,8 @@ export interface UpdateServer {
   /** Rewrite the served worker script; applied after the revision marker. */
   setWorkerTransform(transform: (script: string) => string): void;
   setRuntime(reply: RuntimeReply): void;
+  /** Serve this build directory instead of `dist/` (worker script included). */
+  setRoot(directory: string): void;
   /** Number of requests `/api/civic/runtime` has received. */
   runtimeRequests(): number;
   close(): Promise<void>;
@@ -72,6 +86,7 @@ export async function startUpdateServer(): Promise<UpdateServer> {
   if (!existsSync(join(DIST, 'index.html')) || !existsSync(join(DIST, 'sw.js'))) {
     throw new Error(`no production build in ${DIST}; run \`npm run build\` first`);
   }
+  let root = DIST;
   let revision = 0;
   let transform: (script: string) => string = (script) => script;
   let runtime: RuntimeReply = { kind: 'absent' };
@@ -90,7 +105,7 @@ export async function startUpdateServer(): Promise<UpdateServer> {
         request.socket.destroy();
         return;
       case 'html':
-        send(response, 200, TYPES['.html'] ?? '', readFileSync(join(DIST, 'index.html')));
+        send(response, 200, TYPES['.html'] ?? '', readFileSync(join(root, 'index.html')));
         return;
       case 'json':
         send(response, 200, 'application/json', JSON.stringify(runtime.body));
@@ -110,14 +125,14 @@ export async function startUpdateServer(): Promise<UpdateServer> {
       return;
     }
     if (path === '/sw.js') {
-      const built = readFileSync(join(DIST, 'sw.js'), 'utf8');
+      const built = readFileSync(join(root, 'sw.js'), 'utf8');
       const marked =
         revision > 0 ? `${built}\n// civic-test-worker-revision ${String(revision)}\n` : built;
       send(response, 200, TYPES['.js'] ?? '', transform(marked));
       return;
     }
-    const file = normalize(join(DIST, path === '/' ? 'index.html' : path));
-    if (!file.startsWith(DIST + sep) || !existsSync(file) || statSync(file).isDirectory()) {
+    const file = normalize(join(root, path === '/' ? 'index.html' : path));
+    if (!file.startsWith(root + sep) || !existsSync(file) || statSync(file).isDirectory()) {
       send(response, 404, 'text/plain; charset=utf-8', 'not found');
       return;
     }
@@ -140,6 +155,9 @@ export async function startUpdateServer(): Promise<UpdateServer> {
     },
     setRuntime(next) {
       runtime = next;
+    },
+    setRoot(directory) {
+      root = resolve(directory);
     },
     runtimeRequests: () => runtimeCount,
     close: () =>
@@ -277,5 +295,73 @@ export async function tagDocument(
         token,
       ),
     navigations: () => navigations,
+  };
+}
+
+export interface OlderGeneration {
+  /** A copy of `dist/` whose interface is a different, older generation. */
+  readonly root: string;
+  readonly generation: string;
+  /** The entry chunk's file name in that copy, e.g. `assets/index-OLDGEN00.js`. */
+  readonly entry: string;
+  cleanup(): void;
+}
+
+/**
+ * A second, genuinely different generation of the built application, for stale-worker tests.
+ *
+ * Building the application twice inside a test run would be slow; renaming is enough, because the
+ * generation is the entry chunk's name. The copy renames `assets/index-<hash>.js` to
+ * `assets/index-OLDGEN00.js` and rewrites every file that names it: `index.html`, the worker's precache
+ * list, `app-generation.json` and the lazily loaded chunks that import from the entry. It also gives
+ * `index.html` a different precache revision, because the two generations would otherwise share the
+ * revision and the newer worker would keep the older copy of `index.html`. Each declared rewrite must
+ * match, or this throws instead of producing a copy that only looks different.
+ */
+export function makeOlderGeneration(): OlderGeneration {
+  const root = mkdtempSync(join(tmpdir(), 'civic-older-generation-'));
+  cpSync(DIST, root, { recursive: true });
+  const html = readFileSync(join(root, 'index.html'), 'utf8');
+  const hash = /assets\/index-([A-Za-z0-9_-]+)\.js/.exec(html)?.[1];
+  if (hash === undefined) throw new Error('no entry chunk named in dist/index.html');
+  const from = `index-${hash}.js`;
+  const to = 'index-OLDGEN00.js';
+  renameSync(join(root, 'assets', from), join(root, 'assets', to));
+
+  const rewritten: string[] = [];
+  const textFiles = [
+    ...readdirSync(root).map((name) => join(root, name)),
+    ...readdirSync(join(root, 'assets')).map((name) => join(root, 'assets', name)),
+  ].filter((file) => ['.html', '.js', '.json'].includes(extname(file)));
+  for (const file of textFiles) {
+    const text = readFileSync(file, 'utf8');
+    if (!text.includes(from) && !text.includes(`ui-${hash}`)) continue;
+    writeFileSync(file, text.replaceAll(from, to).replaceAll(`ui-${hash}`, 'ui-OLDGEN00'), 'utf8');
+    rewritten.push(file.slice(root.length + 1).replaceAll('\\', '/'));
+  }
+  for (const required of ['index.html', 'sw.js', 'app-generation.json']) {
+    if (!rewritten.includes(required))
+      throw new Error(`older generation: ${required} not rewritten`);
+  }
+
+  const workerPath = join(root, 'sw.js');
+  const worker = readFileSync(workerPath, 'utf8');
+  const revision = /\{url:"index\.html",revision:"[0-9a-f]+"\}/g;
+  const found = worker.match(revision) ?? [];
+  if (found.length !== 1)
+    throw new Error(`older generation: ${String(found.length)} index.html revisions`);
+  writeFileSync(
+    workerPath,
+    worker.replace(revision, '{url:"index.html",revision:"0000000000000000000000000000older"}'),
+    'utf8',
+  );
+
+  return {
+    root,
+    generation: 'ui-OLDGEN00',
+    entry: `assets/${to}`,
+    cleanup() {
+      rmSync(root, { recursive: true, force: true });
+    },
   };
 }

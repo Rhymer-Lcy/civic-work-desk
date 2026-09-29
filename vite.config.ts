@@ -52,6 +52,48 @@ function relaxDevStyleCsp(): Plugin {
   };
 }
 
+/**
+ * Emit `app-generation.json`: which application generation this build is (Phase 5.1).
+ *
+ * The generation is `ui-` followed by the content hash the bundler gives the entry chunk
+ * (`assets/index-<hash>.js`). That hash changes with the entry's own code, with the hashed names of
+ * every chunk it imports, and with the entry stylesheet: a CSS-only change moved it from `Czjj00lG` to
+ * `BVfqecLS` (2026-09-29). The running page derives the same value from its own module URL
+ * (`src/app/pwa/runtime-generation.ts`), and a deployment server reads this file to say which
+ * generation it expects. The file is written after the hash is known and nothing in the bundle reads
+ * it, so there is no circular dependency. It is not precached: `globPatterns` has no `.json`.
+ *
+ * Fails the build if the entry chunk is not exactly one `assets/index-<hash>.js`, because both sides
+ * of the comparison rest on that name.
+ */
+function emitAppGeneration(): Plugin {
+  return {
+    name: 'civic-app-generation',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const entries = Object.values(bundle).filter((item) => item.type === 'chunk' && item.isEntry);
+      const fileName = entries.length === 1 ? entries[0]?.fileName : undefined;
+      const match =
+        fileName === undefined ? null : /^assets\/index-([A-Za-z0-9_-]{6,64})\.js$/.exec(fileName);
+      if (fileName === undefined || match?.[1] === undefined) {
+        const found = entries.map((entry) => entry.fileName).join(', ') || 'none';
+        throw new Error(
+          `civic-app-generation: expected one entry chunk named assets/index-<hash>.js, found ${found}`,
+        );
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: 'app-generation.json',
+        source: `${JSON.stringify(
+          { schema: 'civic-app-generation/1', appGeneration: `ui-${match[1]}`, entry: fileName },
+          null,
+          2,
+        )}\n`,
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
   resolve: {
@@ -98,6 +140,7 @@ export default defineConfig({
   plugins: [
     react(),
     relaxDevStyleCsp(),
+    emitAppGeneration(),
     VitePWA({
       strategies: 'generateSW',
       registerType: 'prompt',

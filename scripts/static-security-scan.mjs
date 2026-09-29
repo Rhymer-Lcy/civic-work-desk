@@ -216,6 +216,25 @@ const RULES = [
     ],
     appliesToDist: true,
   },
+  {
+    id: 'runtime-endpoint-caller',
+    description:
+      'A caller of the deployment endpoint /api/civic/runtime outside its reviewed module',
+    reason:
+      'Phase 5.1: one module asks the endpoint which interface generation is expected, with a ' +
+      'body-less GET and no credentials. A second caller could send what that module never sends.',
+    pattern: /\/api\/civic\/runtime\b/g,
+    samples: ["fetch('/api/civic/runtime')", 'const url = "/api/civic/runtime";'],
+    scope: /\.(tsx?|jsx?|mjs|cjs|html)$/,
+    allow: [
+      /^src[/\\]app[/\\]pwa[/\\]runtime-generation\.ts$/,
+      // The module above, bundled: it lives in the entry chunk.
+      /^dist[/\\]assets[/\\]index-[A-Za-z0-9_-]+\.js$/,
+      /^docs[/\\]/,
+      /^tests[/\\]/,
+    ],
+    appliesToDist: true,
+  },
 ];
 
 /**

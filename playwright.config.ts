@@ -112,6 +112,7 @@ export default defineConfig({
         '**/shell-geometry-scrollbars.spec.ts',
         '**/update-safety.spec.ts',
         '**/client-awareness.spec.ts',
+        '**/runtime-generation.spec.ts',
       ],
     },
     {

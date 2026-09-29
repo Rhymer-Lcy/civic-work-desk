@@ -37,6 +37,12 @@ export interface PwaController {
   readonly applyUpdate: () => Promise<void>;
   /** Reload this page, at its user's request, onto the worker that now controls it. */
   readonly reloadPage: () => void;
+  /**
+   * Ask the browser to look for a newer worker now (Phase 5.1, runtime-generation mismatch). A worker
+   * it finds installs and waits, which raises the ordinary prompt; nothing is activated or reloaded.
+   * Never rejects: offline, or with no registration, it simply finds nothing.
+   */
+  readonly checkForUpdate: () => Promise<void>;
   readonly unregister: () => Promise<void>;
 }
 
@@ -141,6 +147,14 @@ export function registerServiceWorker(options: RegisterOptions): PwaController {
       await update(true);
     },
     reloadPage: coordinator.reload,
+    checkForUpdate: async () => {
+      try {
+        const registration = await serviceWorkerContainer()?.getRegistration();
+        await registration?.update();
+      } catch {
+        // Offline, or the worker script could not be fetched: there is nothing newer to find now.
+      }
+    },
     unregister: async () => {
       const found = serviceWorkerContainer();
       if (!found) return;

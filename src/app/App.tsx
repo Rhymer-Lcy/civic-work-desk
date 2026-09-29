@@ -11,6 +11,7 @@ import { SettingsPage } from '@/features/settings/SettingsPage';
 import { WorkPage } from '@/features/work/WorkPage';
 import { requestPersistentStorage } from '@/services/storage/persistence';
 import { PrimaryActionProvider } from './primary-action';
+import { watchRuntimeGeneration } from './pwa/runtime-generation';
 import { registerServiceWorker } from './pwa/service-worker-bridge';
 import type { UpdateState } from './pwa/service-worker-bridge';
 import { useRoute } from './router';
@@ -48,6 +49,20 @@ function AppRoot(): ReactNode {
     // In dev the plugin does not emit a worker; guard so the import does not throw.
     if (!import.meta.env.PROD) return;
     controllerRef.current = registerServiceWorker({ onStateChange: setUpdateState });
+  }, []);
+
+  /*
+   * Is this page running the interface the installed program expects (Phase 5.1)? A mismatch shows a
+   * notice and asks the browser to look for the newer worker, whose ordinary prompt then takes over.
+   * Nothing is reloaded or cleared; see pwa/runtime-generation.ts.
+   */
+  const [generationMismatch, setGenerationMismatch] = useState(false);
+  useEffect(() => {
+    if (!import.meta.env.PROD) return;
+    return watchRuntimeGeneration((check) => {
+      setGenerationMismatch(check.outcome === 'mismatch');
+      if (check.outcome === 'mismatch') void controllerRef.current?.checkForUpdate();
+    });
   }, []);
 
   const title = state.status === 'ready' ? state.data.settings.appTitle : 'CivicWorkDesk';
@@ -113,6 +128,15 @@ function AppRoot(): ReactNode {
               >
                 刷新到新版本
               </Button>
+            </div>
+          </Panel>
+        ) : generationMismatch ? (
+          // The installed program expects a newer interface than this page runs (Phase 5.1).
+          <Panel tone="warning">
+            <div className={styles.updateBar}>
+              <p className={styles.updateText}>
+                本机已安装新版本，本页面仍在运行旧版本。本页面不会自动刷新；请先保存正在编辑的内容，新版本准备就绪后，此处会出现「应用更新」按钮。
+              </p>
             </div>
           </Panel>
         ) : undefined
