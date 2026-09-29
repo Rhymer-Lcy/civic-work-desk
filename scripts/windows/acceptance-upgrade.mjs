@@ -224,6 +224,14 @@ let debugPort = 9340;
  * profile. This harness reopens the SAME profiles after the upgrade and then downloads, so it starts
  * Edge the way a person's shortcut does and attaches to it -- which is also the closer rehearsal of a
  * colleague's browser, including its classic scrollbars (no `--hide-scrollbars`).
+ *
+ * ## Sync is off
+ *
+ * On a Windows session signed in with a Microsoft account, Edge signs a NEW profile in to that account
+ * implicitly and starts syncing it. The first rehearsal found the operator's own extensions installed
+ * into these throwaway profiles a few minutes in, and their welcome pages were the only requests that
+ * left the origin. The profiles must hold synthetic data only, so sync is disabled, as Playwright's own
+ * launch already does for acceptance-browser.mjs. Rendering and scrollbars are unaffected.
  */
 async function openProfile(dir) {
   mkdirSync(dir, { recursive: true });
@@ -237,6 +245,7 @@ async function openProfile(dir) {
       '--headless=new',
       '--no-first-run',
       '--no-default-browser-check',
+      '--disable-sync',
       '--window-size=1400,900',
       'about:blank',
     ],
@@ -1417,10 +1426,25 @@ check(
   'no request left the origin in any browser session',
   external.slice(0, 3).join('; ') || 'none',
 );
+const signedIn = Object.values(PROFILE).filter((dir) => {
+  try {
+    const prefs = JSON.parse(readFileSync(join(dir, 'Default', 'Preferences'), 'utf8'));
+    return (prefs.account_info ?? []).length > 0;
+  } catch {
+    return false;
+  }
+});
+info(
+  'profiles Edge signed in to the Windows account (sync disabled; deleted after a pass)',
+  `${signedIn.length} of ${Object.keys(PROFILE).length}`,
+);
 
 // ---------------------------------------------------------------------------------------------------
 section('14. summary');
 cleanSlate();
+// The profiles are throwaway and may carry the Windows account's name (see openProfile). Kept only when
+// something failed, for diagnosis.
+if (failures === 0) rmSync(WORK, { recursive: true, force: true });
 const timings = Object.entries(evidence.bootstrap).map(
   ([k, v]) => `${k}: ${v.state} after ${(v.ms / 1000).toFixed(1)} s`,
 );
