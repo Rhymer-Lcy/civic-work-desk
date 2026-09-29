@@ -7,6 +7,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Only a build that runs vite-plugin-pwa provides this module; see the stub's header.
+      'virtual:pwa-register': fileURLToPath(
+        new URL('./tests/setup/pwa-register.stub.ts', import.meta.url),
+      ),
     },
   },
   test: {

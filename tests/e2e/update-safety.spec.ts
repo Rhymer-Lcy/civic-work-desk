@@ -85,8 +85,7 @@ test('one tab: accepting the update reloads that tab onto the new worker', async
   await expect(tab.getByText(NOTICE)).toHaveCount(0);
 });
 
-test('two tabs: the other tab keeps its unsaved form and is told a new version is ready', async (// eslint-disable-next-line no-empty-pattern -- testInfo is the second parameter
-{}, testInfo) => {
+test('two tabs: the other tab keeps its unsaved form and is told a new version is ready', async () => {
   const tabA = await openControlledTab(profile.context, 'dashboard');
   const tabB = await openControlledTab(profile.context, 'work');
   const dialog = await openUnsavedForm(tabB);
@@ -97,7 +96,6 @@ test('two tabs: the other tab keeps its unsaved form and is told a new version i
   await expect(tabA.getByText(PROMPT)).toBeVisible({ timeout: 30_000 });
   await expect(tabB.getByText(PROMPT)).toBeVisible({ timeout: 30_000 });
 
-  testInfo.fail(true, 'uncorrected: accepting in tab A reloads tab B');
   await tabA.bringToFront();
   await tabA.getByRole('button', { name: APPLY }).click();
 
@@ -133,8 +131,7 @@ test('two tabs: the other tab keeps its unsaved form and is told a new version i
   await expect(tabB.getByText(UNSAVED).first()).toBeVisible();
 });
 
-test('three tabs, two in the background: only the accepting tab reloads', async (// eslint-disable-next-line no-empty-pattern -- testInfo is the second parameter
-{}, testInfo) => {
+test('three tabs, two in the background: only the accepting tab reloads', async () => {
   const tabA = await openControlledTab(profile.context, 'dashboard');
   const tabB = await openControlledTab(profile.context, 'work');
   const tabC = await openControlledTab(profile.context, 'ledger');
@@ -146,7 +143,7 @@ test('three tabs, two in the background: only the accepting tab reloads', async 
   const visibility = await Promise.all(
     [tabA, tabB, tabC].map((tab) => tab.evaluate(() => document.visibilityState)),
   );
-  await testInfo.attach('visibility', {
+  await test.info().attach('visibility', {
     body: JSON.stringify({ A: visibility[0], B: visibility[1], C: visibility[2] }),
   });
 
@@ -155,7 +152,6 @@ test('three tabs, two in the background: only the accepting tab reloads', async 
     await expect(tab.getByText(PROMPT)).toBeVisible({ timeout: 30_000 });
   }
 
-  testInfo.fail(true, 'uncorrected: accepting in tab A reloads tabs B and C');
   await tabA.getByRole('button', { name: APPLY }).click();
   await expectReloaded(tabA, documentA.stillLoaded);
   await expectOnNewWorker(tabA);

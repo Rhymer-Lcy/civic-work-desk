@@ -96,6 +96,25 @@ function AppRoot(): ReactNode {
               </Button>
             </div>
           </Panel>
+        ) : updateState === 'activated-elsewhere' ? (
+          // Another tab applied the update. This one is never reloaded for its user (Phase 5.1).
+          <Panel tone="warning">
+            <div className={styles.updateBar}>
+              <p className={styles.updateText}>
+                新版本已在其他页面中启用。本页面不会自动刷新，尚未保存的内容仍保留在本页面中；请先保存正在编辑的内容，再刷新到新版本。
+              </p>
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<RefreshCw size={14} />}
+                onClick={() => {
+                  controllerRef.current?.reloadPage();
+                }}
+              >
+                刷新到新版本
+              </Button>
+            </div>
+          </Panel>
         ) : undefined
       }
     >
