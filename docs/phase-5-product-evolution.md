@@ -428,11 +428,24 @@ workstation: active release, previous release, native binaries, app assets, stat
 metadata — measured bytes, and the retention rule that bounds them. Nothing is deleted to improve the
 number; the previous release is the only rollback.
 
+> **Closeout note, 2026-09-29.** Results are in [phase-5-evidence.md](phase-5-evidence.md) §3–§4. Two
+> deviations from the plan above:
+>
+> - The ledger **did** get worse: 台账 is about 25% slower at 5,000 records (≈0.4 s). The hierarchy
+>   computation behind it costs about 2 ms; the rest is rendering the added cell and card fields on a page
+>   that renders every row twice without windowing. Windowing remains deferred, so this is recorded as an
+>   open product decision rather than fixed here. The integrity pass is 82% slower (+1.2 ms), all of it the
+>   new hierarchy check, which scales like the existing checks. Every other line held or improved; the
+>   "before" figures above came from an earlier session, and the comparison was re-measured interleaved.
+> - No RC3 installation existed on this workstation at closeout, and no installer was run, so the
+>   footprint audit uses the RC3 payload and the installer's layout and retention code instead. It found
+>   that Windows never prunes release directories.
+
 ---
 
 ## 14. Versioning and publisher
 
-Specified in `docs/versioning-and-publisher.md`. The five concepts are kept apart:
+Specified in `docs/versioning-and-publisher.md`, which keeps six concepts apart:
 
 | concept                 | now                  | this phase                                 |
 | ----------------------- | -------------------- | ------------------------------------------ |
@@ -441,6 +454,7 @@ Specified in `docs/versioning-and-publisher.md`. The five concepts are kept apar
 | Windows file version    | 0.1.0 (from package) | derived numeric `0.2.0.0` — next packaging |
 | release id              | `2026.09.24-win-rc3` | unchanged; provenance only                 |
 | database schema version | 1                    | **2**                                      |
+| backup format version   | 3                    | 3, unchanged (§10.2)                       |
 
 Publisher display identity for community builds: **Rhymer-Lcy**. `StorePublisherIdentity` is a separate,
 deliberately **unresolved** field. Installer sources are not changed in this phase; the mapping they must
@@ -482,8 +496,23 @@ re-verified at closeout. Phase 5 ends ready for independent product review.
 
 ## 18. Commit plan
 
-1. test-only baseline (done) · 2. `fix(app)` in-page anchors (done) · 3. scale harness (done) ·
-2. this record and the visual-delta audit · 5. comparator performance · 6. shell geometry ·
-3. back-to-top · 8. hierarchy domain · 9. v2 migration and backup schema · 10. write-boundary operations ·
-4. import and merge · 12. hierarchy UX · 13. ledger, reports, exports · 14. visual adaptation ·
-5. version and publisher · 16. platform planning documents · 17. gates and evidence.
+1. test-only baseline (done)
+2. `fix(app)` in-page anchors (done)
+3. scale harness (done)
+4. this record and the visual-delta audit
+5. comparator performance
+6. shell geometry
+7. back-to-top
+8. hierarchy domain
+9. v2 migration and backup schema
+10. write-boundary operations
+11. import and merge
+12. hierarchy UX
+13. ledger, reports, exports
+14. visual adaptation
+15. version and publisher
+16. platform planning documents
+17. gates and evidence
+
+This list was first written as one wrapped paragraph; the formatter read its line-initial numbers as list
+items and renumbered them before it was committed. It is restored here as a list (2026-09-29).
