@@ -93,6 +93,23 @@ export default defineConfig({
       testMatch: '**/*.spec.ts',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
+    /*
+     * Installed Microsoft Edge, the browser the Windows package opens (Phase 5.1).
+     *
+     * Only the specs whose outcome depends on the real browser rather than on the engine: classic
+     * scrollbars, and service-worker update behaviour across several windows of one profile. It needs
+     * Edge on the machine running the suite, so it is a separate script (`npm run test:e2e:edge`)
+     * rather than part of `test:e2e`.
+     */
+    {
+      name: 'msedge-desktop',
+      use: {
+        ...devices['Desktop Edge'],
+        channel: 'msedge',
+        viewport: { width: 1440, height: 900 },
+      },
+      testMatch: ['**/shell-geometry-scrollbars.spec.ts'],
+    },
     {
       name: 'firefox-desktop',
       use: { ...devices['Desktop Firefox'], viewport: { width: 1440, height: 900 } },

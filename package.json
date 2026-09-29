@@ -34,6 +34,7 @@
     "test:e2e": "playwright test --project=chromium-desktop --project=chromium-mobile",
     "test:a11y": "playwright test --project=a11y",
     "test:e2e:cross": "playwright test --project=firefox-desktop --project=webkit-desktop",
+    "test:e2e:edge": "playwright test --project=msedge-desktop",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:install:cross": "playwright install firefox webkit",
     "scan:static": "node scripts/static-security-scan.mjs",
