@@ -239,4 +239,18 @@ export default tseslint.config(
       globals: globals.serviceworker,
     },
   },
+  {
+    /*
+     * The Windows update check page's script (Phase 6), embedded in civic-server and served at
+     * /api/civic/start.js: a classic browser script that belongs to no TypeScript project, linted as
+     * plain JavaScript like the worker extension above.
+     */
+    files: ['deploy/windows/src/internal/httpserve/bootstrap/*.js'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      sourceType: 'script',
+      globals: globals.browser,
+    },
+  },
 );

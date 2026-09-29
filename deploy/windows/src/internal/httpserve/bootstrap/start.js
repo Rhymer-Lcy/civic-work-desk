@@ -129,7 +129,7 @@
       if (action === 'get') return window.sessionStorage.getItem(RELOAD_KEY);
       if (action === 'set') window.sessionStorage.setItem(RELOAD_KEY, value);
       if (action === 'clear') window.sessionStorage.removeItem(RELOAD_KEY);
-    } catch (error) {
+    } catch {
       return null;
     }
     return null;
@@ -175,8 +175,7 @@
     if (!Array.isArray(data.windows)) return unknown('malformed');
     var requesters = 0;
     var others = 0;
-    for (var i = 0; i < data.windows.length; i += 1) {
-      var entry = data.windows[i];
+    for (var entry of data.windows) {
       var valid =
         entry &&
         typeof entry === 'object' &&
@@ -200,7 +199,7 @@
       var channel;
       try {
         channel = new MessageChannel();
-      } catch (error) {
+      } catch {
         resolve(unknown('query-failed'));
         return;
       }
@@ -221,7 +220,7 @@
       };
       try {
         worker.postMessage({ type: PROTOCOL.type, version: PROTOCOL.version }, [channel.port2]);
-      } catch (error) {
+      } catch {
         finish(unknown('query-failed'));
       }
     });
