@@ -1,6 +1,6 @@
 {
   "name": "civic-work-desk",
-  "version": "0.2.0-dev.0",
+  "version": "0.2.0-rc.1",
   "private": true,
   "description": "CivicWorkDesk - a local-first, installable PWA for keeping public-sector work records and honour/award archives.",
   "repository": {
