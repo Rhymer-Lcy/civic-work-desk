@@ -1,0 +1,16 @@
+{
+  "description": "Product identity for CivicWorkDesk: one place for the names, publisher and store identity that packaging and store listings must agree on. The product version is NOT here; package.json#version is its single source. See docs/versioning-and-publisher.md.",
+  "productId": "civic-work-desk",
+  "productNameZh": "政务工作记录台",
+  "productNameEn": "CivicWorkDesk",
+  "productVersionSource": "package.json#version",
+  "publisherDisplayName": "Rhymer-Lcy",
+  "publisherDisplayNameScope": "Community builds published from the GitHub repository. Provisional: taken from the repository owner, not from a verified legal or signing identity.",
+  "storePublisherIdentity": null,
+  "storePublisherIdentityStatus": "unresolved: must equal the verified developer, store and code-signing identity of each storefront before any store submission (Microsoft Partner Center, UnionTech developer platform, AppGallery Connect). Not invented here.",
+  "repositoryUrl": "https://github.com/Rhymer-Lcy/civic-work-desk",
+  "license": "UNLICENSED",
+  "licenseStatement": "Publicly readable source, all rights reserved.",
+  "architectures": ["windows-x64", "uos20-loongarch64"],
+  "runtimePrivacy": "local-first, offline, no account, no cloud backend, no telemetry"
+}
