@@ -2,7 +2,7 @@
 /**
  * Scan the BUILT Windows artifacts for development information that must not reach a colleague.
  *
- *   node scripts/windows/scan-release-artifact.mjs [--release-id <id>]
+ *   node scripts/windows/scan-release-artifact.mjs --release-id <id>
  *
  * Source inspection cannot answer this question. A Go binary embeds file paths from the build machine
  * unless `-trimpath` is used, an installer embeds the compiler's own strings, and a resource object
@@ -16,16 +16,25 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-function argValue(name, fallback) {
+function argValue(name) {
   const i = process.argv.indexOf(name);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')
+    ? process.argv[i + 1]
+    : undefined;
 }
-const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc2');
-const SETUP_BASE = `CivicWorkDesk-Windows-x64-${RELEASE_ID.replace('-win-', '-')}-Setup`;
+/* Required; RC2's id was the default until Phase 6. The names come from the same derivation the build
+ * used, so the scan cannot look at a different file from the one that was built. */
+const identity = loadReleaseIdentity(
+  ROOT,
+  argValue('--release-id'),
+  argValue('--today') ?? businessDateUtc8(),
+);
+const RELEASE_ID = identity.releaseId;
 const OUT_DIR = join(ROOT, 'release', 'windows');
-const PAYLOAD = join(OUT_DIR, `civic-work-desk-windows-x64-${RELEASE_ID}`);
+const PAYLOAD = join(OUT_DIR, identity.payloadName);
 
 /**
  * What must not be in a shipped byte.
@@ -93,15 +102,18 @@ function walk(dir) {
   return out;
 }
 
-const targets = [];
-const setup = join(OUT_DIR, `${SETUP_BASE}.exe`);
-if (existsSync(setup)) targets.push(setup);
-if (existsSync(PAYLOAD)) targets.push(...walk(PAYLOAD));
-
-if (targets.length === 0) {
-  console.error(`error: nothing to scan. Build ${RELEASE_ID} first.`);
-  process.exit(2);
+/* Everything that is published or installed: the installer, the notice beside it, and the payload the
+ * installer carries. Each must exist -- a scan that quietly skips a missing artifact reports on less than
+ * it claims to. */
+const setup = join(OUT_DIR, identity.installerName);
+const notice = join(OUT_DIR, 'README-testing-zh-CN.txt');
+for (const required of [setup, notice, PAYLOAD]) {
+  if (!existsSync(required)) {
+    console.error(`error: ${required} does not exist. Build ${RELEASE_ID} first.`);
+    process.exit(2);
+  }
 }
+const targets = [setup, notice, ...walk(PAYLOAD)];
 
 console.log('CivicWorkDesk Windows release-artifact privacy scan');
 console.log('');
