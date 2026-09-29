@@ -108,7 +108,7 @@ export default defineConfig({
         channel: 'msedge',
         viewport: { width: 1440, height: 900 },
       },
-      testMatch: ['**/shell-geometry-scrollbars.spec.ts'],
+      testMatch: ['**/shell-geometry-scrollbars.spec.ts', '**/update-safety.spec.ts'],
     },
     {
       name: 'firefox-desktop',
