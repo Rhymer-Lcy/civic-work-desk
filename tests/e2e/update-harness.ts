@@ -230,11 +230,14 @@ export async function workerState(page: Page): Promise<WorkerState> {
  * Serve a newer worker and have `page` look for it, then wait until it is installed and waiting.
  * `registration.update()` stands in for the browser's own update check, whose timing it controls.
  *
- * Installed Edge holds this first `update()` of a fresh profile back until about 60 s after the
- * worker was first installed; bundled Chromium starts it at once (measured 2026-09-29: an `update()`
- * issued 30 s after installation started its script request at 29.7 s, and a second `update()` right
- * after that one resolved in 16 ms). The mechanism was not identified. It is why each Edge test in
- * these files takes about a minute; a worker installed long before the check is not affected.
+ * Timing seen in installed Edge, 2026-09-29, recorded because it decides how long the Edge project
+ * takes rather than whether it passes. When the profile's first page had just been installed and
+ * reloaded (as `openControlledTab` does), Edge held the first `update()` back until about 60 s after
+ * that point: issued at 30 s, its script request left at 59.7 s, and a second `update()` straight
+ * after resolved in 16 ms. Bundled Chromium started the same call at once, and so did Edge in
+ * client-awareness.spec.ts, whose pages are never reloaded. Whether installation or the reload is
+ * the anchor, and the mechanism, were not established; update-safety.spec.ts therefore takes about
+ * a minute per test in Edge.
  */
 export async function makeUpdateWaiting(
   server: UpdateServer,
