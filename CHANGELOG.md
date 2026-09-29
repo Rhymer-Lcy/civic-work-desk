@@ -6,6 +6,51 @@ release ids (`docs/versioning-and-publisher.md`). The deployment phases — the 
 the Windows release candidates (Phase 4) — are recorded in `docs/phase-3-final-signoff.md` and
 `docs/phase-4-windows-rc1.md` to `rc3.md`, and published as GitHub Releases.
 
+## [Unreleased] — Phase 6 Windows 0.2.0-rc.1 release engineering
+
+The Windows package of the signed-off Phase-5.1 product (main `a0e0a4c`). The application payload is
+byte-identical to a clean build of that commit; nothing under `src/` or `public/` changed, and only the
+`version` field of `package.json` differs (`0.2.0-rc.1`). A new candidate is frozen for independent
+pre-publication review; **nothing was published, tagged or released**. The earlier candidate
+`4fe9296d…` stays rejected before publication. Record: `docs/phase-6-windows-0.2.0.md`.
+
+### Added
+
+- **An update check page between the launcher and the application.** The launcher and the installer's
+  立即打开 open `http://127.0.0.1:8765/api/civic/start`, served by the local program and never by the
+  browser's service worker. It asks the browser for a newer version at once, and it enters `/` only when
+  the interface the browser will run is the installed one. After an upgrade from RC3 it switches versions
+  only on 进入新版本, only when no other application page is open, and it verifies the result before
+  entering. While old pages are open it says so and waits for 重试; when it cannot confirm, it does not
+  switch. A first run goes straight in. Nothing is cleared, unregistered, closed or saved on the user's
+  behalf.
+- **`/api/civic/runtime`**: the installed release's interface generation (`civic-runtime/1`), read from
+  the active release's `app-generation.json`, fail-closed, never cached.
+- **Windows 10 22H2 x64 as the legacy-compatibility target**, with the end-of-support notice; Windows 7,
+  8/8.1, other Windows 10 builds, Windows Server, x86 and ARM64 are refused before anything is written.
+  Windows 11 x64 stays the primary target. Neither is certified.
+- **A rejected-release registry** (`scripts/windows/rejected-releases.json`). A candidate rejected before
+  publication spends its engineering id; builds and audits refuse it, as builds refuse published ids.
+- A diagnostic conclusion naming the failure class, policy facts, and a mark on a non-canonical host in
+  the diagnostic file.
+
+### Changed
+
+- The browser check page moved to `/api/civic/platform`, the one namespace a service worker cannot
+  answer; `/__civic/platform` only redirects there.
+- The installer shows version `0.2.0-rc.1`, file version `0.2.0.0` and publisher `Rhymer-Lcy`. Every
+  build and audit script requires an explicit release id; there are no defaults.
+- The installer's “准备安装” page always shows the effective directory and install type, and on a real
+  upgrade asks to save and close the old pages first.
+- A rollback or activation onto an older browser-database schema is refused; after an upgrade from RC3
+  the status tool says RC3 is not a safe rollback target.
+- Launcher failures appear in a dialog, and each launch is logged.
+
+### Fixed
+
+- civic-admin's check that no payload file shadows the server's own paths could never fire (it built
+  `//__civic/...`); it now covers `/__civic/` and `/api/`.
+
 ## [Unreleased] — Phase 5.1 runtime update safety (post-signoff correction)
 
 Four defects that packaged Windows upgrade acceptance exposed after Phase 5 was signed off, and one
