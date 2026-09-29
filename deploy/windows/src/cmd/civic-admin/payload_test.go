@@ -1,10 +1,16 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"civicworkdesk/windows/internal/layout"
+	"civicworkdesk/windows/internal/release"
 )
 
 // servableRelease writes a release whose payload the server can serve: an index.html that loads its entry
@@ -69,12 +75,96 @@ func TestPayloadServableChecks(t *testing.T) {
 		}
 	}
 
-	// A release that cannot state its interface generation is not activated.
+	// These checks also judge the release an upgrade REPLACES. RC3 and earlier have no
+	// app-generation.json, and blocking on that stopped every upgrade from RC3 (the first 0.2.0 rehearsal
+	// build): absence is reported, never blocking.
 	dir := servableRelease(t)
 	if err := os.Remove(filepath.Join(dir, "app", "app-generation.json")); err != nil {
 		t.Fatal(err)
 	}
-	if status, _ := statusOf(payloadServableChecks(dir), generation); status != "FAIL" {
-		t.Errorf("missing app-generation.json: generation = %s, want FAIL", status)
+	older := payloadServableChecks(dir)
+	if status, _ := statusOf(older, generation); status != "NOT PRESENT" {
+		t.Errorf("missing app-generation.json: generation = %s, want NOT PRESENT", status)
+	}
+	for _, c := range older {
+		if c.blocking() {
+			t.Errorf("an RC3-shaped release blocks the preflight: %s", c)
+		}
+	}
+
+	// A file that is present but wrong is a damaged release, and that does block.
+	damaged := servableRelease(t)
+	if err := os.WriteFile(filepath.Join(damaged, "app", "app-generation.json"),
+		[]byte(`{"schema":"civic-app-generation/1","appGeneration":"ui-zzzzzzzz","entry":"assets/index-zzzzzzzz.js"}`),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := statusOf(payloadServableChecks(damaged), generation); status != "FAIL" {
+		t.Errorf("damaged app-generation.json: generation = %s, want FAIL", status)
+	}
+}
+
+// verifiedRelease writes a release that passes the shape assertion and its own manifest, optionally
+// without app-generation.json, into tree.
+func verifiedRelease(t *testing.T, tree layout.Tree, id string, withGeneration bool) string {
+	t.Helper()
+	dir := filepath.Join(tree.Releases(), id)
+	files := map[string]string{
+		"app/index.html":               `<script type="module" src="./assets/index-abc123XY.js"></script>`,
+		"app/assets/index-abc123XY.js": "export {};",
+		"server/civic-server.exe":      "not a real executable",
+	}
+	if withGeneration {
+		files["app/app-generation.json"] =
+			`{"schema":"civic-app-generation/1","appGeneration":"ui-abc123XY","entry":"assets/index-abc123XY.js"}`
+	}
+	var manifest strings.Builder
+	for rel, content := range files {
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256([]byte(content))
+		manifest.WriteString(hex.EncodeToString(sum[:]) + " *" + rel + "\n")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SHA256SUMS.txt"), []byte(manifest.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "VERSION"), []byte("releaseId="+id+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestActivationRequiresAnInterfaceGeneration(t *testing.T) {
+	tree := layout.At(t.TempDir())
+	id := "2026.09.30-win-0.2.0-rc.1"
+	dir := verifiedRelease(t, tree, id, false)
+	if err := tree.AssertReleaseShape(id); err != nil {
+		t.Fatalf("fixture has the wrong shape: %v", err)
+	}
+	if res, err := release.Verify(dir); err != nil || !res.OK() {
+		t.Fatalf("fixture does not verify: %v %s", err, res.Summary())
+	}
+	if _, err := requireInterfaceGeneration(dir); err == nil {
+		t.Fatal("a release without app-generation.json was accepted")
+	}
+
+	// The refusal comes before anything is stopped, installed or repointed.
+	if got := cmdActivate(tree, id); got != exitRelease {
+		t.Fatalf("cmdActivate = %d, want %d", got, exitRelease)
+	}
+	for _, left := range []string{tree.CurrentFile(), filepath.Join(tree.Root, "bin", serverExeName)} {
+		if _, err := os.Stat(left); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("a refused activation left %s behind (err %v)", left, err)
+		}
+	}
+
+	with := verifiedRelease(t, layout.At(t.TempDir()), id, true)
+	if gen, err := requireInterfaceGeneration(with); err != nil || gen != "ui-abc123XY" {
+		t.Errorf("a release with its generation: %q, %v", gen, err)
 	}
 }

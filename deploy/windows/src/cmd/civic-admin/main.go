@@ -27,6 +27,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -386,14 +387,34 @@ func payloadServableChecks(releaseDir string) []check {
 	} else {
 		out = append(out, check{"no file shadows /__civic/ or /api/", "PASS", ""})
 	}
-	// The generation /api/civic/runtime serves and the update bootstrap relies on (Phase 6). A release
-	// that cannot state it would leave the bootstrap unable to decide, so it is not activated.
-	if gen, err := httpserve.LoadAppGeneration(appDir); err != nil {
-		out = append(out, check{"interface generation", "FAIL", err.Error()})
-	} else {
+	// The generation /api/civic/runtime serves and the update check page decides by (Phase 6). These
+	// checks also run before an upgrade, on the release that is ALREADY active, and RC3 and earlier
+	// predate the file: reporting its absence as a failure blocked every upgrade from RC3, and the
+	// installer then showed its port-conflict message (found by the RC3 upgrade acceptance on the first
+	// 0.2.0 rehearsal build, 2026-09-30). So absence is reported and does not block; a file that is
+	// present but wrong is a damaged release and does. Activation separately refuses a release that
+	// cannot state its generation (requireInterfaceGeneration).
+	switch gen, err := httpserve.LoadAppGeneration(appDir); {
+	case err == nil:
 		out = append(out, check{"interface generation", "PASS", gen.AppGeneration})
+	case errors.Is(err, fs.ErrNotExist):
+		out = append(out, check{"interface generation", "NOT PRESENT",
+			"no app-generation.json: a release older than 0.2.0"})
+	default:
+		out = append(out, check{"interface generation", "FAIL", err.Error()})
 	}
 	return out
+}
+
+// requireInterfaceGeneration is activation's half of the generation rule: a release this program makes
+// current must state its interface generation, because /api/civic/runtime serves it and the update
+// check page cannot decide without it.
+func requireInterfaceGeneration(releaseDir string) (string, error) {
+	gen, err := httpserve.LoadAppGeneration(filepath.Join(releaseDir, "app"))
+	if err != nil {
+		return "", fmt.Errorf("the release does not state its interface generation: %w", err)
+	}
+	return gen.AppGeneration, nil
 }
 
 // portChecks answers the two questions about 8765 that have different consequences: is it free, and if
@@ -513,6 +534,12 @@ func cmdActivate(tree layout.Tree, releaseID string) int {
 		return exitRelease
 	}
 	fmt.Printf("verified: %s\n", res.Summary())
+	generation, err := requireInterfaceGeneration(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: refusing to activate: %v\n", err)
+		return exitRelease
+	}
+	fmt.Printf("interface generation: %s\n", generation)
 
 	previous, prevErr := tree.ActiveRelease()
 	sameVersion := prevErr == nil && previous == releaseID
