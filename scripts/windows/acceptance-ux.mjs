@@ -3,7 +3,10 @@
  * Acceptance for the distribution surface: installation paths, icons, shortcuts, Start Menu, install-failure
  * diagnostics, diagnostic privacy, and copy.
  *
- *   node scripts/windows/acceptance-ux.mjs [--release-id <id>]
+ *   node scripts/windows/acceptance-ux.mjs --release-id <id>
+ *
+ * The release id is required (it used to default to an RC3 id), and the upgrade is tested from the RC3
+ * installer as published on GitHub, digest-verified, never from a local rebuild.
  *
  * The deployment and browser properties are re-proved by scripts/windows/acceptance-deploy.mjs and
  * scripts/windows/acceptance-browser.mjs, which this does not duplicate. Everything here is driven from
@@ -16,23 +19,37 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { obtainPublishedInstaller } from './published-installer.mjs';
+import { businessDateUtc8, loadReleaseIdentity } from './release-identity.mjs';
+import { readyPageOf } from './wizard-probe.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 function argValue(name, fallback) {
   const i = process.argv.indexOf(name);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')
+    ? process.argv[i + 1]
+    : fallback;
 }
-const RELEASE_ID = argValue('--release-id', '2026.09.24-win-rc3');
-const SETUP_BASE = `CivicWorkDesk-Windows-x64-${RELEASE_ID.replace('-win-', '-')}-Setup`;
-const SETUP = join(ROOT, 'release', 'windows', `${SETUP_BASE}.exe`);
-// The immediately previous PUBLISHED release, for the in-place upgrade test. RC2 is what a colleague
-// would already have installed when RC3 reaches them, so it is the upgrade that has to work.
-const PREVIOUS_SETUP = join(
+const IDENTITY = loadReleaseIdentity(
   ROOT,
-  'release',
-  'windows',
-  'CivicWorkDesk-Windows-x64-2026.09.24-rc2-Setup.exe',
+  argValue('--release-id', undefined),
+  argValue('--today', undefined) ?? businessDateUtc8(),
 );
+const RELEASE_ID = IDENTITY.releaseId;
+const SETUP = join(ROOT, 'release', 'windows', IDENTITY.installerName);
+// The immediately previous PUBLISHED release, for the in-place upgrade test: RC3 is what a colleague
+// already has when 0.2.0-rc.1 reaches them. Its published bytes, digest-verified -- a local rebuild would
+// be a different artifact, since Inno Setup output is not reproducible.
+const PREVIOUS_ID = '2026.09.24-win-rc3';
+let PREVIOUS_SETUP = '';
+let PREVIOUS_SOURCE;
+try {
+  const published = obtainPublishedInstaller(ROOT, PREVIOUS_ID);
+  PREVIOUS_SETUP = published.path;
+  PREVIOUS_SOURCE = `${published.sha256} (${published.source})`;
+} catch (err) {
+  PREVIOUS_SOURCE = String(err);
+}
 const DEFAULT_ROOT = join(
   process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
   'CivicWorkDesk',
@@ -109,6 +126,12 @@ function ps(script) {
         .replace(/^\ufeff/, '')
         .trim()
     : '';
+}
+
+/** Does a Ready-page memo name exactly this directory as the installation directory? */
+function statesDirectory(memo, dir) {
+  const escaped = dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`安装位置： \\|\\s+${escaped}\\s+\\|`).test(memo);
 }
 
 /** Resolve a .lnk through the shell, returning target, arguments, working directory and icon. */
@@ -277,6 +300,35 @@ check(
 // ===================================================================================================
 section('2. clean install at the default location');
 await cleanSlate();
+
+// The Ready page of a first installation, reached by clicking through the real wizard and then
+// cancelled: it must state where the program is going and that this is a new installation.
+const freshReady = readyPageOf(SETUP, IDENTITY.productNameZh);
+check(freshReady.reached, 'a first installation reaches the Ready page', freshReady.pages);
+check(/选择目标位置/.test(freshReady.pages), 'a first installation offers the directory page');
+check(
+  statesDirectory(freshReady.memo, DEFAULT_ROOT),
+  'the Ready page states the effective installation directory',
+  freshReady.memo.slice(0, 80),
+);
+check(
+  freshReady.memo.includes('安装类型： |') && freshReady.memo.includes('全新安装'),
+  'it says this is a new installation',
+);
+check(
+  freshReady.memo.includes(`${IDENTITY.displayVersion}（${RELEASE_ID}）`) &&
+    freshReady.memo.includes('http://127.0.0.1:8765/'),
+  'it states the version and the fixed origin',
+);
+check(
+  freshReady.closed && freshReady.strayProcessesStopped === 0,
+  'the wizard was cancelled cleanly',
+);
+check(
+  !existsSync(join(DEFAULT_ROOT, 'current.txt')),
+  'cancelling at the Ready page installed nothing',
+);
+
 const defaultInstall = installTo('');
 check(defaultInstall.status === 0, 'default install exited 0', `code ${defaultInstall.status}`);
 check(
@@ -298,20 +350,58 @@ $i = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
 $b = $i.ToBitmap()
 $c = $b.GetPixel([int]($b.Width/2), [int]($b.Height*0.30))
 $v = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
-$lines = @('centre=' + $c.R + ',' + $c.G + ',' + $c.B,
-           'product=' + $v.ProductName,
-           'description=' + $v.FileDescription,
-           'company=' + $v.CompanyName,
-           'productversion=' + $v.ProductVersion)
+$lines = @()
+$lines += 'centre=' + $c.R + ',' + $c.G + ',' + $c.B
+$lines += 'product=' + $v.ProductName
+$lines += 'description=' + $v.FileDescription
+$lines += 'company=' + $v.CompanyName
+$lines += 'productversion=' + $v.ProductVersion
+$lines += 'comments=' + $v.Comments
 $b.Dispose(); $i.Dispose()
 [System.IO.File]::WriteAllText($args[0], ($lines -join [char]10), [System.Text.Encoding]::UTF8)`);
+const launchField = (key) =>
+  (launchIcon.split(/\r?\n/).find((l) => l.startsWith(`${key}=`)) ?? '').slice(key.length + 1);
 check(/centre=255,255,255/.test(launchIcon), 'the launcher carries an icon resource');
 check(
-  launchIcon.includes('product=政务工作记录台'),
+  launchField('product').startsWith('政务工作记录台'),
   'the launcher version block names the product in Chinese',
-  (launchIcon.split(/\r?\n/).find((l) => l.startsWith('product=')) ?? '').slice(0, 60),
+  launchField('product'),
 );
-check(launchIcon.includes(RELEASE_ID), 'the version block carries the release id');
+check(
+  launchField('productversion') === IDENTITY.displayVersion,
+  'the launcher ProductVersion is the display version',
+  launchField('productversion'),
+);
+check(
+  launchField('company') === IDENTITY.publisher,
+  'the launcher names the publisher',
+  launchField('company'),
+);
+check(
+  launchField('comments') === `release ${RELEASE_ID}`,
+  'the version block carries the release id',
+  launchField('comments'),
+);
+
+// The Ready page of a repair: the wizard skips the directory page, so the Ready page is the only place
+// the person sees where the program is -- and it must say this is a repair.
+const repairReady = readyPageOf(SETUP, IDENTITY.productNameZh);
+check(repairReady.reached, 'a repair run reaches the Ready page', repairReady.pages);
+check(!/选择目标位置/.test(repairReady.pages), 'a repair does not offer the directory page again');
+check(
+  statesDirectory(repairReady.memo, DEFAULT_ROOT),
+  'the repair Ready page states the effective installation directory',
+  repairReady.memo.slice(0, 80),
+);
+check(
+  repairReady.memo.includes(`修复（重新安装同一版本 ${IDENTITY.displayVersion}，沿用原安装位置）`),
+  'the repair Ready page says it is a repair',
+);
+check(!repairReady.memo.includes('升级后'), 'a repair carries no upgrade instruction');
+check(
+  repairReady.closed && repairReady.strayProcessesStopped === 0,
+  'the wizard was cancelled cleanly',
+);
 
 // ===================================================================================================
 section('3. Start Menu layout');
@@ -497,7 +587,7 @@ for (const c of customCases) {
 // ===================================================================================================
 section('6. rejected installation paths');
 await cleanSlate();
-const admin = join(ROOT, 'release', 'windows', '.build', RELEASE_ID, 'civic-admin.exe');
+const admin = join(ROOT, 'release', 'windows', '.build', RELEASE_ID, 'bin', 'civic-admin.exe');
 const checker = existsSync(admin) ? admin : join(DEFAULT_ROOT, 'bin', 'civic-admin.exe');
 if (!existsSync(checker)) {
   record('FAIL', 'a civic-admin checker is available for path validation', checker);
@@ -537,25 +627,52 @@ if (!existsSync(checker)) {
 }
 
 // ===================================================================================================
-section('7. previous release to this one, upgrade in place');
+section('7. RC3 to this release, upgrade in place');
 await cleanSlate();
-if (!existsSync(PREVIOUS_SETUP)) {
-  na('upgrade from the previous release', 'its published installer is not present');
+if (!PREVIOUS_SETUP || !existsSync(PREVIOUS_SETUP)) {
+  record('FAIL', 'the published RC3 installer is available', PREVIOUS_SOURCE);
 } else {
+  info('RC3 installer', PREVIOUS_SOURCE);
   const rc1 = sh(PREVIOUS_SETUP, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']);
   check(
     rc1.status === 0 && existsSync(join(DEFAULT_ROOT, 'current.txt')),
-    'the previous release installs from its published bytes',
+    'RC3 installs from its published bytes',
     `code ${rc1.status}`,
   );
   const rc1Id = readFileSync(join(DEFAULT_ROOT, 'current.txt'), 'utf8').trim();
-  info('previous active release', rc1Id);
+  check(rc1Id === PREVIOUS_ID, 'RC3 is the active release', rc1Id);
 
   // Leave the previous release's local service RUNNING across the upgrade: that is the case that
   // aborted during the RC1 rehearsal, and the reason PrepareToInstall exists.
   sh(join(DEFAULT_ROOT, 'bin', 'civic-launch.exe'), ['open']);
   await waitFor(portOpen, 15000);
   check(await portOpen(), 'the previous release is serving before the upgrade');
+
+  // What the person sees before committing: the existing directory, and the word 升级.
+  const upgradeReady = readyPageOf(SETUP, IDENTITY.productNameZh);
+  check(upgradeReady.reached, 'the upgrade reaches the Ready page', upgradeReady.pages);
+  check(!/选择目标位置/.test(upgradeReady.pages), 'the upgrade does not offer the directory page');
+  check(
+    statesDirectory(upgradeReady.memo, DEFAULT_ROOT),
+    'the upgrade Ready page states the existing directory',
+    upgradeReady.memo.slice(0, 80),
+  );
+  check(
+    upgradeReady.memo.includes(
+      `升级（从已安装的 ${PREVIOUS_ID} 升级到 ${IDENTITY.displayVersion}，沿用原安装位置）`,
+    ),
+    'it says this is an upgrade from RC3',
+  );
+  check(
+    upgradeReady.memo.includes('升级后：请关闭所有已打开的政务工作记录台页面') &&
+      upgradeReady.memo.includes('“应用更新”'),
+    'it tells the person to close old pages or apply the update',
+  );
+  check(
+    upgradeReady.closed && upgradeReady.strayProcessesStopped === 0,
+    'the wizard was cancelled cleanly',
+  );
+  check(await portOpen(), 'cancelling the wizard left RC3 serving');
 
   const upgrade = installTo('');
   check(
@@ -600,6 +717,68 @@ foreach ($k in 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall')
   );
 
   sh(join(DEFAULT_ROOT, 'bin', 'civic-launch.exe'), ['stop']);
+
+  // RC3 is kept on disk as a record, but it must never again be put in front of the upgraded data.
+  const rollback = sh(join(DEFAULT_ROOT, 'bin', 'civic-admin.exe'), [
+    'rollback',
+    '--root',
+    DEFAULT_ROOT,
+  ]);
+  check(
+    rollback.status === 4,
+    'rolling back to RC3 is refused (exit 4)',
+    `code ${rollback.status}`,
+  );
+  check(
+    readFileSync(join(DEFAULT_ROOT, 'current.txt'), 'utf8').trim() === RELEASE_ID,
+    'this release is still active after the refusal',
+  );
+}
+
+// ===================================================================================================
+section('7b. RC3 at a chosen directory is upgraded in that directory');
+const RC3_CUSTOM = join('D:\\', 'CivicWorkDesk 升级验收');
+if (!dIsFixed || !PREVIOUS_SETUP) {
+  na(
+    'upgrade at a chosen directory',
+    'no writable fixed D: drive, or no RC3 installer; not simulated',
+  );
+} else {
+  await cleanSlate(RC3_CUSTOM);
+  rmSync(RC3_CUSTOM, { recursive: true, force: true });
+  const rc3Custom = sh(PREVIOUS_SETUP, [
+    '/VERYSILENT',
+    '/SUPPRESSMSGBOXES',
+    '/NORESTART',
+    `/DIR=${RC3_CUSTOM}`,
+  ]);
+  check(
+    rc3Custom.status === 0 && existsSync(join(RC3_CUSTOM, 'current.txt')),
+    'RC3 installs at a directory with a space and Chinese characters',
+    RC3_CUSTOM,
+  );
+  const customReady = readyPageOf(SETUP, IDENTITY.productNameZh);
+  check(
+    statesDirectory(customReady.memo, RC3_CUSTOM),
+    'the upgrade Ready page states the chosen directory, not the default',
+    customReady.memo.slice(0, 90),
+  );
+  check(customReady.memo.includes('升级（从已安装的 '), 'it says this is an upgrade');
+  const customUpgrade = installTo('');
+  check(
+    customUpgrade.status === 0 &&
+      readFileSync(join(RC3_CUSTOM, 'current.txt'), 'utf8').trim() === RELEASE_ID,
+    'the upgrade lands in the chosen directory',
+    `code ${customUpgrade.status}`,
+  );
+  check(
+    !existsSync(join(DEFAULT_ROOT, 'current.txt')),
+    'nothing was installed at the default location',
+  );
+  sh(join(RC3_CUSTOM, 'bin', 'civic-launch.exe'), ['stop']);
+  uninstallFrom(RC3_CUSTOM);
+  await sleep(1200);
+  rmSync(RC3_CUSTOM, { recursive: true, force: true });
 }
 
 // ===================================================================================================
@@ -848,11 +1027,14 @@ check(
     .join(' | '),
 );
 
+const branch = (sh('git', ['-C', ROOT, 'rev-parse', '--abbrev-ref', 'HEAD']).stdout ?? '').trim();
 const provenance = sh(process.execPath, [
   join(ROOT, 'scripts', 'windows', 'assert-release-provenance.mjs'),
   '--verify-built',
   '--release-id',
   RELEASE_ID,
+  '--branch',
+  branch,
 ]);
 check(
   provenance.status === 0,
