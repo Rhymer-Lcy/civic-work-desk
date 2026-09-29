@@ -115,6 +115,13 @@ export default defineConfig({
         clientsClaim: false,
         skipWaiting: false,
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        /*
+         * Same-origin window awareness for a WAITING worker (Phase 5.1): answers, without any URL,
+         * which windows of this origin are open, so an update page can refuse to activate while other
+         * application windows hold unsaved input. Plain script in `public/`; see its header and
+         * docs/phase-5.1-runtime-update-safety.md.
+         */
+        importScripts: ['sw-client-awareness.js'],
       },
       devOptions: {
         enabled: false,

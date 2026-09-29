@@ -198,6 +198,24 @@ const RULES = [
     allow: [/^docs[/\\]/, /^tests[/\\]/],
     appliesToDist: true,
   },
+  {
+    id: 'window-client-enumeration',
+    description:
+      'Service-worker window enumeration (clients.matchAll) outside the reviewed protocol',
+    reason:
+      'Phase 5.1: one reviewed file may enumerate the windows of the origin, and it reduces each to a ' +
+      'URL-free classification before replying. Any other enumeration could disclose what is open.',
+    pattern: /\bclients\s*\.\s*matchAll\s*\(/g,
+    samples: ["self.clients.matchAll({ type: 'window' })", 'clients .matchAll()'],
+    scope: /\.(tsx?|jsx?|mjs|cjs|html)$/,
+    allow: [
+      /^public[/\\]sw-client-awareness\.js$/,
+      /^dist[/\\]sw-client-awareness\.js$/,
+      /^docs[/\\]/,
+      /^tests[/\\]/,
+    ],
+    appliesToDist: true,
+  },
 ];
 
 /**

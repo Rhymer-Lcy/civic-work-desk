@@ -225,4 +225,18 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-function': 'off',
     },
   },
+  {
+    /*
+     * `public/sw-client-awareness.js` (Phase 5.1) runs inside the service worker, loaded by the
+     * generated worker's `importScripts`: a classic script with service-worker globals, belonging to no
+     * TypeScript project, so it is linted as plain JavaScript like the tooling scripts above.
+     */
+    files: ['public/**/*.js'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      sourceType: 'script',
+      globals: globals.serviceworker,
+    },
+  },
 );
