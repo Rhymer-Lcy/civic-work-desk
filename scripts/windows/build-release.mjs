@@ -159,8 +159,18 @@ if (!sourceCommit || !/^[0-9a-f]{40}$/.test(sourceCommit)) {
 }
 const head = git('rev-parse', 'HEAD');
 if (head !== sourceCommit) fatal(`--source-commit ${sourceCommit} is not HEAD (${head})`);
-const dirty = git('status', '--porcelain', '--untracked-files=all');
-if (dirty !== '') fatal(`the working tree is not clean:\n${dirty}`);
+/* This build's own outputs are the only exception: a rebuild of the same release overwrites them, and
+ * they are committed afterwards in the release-record commit. Nothing else may be uncommitted. */
+const ownOutputs = new Set([
+  `release/windows/provenance/${releaseId}-payload-SHA256SUMS.txt`,
+  `release/windows/provenance/${releaseId}-VERSION.txt`,
+  `release/windows/${identity.installerName}.sha256`,
+]);
+// Untrimmed: a porcelain line starts with a two-column status that may begin with a space.
+const dirty = run('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: ROOT })
+  .stdout.split('\n')
+  .filter((line) => line.trim() !== '' && !ownOutputs.has(line.slice(3)));
+if (dirty.length > 0) fatal(`the working tree is not clean:\n${dirty.join('\n')}`);
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
 if (branch === 'HEAD') fatal('HEAD is detached; build from the pushed release branch');
 const provenanceArgs = [
