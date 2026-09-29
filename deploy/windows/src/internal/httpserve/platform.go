@@ -6,7 +6,11 @@ import (
 	"strings"
 )
 
-// servePlatformPage serves the browser-platform field check at /__civic/platform.
+// servePlatformPage serves the browser-platform field check at /api/civic/platform.
+//
+// It was at /__civic/platform until Phase 6. Under an active application service worker that address
+// is answered with the application shell by the worker's navigation fallback, so the check could not be
+// opened on exactly the machines where it was needed; /api/ is the one path the worker leaves alone.
 //
 // ## Why this page exists and why it is not part of the product
 //
@@ -196,8 +200,8 @@ const platformHTML = `<!doctype html>
     add('Cache Storage', 'ABSENT', 'window.caches 不存在');
   } else {
     caches.open(PROBE).then(function (c) {
-      return c.put(new Request('/__civic/platform'), new Response('probe'))
-        .then(function () { return c.match('/__civic/platform'); })
+      return c.put(new Request('/api/civic/platform'), new Response('probe'))
+        .then(function () { return c.match('/api/civic/platform'); })
         .then(function (m) {
           add('Cache Storage 读写', m ? 'PASS' : 'FAIL', m ? '命中' : '未命中');
           return caches.delete(PROBE);

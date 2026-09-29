@@ -39,6 +39,22 @@ import (
 // the health endpoint.
 const ReservedPrefix = "/__civic/"
 
+// APIPrefix is the namespace for what a BROWSER must reach on this server even while the application's
+// service worker controls the origin (Phase 6). The worker's navigation fallback answers every
+// navigation with the application shell except those under /api/ (navigateFallbackDenylist), so a page
+// meant for the browser -- the update bootstrap, the platform check -- has to live here; under
+// ReservedPrefix the worker would replace it with the application. Everything under /api/ is generated
+// here and nothing under it is read off disk; civic-admin verify refuses a payload file under /api/.
+const (
+	APIPrefix       = "/api/"
+	CivicAPIPrefix  = "/api/civic/"
+	StartPath       = CivicAPIPrefix + "start"
+	RuntimePath     = CivicAPIPrefix + "runtime"
+	PlatformPath    = CivicAPIPrefix + "platform"
+	startScriptPath = CivicAPIPrefix + "start.js"
+	legacyPlatform  = ReservedPrefix + "platform"
+)
+
 // contentTypes is exhaustive for the payload. An extension outside it is served as an opaque
 // download rather than guessed at, and `civic-admin verify` refuses to activate a release that
 // contains one -- so in practice this map is complete by construction, not by hope.
@@ -128,11 +144,24 @@ func Handler(cfg Config) http.Handler {
 		switch {
 		case r.URL.Path == ReservedPrefix+"health":
 			serveHealth(w, r, cfg)
-		case r.URL.Path == ReservedPrefix+"platform":
-			servePlatformPage(w, r, cfg)
+		case r.URL.Path == legacyPlatform:
+			// The address the platform check had until Phase 6. Under a controlling worker a browser never
+			// gets here; without one, send it to the current address rather than to a dead end.
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, PlatformPath, http.StatusFound)
 		case r.URL.Path == ReservedPrefix+"shutdown":
 			serveShutdown(w, r, cfg)
 		case strings.HasPrefix(r.URL.Path, ReservedPrefix):
+			http.NotFound(w, r)
+		case r.URL.Path == StartPath:
+			serveBootstrapPage(w, r)
+		case r.URL.Path == startScriptPath:
+			serveBootstrapScript(w, r)
+		case r.URL.Path == RuntimePath:
+			serveRuntime(w, r, cfg)
+		case r.URL.Path == PlatformPath:
+			servePlatformPage(w, r, cfg)
+		case strings.HasPrefix(r.URL.Path, APIPrefix):
 			http.NotFound(w, r)
 		default:
 			serveStatic(w, r, cfg)

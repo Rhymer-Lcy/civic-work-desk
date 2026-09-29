@@ -326,7 +326,7 @@ func TestReservedNamespaceUnknownIs404(t *testing.T) {
 func TestPlatformPageIsSelfContained(t *testing.T) {
 	_, cfg := fixture(t)
 	h := Handler(cfg)
-	resp := do(t, h, http.MethodGet, "/__civic/platform")
+	resp := do(t, h, http.MethodGet, "/api/civic/platform")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("platform page = %d, want 200", resp.StatusCode)
 	}
