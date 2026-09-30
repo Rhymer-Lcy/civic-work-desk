@@ -93,7 +93,7 @@
 
 来源：[deploy/windows/src/internal/httpserve/platform.go](../deploy/windows/src/internal/httpserve/platform.go)
 
-地址：http://127.0.0.1:8765/api/civic/platform （0.2.0）。原地址 /__civic/platform 在应用的 Service Worker 接管页面后会被应用界面顶替，现只作跳转保留，不再在任何文案中出现。
+地址：http://127.0.0.1:8765/api/civic/platform （0.2.0）。原地址 /__civic/platform：请求到达本地服务时，由本地服务跳转到新地址；但在应用的 Service Worker 已接管页面的浏览器中，该地址会被应用界面顶替，请求不一定到达本地服务。所有现行文案只使用新地址。
 
 | 位置     | 文案要点                                                                                                  | 状态 |
 | -------- | --------------------------------------------------------------------------------------------------------- | ---- |

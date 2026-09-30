@@ -37,7 +37,8 @@ pre-publication review; **nothing was published, tagged or released**. The earli
 ### Changed
 
 - The browser check page moved to `/api/civic/platform`, the one namespace a service worker cannot
-  answer; `/__civic/platform` only redirects there.
+  answer. The server redirects `/__civic/platform` there when a request reaches it, but where a service
+  worker controls the origin that address still opens the application, so no link uses it any more.
 - The installer shows version `0.2.0-rc.1`, file version `0.2.0.0` and publisher `Rhymer-Lcy`. Every
   build and audit script requires an explicit release id; there are no defaults.
 - The installer's “准备安装” page always shows the effective directory and install type, and on a real

@@ -179,9 +179,13 @@ no user, business or browser data.
 ## 4. `GET /api/civic/platform`
 
 The browser check page moved here from `/__civic/platform`, which a controlling worker answers with the
-application shell. The probe itself is unchanged. `/__civic/platform` answers `302` to the new address
-with `no-store`, so an old bookmark still arrives; nothing names the old address any more (launcher
-menu, diagnostic text, tester notice, copy inventory). Every other `/api/` path is `404` and is never
+application shell. The probe itself is unchanged. When a request for `/__civic/platform` reaches
+civic-server, the server answers `302` to `/api/civic/platform` with `no-store`. It is not guaranteed to
+reach the server: where the application's service worker controls the origin (RC3's or this release's;
+only `/api/` is exempt from its navigation fallback), a navigation to `/__civic/platform` is answered by
+that worker with the application shell, so an old bookmark may open the application instead. No current
+user-visible text names the old address (launcher menu, diagnostic text, tester notice); they
+name only `/api/civic/platform`. Every other `/api/` path is `404` and is never
 read from disk; `civic-admin` refuses a payload with a file under `/api/` or `/__civic/`.
 
 ## 5. Installer and launcher
