@@ -7,16 +7,21 @@
  * `scripts/`), and it also checks the **built output**, which is where a dependency's behaviour
  * would show up rather than our own source.
  *
+ * Since Phase 6 it also reads the browser code the Windows program serves (WINDOWS_BROWSER_CODE below),
+ * and only that part of `deploy/`.
+ *
  * Its findings go into the review package verbatim (`review/STATIC_SECURITY_SCAN.txt`), so a
  * reviewer sees what was searched for, not only that "a scan ran".
  *
  * Exit code 1 on any finding.
  *
  * Usage: node scripts/static-security-scan.mjs [--json]
+ *        node scripts/static-security-scan.mjs --mutate   prove, in memory, that the Windows browser-code
+ *                                                          coverage and its two rules can fail
  */
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, relative, extname } from 'node:path';
+import { join, relative, extname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
@@ -219,35 +224,46 @@ const RULES = [
   {
     id: 'runtime-endpoint-caller',
     description:
-      'A caller of the deployment endpoint /api/civic/runtime outside its reviewed module',
+      'A caller of the deployment endpoint /api/civic/runtime other than the two reviewed callers',
     reason:
-      'Phase 5.1: one module asks the endpoint which interface generation is expected, with a ' +
-      'body-less GET and no credentials. A second caller could send what that module never sends.',
+      'Two reviewed callers ask the endpoint which interface generation the installed release ' +
+      'expects, each with a body-less GET and no credentials: (A) the shared product, ' +
+      'src/app/pwa/runtime-generation.ts (Phase 5.1), and (B) the Windows update check page, ' +
+      'deploy/windows/src/internal/httpserve/bootstrap/start.js (Phase 6). There is no third ' +
+      'caller in shipped browser code; a third could send what those two never send.',
     pattern: /\/api\/civic\/runtime\b/g,
     samples: ["fetch('/api/civic/runtime')", 'const url = "/api/civic/runtime";'],
     scope: /\.(tsx?|jsx?|mjs|cjs|html)$/,
     allow: [
-      /^src[/\\]app[/\\]pwa[/\\]runtime-generation\.ts$/,
-      // The module above, bundled: it lives in the entry chunk.
-      /^dist[/\\]assets[/\\]index-[A-Za-z0-9_-]+\.js$/,
-      /^docs[/\\]/,
-      /^tests[/\\]/,
+      // Shipped. (A), and (A) bundled into the entry chunk.
+      /^src\/app\/pwa\/runtime-generation\.ts$/,
+      /^dist\/assets\/index-[A-Za-z0-9_-]+\.js$/,
+      // Shipped. (B), exactly this file of the Windows browser code (WINDOWS_BROWSER_CODE).
+      /^deploy\/windows\/src\/internal\/httpserve\/bootstrap\/start\.js$/,
       /*
-       * Phase 6: the two Windows acceptance harnesses check the installed server's endpoint from
-       * outside the application (from Node, or by opening it as a page), the role tests/ plays above.
-       * They are not shipped and are not part of any page.
+       * Not shipped: the tests and acceptance harnesses that serve, stub or check the endpoint from
+       * outside the application. Each is named; a new one is a decision, not a default.
        */
-      /^scripts[/\\]windows[/\\]acceptance-(deploy|upgrade)\.mjs$/,
+      /^tests\/e2e\/runtime-generation\.spec\.ts$/,
+      /^tests\/e2e\/update-harness\.ts$/,
+      /^tests\/e2e\/update-safety\.spec\.ts$/,
+      /^tests\/unit\/sw-client-awareness\.test\.ts$/,
+      /^scripts\/windows\/acceptance-deploy\.mjs$/,
+      /^scripts\/windows\/acceptance-upgrade\.mjs$/,
     ],
     appliesToDist: true,
   },
   {
     id: 'skip-waiting-sender',
-    description: 'Code in src/ or public/ that activates a waiting service worker by itself',
+    description:
+      'A sender of SKIP_WAITING, or of its library helpers, other than the two reviewed activation paths',
     reason:
-      'Phase 5.1: a waiting worker is activated only through the plugin call in ' +
-      'src/app/pwa/service-worker-bridge.ts, after the waiting worker has reported no other ' +
-      'application window. A second path could activate it while an older page is still open.',
+      'A waiting worker is activated on two reviewed paths only, each after that waiting worker has ' +
+      'reported no other application window: (A) the product, src/app/pwa/service-worker-bridge.ts ' +
+      '(Phase 5.1), through the updateServiceWorker call of the PWA plugin, so no sender is written in ' +
+      'src/ or public/ at all; and (B) the Windows update check page, ' +
+      'deploy/windows/src/internal/httpserve/bootstrap/start.js (Phase 6), which posts the message ' +
+      'itself on 进入新版本. A third path could activate a worker while an older page is still open.',
     pattern: /["']SKIP_WAITING["']|\bmessageSkipWaiting\s*\(|\.skipWaiting\s*\(/g,
     samples: [
       "worker.postMessage({ type: 'SKIP_WAITING' })",
@@ -255,12 +271,63 @@ const RULES = [
       'self.skipWaiting()',
     ],
     scope: /\.(tsx?|jsx?|mjs|cjs|html)$/,
-    // Only application source and the worker extension are held to it; the generated worker in dist/
-    // legitimately answers the message, and tests send it on purpose to model an older page.
-    allow: [/^(?!src[/\\]|public[/\\])/],
+    allow: [
+      // Shipped. (B). (A) needs no entry: it writes no sender, and must not start writing one.
+      /^deploy\/windows\/src\/internal\/httpserve\/bootstrap\/start\.js$/,
+      // Not shipped: tests that send the message to model an older page, or observe that none is sent.
+      /^tests\/e2e\/bootstrap\.spec\.ts$/,
+      /^tests\/e2e\/update-harness\.ts$/,
+      /^tests\/e2e\/update-safety\.spec\.ts$/,
+      /^tests\/unit\/sw-client-awareness\.test\.ts$/,
+    ],
+    /*
+     * The built bundle is out of this rule's reach on purpose: the generated worker in dist/ answers the
+     * message, and the plugin code bundled into the entry chunk is path (A) itself. What (A) may do is
+     * held at its source, src/, where this rule applies.
+     */
     appliesToDist: false,
   },
 ];
+
+/**
+ * A structural finding, not a text pattern: browser code of the Windows program that this scan would
+ * not read. Reported with the others, and it fails the scan the same way.
+ */
+const UNSCANNED_BROWSER_CODE = {
+  id: 'unscanned-browser-code',
+  description:
+    'Browser code served by the Windows program outside the scanned set (a go:embed elsewhere, ' +
+    'HTML or script in another Go literal, or a reviewed file missing)',
+};
+
+/*
+ * Phase 6: the browser code the Windows program serves from civic-server, at the application's own
+ * origin. Exactly two shapes exist, and only these are read as browser code; no other Go, shell or
+ * installer text is:
+ *
+ *   - `assetDirectory`: the directory civic-server embeds with go:embed (the update check page,
+ *     /api/civic/start, and its script, /api/civic/start.js). Every file in it is scanned, so a file
+ *     added there is scanned without anyone editing this list.
+ *   - `documents`: an HTML document held in a Go raw-string constant (the browser check page,
+ *     /api/civic/platform). Only the literal is extracted and scanned, as HTML.
+ *
+ * `windowsBrowserCode()` also fails the scan if a go:embed directive in the Windows Go source names
+ * anything outside `assetDirectory`, if HTML or a script appears in any other non-test Go file, or if
+ * one of `required` is not among what was scanned. Test files (`_test.go`) carry HTML fixtures and are
+ * never served.
+ */
+const WINDOWS_BROWSER_CODE = {
+  goRoot: 'deploy/windows/src',
+  assetDirectory: 'deploy/windows/src/internal/httpserve/bootstrap',
+  documents: [
+    { source: 'deploy/windows/src/internal/httpserve/platform.go', constant: 'platformHTML' },
+  ],
+  required: [
+    'deploy/windows/src/internal/httpserve/bootstrap/start.html',
+    'deploy/windows/src/internal/httpserve/bootstrap/start.js',
+    'deploy/windows/src/internal/httpserve/platform.go#platformHTML',
+  ],
+};
 
 /**
  * Every rule that declares `samples` must match each of them, or the scan refuses to run.
@@ -291,37 +358,262 @@ function walk(dir, out = []) {
   return out;
 }
 
-function scan(files) {
+/**
+ * Apply the text rules to entries: `{ path, scopeName, text, lineOffset }`. `path` is what the allow
+ * lists and the report name; `scopeName` decides which rules apply (an embedded HTML document is
+ * scanned as HTML although it lives in a .go file); `lineOffset` maps a line of an extracted document
+ * back to its source file.
+ */
+function scan(entries) {
   const findings = [];
-  for (const file of files) {
-    const relativePath = relative(ROOT, file).replaceAll('\\', '/');
-    let text;
-    try {
-      text = readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
+  for (const entry of entries) {
+    const { path, scopeName, text, lineOffset } = entry;
     // This file necessarily contains every pattern it searches for.
-    if (relativePath === 'scripts/static-security-scan.mjs') continue;
-    const inDist = relativePath.startsWith('dist/');
+    if (path === 'scripts/static-security-scan.mjs') continue;
+    const inDist = path.startsWith('dist/');
     for (const rule of RULES) {
-      if (!rule.scope.test(file)) continue;
+      if (!rule.scope.test(scopeName)) continue;
       if (inDist && rule.appliesToDist !== true) continue;
-      if (rule.allow.some((allowed) => allowed.test(relativePath))) continue;
+      if (rule.allow.some((allowed) => allowed.test(path))) continue;
       rule.pattern.lastIndex = 0;
       let match;
       while ((match = rule.pattern.exec(text)) !== null) {
-        const line = text.slice(0, match.index).split('\n').length;
-        findings.push({
-          rule: rule.id,
-          file: relativePath,
-          line,
-          excerpt: match[0].slice(0, 80),
-        });
+        const line = lineOffset + text.slice(0, match.index).split('\n').length;
+        findings.push({ rule: rule.id, file: path, line, excerpt: match[0].slice(0, 80) });
       }
     }
   }
   return findings;
+}
+
+function fileEntries(files) {
+  const entries = [];
+  for (const file of files) {
+    const path = relative(ROOT, file).replaceAll('\\', '/');
+    try {
+      entries.push({ path, scopeName: path, text: readFileSync(file, 'utf8'), lineOffset: 0 });
+    } catch {
+      // Unreadable files are skipped, as before this refactor.
+    }
+  }
+  return entries;
+}
+
+/** The repository as it is on disk, addressed by forward-slash paths relative to ROOT. */
+function diskView() {
+  const listAll = (dir, out = []) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) listAll(full, out);
+      else out.push(relative(ROOT, full).replaceAll('\\', '/'));
+    }
+    return out;
+  };
+  return {
+    list(dir) {
+      const full = join(ROOT, dir);
+      return existsSync(full) ? listAll(full).sort() : [];
+    },
+    read(path) {
+      return readFileSync(join(ROOT, path), 'utf8');
+    },
+  };
+}
+
+/** `base` with some files added, replaced (a string) or removed (null): the --mutate self-test. */
+function overlayView(base, overlay) {
+  return {
+    list(dir) {
+      const found = new Set(base.list(dir));
+      for (const [path, text] of overlay) {
+        if (!path.startsWith(`${dir}/`)) continue;
+        if (text === null) found.delete(path);
+        else found.add(path);
+      }
+      return [...found].sort();
+    },
+    read(path) {
+      return overlay.has(path) ? overlay.get(path) : base.read(path);
+    },
+  };
+}
+
+const HTML_OR_SCRIPT = /<script(?![\w-])|<!doctype +html|<html(?![\w-])/i;
+const GO_EMBED = /^\/\/go:embed +(.+)$/gm;
+
+/**
+ * The Windows browser code as scan entries, plus the structural findings that keep the set complete.
+ * See WINDOWS_BROWSER_CODE.
+ */
+function windowsBrowserCode(view) {
+  const { goRoot, assetDirectory, documents, required } = WINDOWS_BROWSER_CODE;
+  const entries = [];
+  const problems = [];
+  const problem = (file, line, excerpt) =>
+    problems.push({ rule: UNSCANNED_BROWSER_CODE.id, file, line, excerpt });
+
+  for (const path of view.list(assetDirectory)) {
+    entries.push({ path, scopeName: path, text: view.read(path), lineOffset: 0 });
+  }
+
+  const literals = new Map();
+  for (const { source, constant } of documents) {
+    const text = view.read(source);
+    const opener = `const ${constant} = \``;
+    const first = text.indexOf(opener);
+    if (first < 0 || text.indexOf(opener, first + 1) >= 0) {
+      problem(source, 0, `${constant} not found exactly once`);
+      continue;
+    }
+    const start = first + opener.length;
+    // A Go raw string cannot contain a backquote, so the next one closes it.
+    const end = text.indexOf('`', start);
+    if (end < 0) {
+      problem(source, 0, `${constant} is not closed`);
+      continue;
+    }
+    literals.set(source, [...(literals.get(source) ?? []), [start, end]]);
+    entries.push({
+      path: `${source}#${constant}`,
+      scopeName: `${constant}.html`,
+      text: text.slice(start, end),
+      lineOffset: text.slice(0, start).split('\n').length - 1,
+    });
+  }
+
+  for (const goFile of view.list(goRoot)) {
+    if (!goFile.endsWith('.go') || goFile.endsWith('_test.go')) continue;
+    const text = view.read(goFile);
+    GO_EMBED.lastIndex = 0;
+    let directive;
+    while ((directive = GO_EMBED.exec(text)) !== null) {
+      for (const pattern of directive[1].trim().split(/ +/)) {
+        const target = posix.normalize(
+          posix.join(posix.dirname(goFile), pattern.replaceAll('"', '')),
+        );
+        if (!target.startsWith(`${assetDirectory}/`)) {
+          problem(goFile, text.slice(0, directive.index).split('\n').length, `go:embed ${pattern}`);
+        }
+      }
+    }
+    // Blank the listed literals out; whatever HTML or script is left is browser code nobody scans.
+    let rest = text;
+    for (const [start, end] of literals.get(goFile) ?? []) {
+      rest = rest.slice(0, start) + ' '.repeat(end - start) + rest.slice(end);
+    }
+    const markup = HTML_OR_SCRIPT.exec(rest);
+    if (markup) problem(goFile, rest.slice(0, markup.index).split('\n').length, markup[0]);
+  }
+
+  for (const path of required) {
+    if (!entries.some((entry) => entry.path === path)) {
+      problem(path, 0, 'reviewed browser code is not among the scanned entries');
+    }
+  }
+  return { entries, problems };
+}
+
+/**
+ * --mutate: every case below is a mutation of the real Windows browser code, applied in memory only, and
+ * must produce exactly the findings it names. Nothing is written to disk.
+ */
+function mutationSelfTest() {
+  const { assetDirectory, documents } = WINDOWS_BROWSER_CODE;
+  const base = diskView();
+  const startJs = `${assetDirectory}/start.js`;
+  const platform = documents[0].source;
+  const platformSource = base.read(platform);
+  if (platformSource.split('<script>').length !== 2) {
+    console.error('--mutate: the platform page does not hold exactly one <script>');
+    process.exit(2);
+  }
+  const intoPlatformScript = (code) => platformSource.replace('<script>', `<script>\n${code}\n`);
+  const runtimeCall = "fetch('/api/civic/runtime', { cache: 'no-store' });";
+  const skipWaiting = "navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });";
+  const newGoFile = `${WINDOWS_BROWSER_CODE.goRoot}/internal/httpserve/mutation_extra.go`;
+
+  const cases = [
+    ['the reviewed Windows browser code, unchanged', new Map(), []],
+    [
+      'a third /api/civic/runtime caller in a new embedded script',
+      new Map([[`${assetDirectory}/mutation-extra.js`, `${runtimeCall}\n`]]),
+      ['runtime-endpoint-caller'],
+    ],
+    [
+      'a third SKIP_WAITING sender in a new embedded script',
+      new Map([[`${assetDirectory}/mutation-extra.js`, `${skipWaiting}\n`]]),
+      ['skip-waiting-sender'],
+    ],
+    [
+      'start.js, byte for byte, under another name',
+      new Map([[`${assetDirectory}/start-copy.js`, base.read(startJs)]]),
+      ['runtime-endpoint-caller', 'skip-waiting-sender'],
+    ],
+    [
+      'a third /api/civic/runtime caller in the browser check page',
+      new Map([[platform, intoPlatformScript(runtimeCall)]]),
+      ['runtime-endpoint-caller'],
+    ],
+    [
+      'a third SKIP_WAITING sender in the browser check page',
+      new Map([[platform, intoPlatformScript(skipWaiting)]]),
+      ['skip-waiting-sender'],
+    ],
+    [
+      'a go:embed of a file outside the scanned directory',
+      new Map([
+        [newGoFile, 'package httpserve\n\n//go:embed extra/page.js\nvar extraPage []byte\n'],
+      ]),
+      [UNSCANNED_BROWSER_CODE.id],
+    ],
+    [
+      'an HTML page in another Go literal',
+      new Map([
+        [
+          newGoFile,
+          `package httpserve\n\nconst extraHTML = \`<!doctype html><script>${runtimeCall}</script>\`\n`,
+        ],
+      ]),
+      [UNSCANNED_BROWSER_CODE.id],
+    ],
+    [
+      'the reviewed start.js removed from the scanned directory',
+      new Map([[startJs, null]]),
+      [UNSCANNED_BROWSER_CODE.id],
+    ],
+  ];
+
+  let failed = 0;
+  console.log('Windows browser-code coverage: mutation self-test (in memory; nothing written)');
+  for (const [name, overlay, expected] of cases) {
+    const { entries, problems } = windowsBrowserCode(overlayView(base, overlay));
+    const found = [
+      ...new Set([...problems, ...scan(entries)].map((finding) => finding.rule)),
+    ].sort();
+    const ok = JSON.stringify(found) === JSON.stringify([...expected].sort());
+    if (!ok) failed += 1;
+    console.log(
+      `  [${ok ? 'PASS' : 'FAIL'}] ${name}: ${found.length > 0 ? found.join(', ') : 'no finding'}`,
+    );
+  }
+
+  // The reviewed file passes because its path is allowed, not because it lacks the patterns.
+  const reviewed = base.read(startJs);
+  const count = (rule) => {
+    const pattern = new RegExp(RULES.find((r) => r.id === rule).pattern.source, 'g');
+    return (reviewed.match(pattern) ?? []).length;
+  };
+  const runtimeCalls = count('runtime-endpoint-caller');
+  const senders = count('skip-waiting-sender');
+  const present = runtimeCalls > 0 && senders > 0;
+  if (!present) failed += 1;
+  console.log(
+    `  [${present ? 'PASS' : 'FAIL'}] ${startJs} holds ${String(runtimeCalls)} runtime-endpoint ` +
+      `reference(s) and ${String(senders)} SKIP_WAITING sender(s), admitted as reviewed path (B)`,
+  );
+  console.log('');
+  console.log(failed === 0 ? 'RESULT: PASS' : `RESULT: FAIL — ${String(failed)} case(s)`);
+  process.exit(failed === 0 ? 0 : 1);
 }
 
 function main() {
@@ -332,6 +624,8 @@ function main() {
     for (const line of broken) console.error(`  ${line}`);
     process.exit(2);
   }
+  if (process.argv.includes('--mutate')) mutationSelfTest();
+
   const targets = ['src', 'scripts', 'tests', 'public', 'index.html', 'dist'];
   const files = [];
   for (const target of targets) {
@@ -340,20 +634,32 @@ function main() {
     if (statSync(full).isDirectory()) walk(full, files);
     else files.push(full);
   }
+  const windows = windowsBrowserCode(diskView());
+  const entries = [...fileEntries(files), ...windows.entries];
 
-  const findings = scan(files);
+  const findings = [...windows.problems, ...scan(entries)];
   const distScanned = files.some((file) => relative(ROOT, file).startsWith('dist'));
+  const windowsScanned = windows.entries.map((entry) => entry.path);
 
   if (asJson) {
-    console.log(JSON.stringify({ filesScanned: files.length, distScanned, findings }, null, 2));
+    console.log(
+      JSON.stringify(
+        { filesScanned: entries.length, distScanned, windowsScanned, findings },
+        null,
+        2,
+      ),
+    );
   } else {
     console.log(`CivicWorkDesk static security scan`);
-    console.log(`files scanned : ${String(files.length)}`);
+    console.log(`files scanned : ${String(entries.length)}`);
     console.log(`dist included : ${distScanned ? 'yes' : 'no (run npm run build first)'}`);
-    console.log(`rules applied : ${String(RULES.length)}`);
+    console.log(`Windows browser code scanned (${String(windowsScanned.length)}):`);
+    for (const path of windowsScanned) console.log(`  - ${path}`);
+    console.log(`rules applied : ${String(RULES.length + 1)}`);
     for (const rule of RULES) {
       console.log(`  - ${rule.id}: ${rule.description}`);
     }
+    console.log(`  - ${UNSCANNED_BROWSER_CODE.id}: ${UNSCANNED_BROWSER_CODE.description}`);
     console.log('');
     if (findings.length === 0) {
       console.log('RESULT: PASS — no forbidden pattern found.');
