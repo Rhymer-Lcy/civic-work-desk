@@ -261,6 +261,178 @@ for (const [label, protocol, transform] of UNKNOWN_CASES) {
   });
 }
 
+interface ReplacementSnapshot {
+  /** The type of every message each worker received, in order. */
+  readonly messageTypes: {
+    readonly A: readonly string[];
+    readonly B: readonly string[];
+    readonly active: readonly string[];
+  };
+  readonly waiting: 'A' | 'B' | null;
+  readonly controllerIsActive: boolean;
+  readonly controllerChanges: number;
+  /** Registrations the browser itself holds: none, so nothing real can have been activated. */
+  readonly realRegistrations: number;
+}
+
+/**
+ * Installed before the check page's own script: the page's service-worker registration becomes a
+ * scripted one whose waiting worker A, when asked, is first replaced by worker B and only then answers
+ * with a valid "no other window" reply -- the order askFresh's identity check exists for. B answers the
+ * same reply at once. Every message any worker receives is recorded; nothing else of the page changes.
+ */
+function scriptWaitingWorkerReplacement(): void {
+  const received = {
+    A: [] as string[],
+    B: [] as string[],
+    active: [] as string[],
+  };
+  let controllerChanges = 0;
+  const safeAnswer = {
+    type: 'CIVIC_WINDOW_CLIENTS_RESULT',
+    version: 1,
+    worker: 'installed',
+    windows: [
+      { requester: true, kind: 'bootstrap', route: null, visibility: 'visible', focused: true },
+    ],
+  };
+  const typeOf = (message: unknown): string => {
+    const type = (message as { type?: unknown } | null)?.type;
+    return typeof type === 'string' ? type : typeof message;
+  };
+  const registration: {
+    active: unknown;
+    installing: null;
+    waiting: unknown;
+    update(): Promise<void>;
+  } = { active: null, installing: null, waiting: null, update: () => Promise.resolve() };
+  const makeWorker = (
+    name: 'A' | 'B' | 'active',
+    state: string,
+    onQuestion: (port: MessagePort) => void,
+  ): object => ({
+    scriptURL: `${location.origin}/sw.js`,
+    state,
+    postMessage(message: unknown, transfer?: Transferable[]): void {
+      received[name].push(typeOf(message));
+      const port = transfer?.[0];
+      if (typeOf(message) === 'CIVIC_WINDOW_CLIENTS' && port instanceof MessagePort) {
+        onQuestion(port);
+      }
+    },
+  });
+  const active = makeWorker('active', 'activated', () => undefined);
+  const workerB = makeWorker('B', 'installed', (port) => {
+    setTimeout(() => {
+      port.postMessage(safeAnswer);
+    }, 0);
+  });
+  const workerA = makeWorker('A', 'installed', (port) => {
+    setTimeout(() => {
+      registration.waiting = workerB;
+      port.postMessage(safeAnswer);
+    }, 0);
+  });
+  registration.active = active;
+  registration.waiting = workerA;
+  Object.defineProperty(ServiceWorkerContainer.prototype, 'getRegistration', {
+    configurable: true,
+    value: () => Promise.resolve(registration),
+  });
+  Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
+    configurable: true,
+    get: () => active,
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    controllerChanges += 1;
+  });
+  Object.defineProperty(window, '__civicReplacement', {
+    value: {
+      snapshot: async () => ({
+        messageTypes: { A: [...received.A], B: [...received.B], active: [...received.active] },
+        waiting:
+          registration.waiting === workerA ? 'A' : registration.waiting === workerB ? 'B' : null,
+        controllerIsActive: navigator.serviceWorker.controller === active,
+        controllerChanges,
+        realRegistrations: (await navigator.serviceWorker.getRegistrations()).length,
+      }),
+    },
+  });
+}
+
+const replacementSnapshot = (page: Page): Promise<ReplacementSnapshot> =>
+  page.evaluate(() =>
+    (
+      window as unknown as { __civicReplacement: { snapshot(): Promise<ReplacementSnapshot> } }
+    ).__civicReplacement.snapshot(),
+  );
+
+/**
+ * askFresh asks one waiting worker and accepts its answer only if that worker is still the one waiting.
+ *
+ * A real browser cannot be driven through this order deterministically: when a newer worker finishes
+ * installing, the one it replaces becomes redundant and may be terminated before it answers, and silence
+ * reads "unknown" whether or not the identity check exists, so a test built that way could not fail when
+ * the check is removed. This test therefore scripts the registration and its workers
+ * (scriptWaitingWorkerReplacement) and nothing else: the check page is the one civic-server embeds,
+ * served with its policy header; the expected generation comes from the runtime endpoint and the served
+ * one from /index.html, both over HTTP.
+ */
+test('unknown when the waiting worker is replaced while it answers; 重试 asks the new one', async () => {
+  // Stale: the installed release expects this build, while `/` would still run the older one.
+  server.setRoot(older.root);
+  server.setRuntime(expects(BUILT));
+
+  const start = await profile.context.newPage();
+  const navigations: string[] = [];
+  start.on('framenavigated', (frame) => {
+    if (frame === start.mainFrame()) navigations.push(frame.url());
+  });
+  await start.addInitScript(scriptWaitingWorkerReplacement);
+  await start.goto(`${UPDATE_ORIGIN}/api/civic/start`);
+
+  // A answered "safe", but only after B had taken its place: the answer is not about the worker waiting.
+  expect(await settlesIn(start, ['unknown', 'ready', 'blocked', 'error-[a-z-]+'])).toBe('unknown');
+  expect(await start.locator('#facts').textContent()).toContain(
+    'windows: unknown (waiting-worker-changed)',
+  );
+  await expect(start.getByText('暂时无法确认是否还有其他政务工作记录台页面正在打开')).toBeVisible();
+  await expect(start.getByRole('button', { name: '进入新版本' })).toBeHidden();
+  const retry = start.getByRole('button', { name: '重试' });
+  await expect(retry).toBeVisible();
+  await expect(retry).toBeEnabled();
+
+  const answered = await replacementSnapshot(start);
+  expect(answered.waiting, 'B replaced A while A was answering').toBe('B');
+  expect(answered.messageTypes.A, 'A was asked once').toEqual(['CIVIC_WINDOW_CLIENTS']);
+  expect(answered.messageTypes.A, 'no SKIP_WAITING to A').not.toContain('SKIP_WAITING');
+  expect(answered.messageTypes.B, 'nothing sent to B, SKIP_WAITING included').toEqual([]);
+  expect(answered.messageTypes.active, 'nothing sent to the controlling worker').toEqual([]);
+  expect(answered.controllerIsActive, 'the controller is unchanged').toBe(true);
+  expect(answered.controllerChanges, 'no controller transition').toBe(0);
+  expect(answered.realRegistrations).toBe(0);
+  expect(new URL(start.url()).pathname).toBe('/api/civic/start');
+  expect(
+    navigations.map((url) => new URL(url).pathname),
+    'never navigated to /',
+  ).toEqual(['/api/civic/start']);
+
+  // 重试 asks again, and asks the worker waiting NOW; the replaced one is not asked again.
+  await retry.click();
+  expect(await settlesIn(start, ['ready', 'unknown', 'blocked', 'error-[a-z-]+'])).toBe('ready');
+  const retried = await replacementSnapshot(start);
+  expect(retried.messageTypes.A, 'the replaced worker is not asked again').toEqual([
+    'CIVIC_WINDOW_CLIENTS',
+  ]);
+  expect(retried.messageTypes.B, 'the retry asked the worker waiting now').toEqual([
+    'CIVIC_WINDOW_CLIENTS',
+  ]);
+  expect(retried.messageTypes.B, 'no SKIP_WAITING to B').not.toContain('SKIP_WAITING');
+  expect(retried.messageTypes.active).toEqual([]);
+  expect(retried.controllerChanges).toBe(0);
+  expect(navigations.map((url) => new URL(url).pathname)).toEqual(['/api/civic/start']);
+});
+
 test('the old interface with no newer worker to switch to: stops, and does not enter', async () => {
   const oldTab = await useOlderProgram();
   await oldTab.close();
