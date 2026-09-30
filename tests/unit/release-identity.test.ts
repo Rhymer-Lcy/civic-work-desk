@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   businessDateUtc8,
@@ -32,13 +34,23 @@ const REJECTED = JSON.parse(
 ) as RejectedReleases;
 /** The one candidate rejected before publication (Phase 6, first build). */
 const REJECTED_ID = '2026.09.29-win-0.2.0-rc.1';
+/**
+ * The frozen Phase-6 candidate. The derivation tests below build it, which was valid until it was
+ * published; so they derive against the registry as it stood before its publication, and the tests of
+ * spent ids use the real registry, where a published id is refused for a build.
+ */
+const THIS_RELEASE = '2026.09.30-win-0.2.0-rc.1';
+const PUBLISHED_BEFORE_THIS_RELEASE: PublishedReleases = {
+  ...PUBLISHED,
+  releases: PUBLISHED.releases.filter((release) => release.releaseId !== THIS_RELEASE),
+};
 
 function derive(releaseId: unknown, overrides: Record<string, unknown> = {}) {
   return deriveReleaseIdentity({
     releaseId,
     packageVersion: '0.2.0-rc.1',
     identity: IDENTITY,
-    published: PUBLISHED,
+    published: PUBLISHED_BEFORE_THIS_RELEASE,
     rejected: REJECTED,
     today: '2026.09.30',
     ...overrides,
@@ -70,13 +82,16 @@ describe('release identity', () => {
 
   it('refuses every previously published RC id, even under the version it was built with', () => {
     for (const spent of PUBLISHED.releases) {
-      expect(() => derive(spent.releaseId)).toThrow(/release identity refused/);
-      expect(() => derive(spent.releaseId, { packageVersion: '0.1.0' })).toThrow(
+      expect(() => derive(spent.releaseId, { published: PUBLISHED })).toThrow(
         /release identity refused/,
       );
+      expect(() =>
+        derive(spent.releaseId, { published: PUBLISHED, packageVersion: '0.1.0' }),
+      ).toThrow(/release identity refused/);
     }
-    // RC1-RC3 all present, so none of them can slip through a shortened list.
-    expect(PUBLISHED.releases.map((r) => r.releaseId)).toEqual([
+    // RC1-RC3 all present, so none of them can slip through a shortened list; the only entry the
+    // registry may hold besides them is the frozen Phase-6 candidate, once it is published.
+    expect(PUBLISHED_BEFORE_THIS_RELEASE.releases.map((r) => r.releaseId)).toEqual([
       '2026.09.24-win-rc1',
       '2026.09.24-win-rc2',
       '2026.09.24-win-rc3',
@@ -101,7 +116,7 @@ describe('release identity', () => {
   it('refuses a display version, tag or id that has already been published', () => {
     const published: PublishedReleases = {
       releases: [
-        ...PUBLISHED.releases,
+        ...PUBLISHED_BEFORE_THIS_RELEASE.releases,
         {
           releaseId: '2026.09.30-win-0.2.0-rc.1',
           tag: 'windows-v0.2.0-rc.1',
@@ -122,7 +137,7 @@ describe('release identity', () => {
   it('lets an audit examine the published release itself, and nothing else', () => {
     const published: PublishedReleases = {
       releases: [
-        ...PUBLISHED.releases,
+        ...PUBLISHED_BEFORE_THIS_RELEASE.releases,
         {
           releaseId: '2026.09.30-win-0.2.0-rc.1',
           tag: 'windows-v0.2.0-rc.1',
@@ -162,7 +177,8 @@ describe('release identity', () => {
 
   it('reads the repository inputs, and they agree with the policy', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
-    const id = loadReleaseIdentity('.', `2026.09.30-win-${pkg.version}`, '2026.09.30');
+    // As an audit, which the release may undergo whether or not it has been published yet.
+    const id = loadReleaseIdentity('.', `2026.09.30-win-${pkg.version}`, '2026.09.30', 'audit');
     expect(id.displayVersion).toBe(pkg.version);
     expect(id.publisher).toBe('Rhymer-Lcy');
   });
@@ -173,7 +189,8 @@ describe('release identity', () => {
         /was rejected before publication .* its engineering id is spent/,
       );
     }
-    // Its display version was never published, so a new build may carry it under a new id.
+    // The rejection did not spend its display version, so a new build could carry it under a new
+    // id, as the frozen Phase-6 candidate did (derived here against the registry before that).
     expect(derive('2026.09.30-win-0.2.0-rc.1').displayVersion).toBe('0.2.0-rc.1');
     // Mutation: without its registry entry the same id would be accepted, so the refusal comes from
     // the registry and not from anything else.
@@ -182,7 +199,9 @@ describe('release identity', () => {
 
   it('refuses both spent classes: published ids and rejected ids', () => {
     for (const spent of PUBLISHED.releases) {
-      expect(() => derive(spent.releaseId)).toThrow(/release identity refused/);
+      expect(() => derive(spent.releaseId, { published: PUBLISHED })).toThrow(
+        /release identity refused/,
+      );
     }
     expect(() => derive(REJECTED_ID)).toThrow(/rejected before publication/);
   });
@@ -217,10 +236,29 @@ describe('release identity', () => {
     // A rejected id and a published id never overlap.
     const publishedIds = new Set(PUBLISHED.releases.map((r) => r.releaseId));
     expect(REJECTED.releases.some((r) => publishedIds.has(r.releaseId))).toBe(false);
-    // The repository loader applies the registry too.
-    expect(() => loadReleaseIdentity('.', REJECTED_ID, '2026.09.30')).toThrow(
-      /rejected before publication/,
-    );
+    // The repository loader applies the registry too. Once 0.2.0-rc.1 is published, the rejected id's
+    // display version is spent as well and would be refused for that first, so the loader reads a copy
+    // of the repository inputs whose published registry stands before that publication.
+    const root = mkdtempSync(join(tmpdir(), 'civic-identity-'));
+    try {
+      mkdirSync(join(root, 'scripts', 'windows'), { recursive: true });
+      for (const file of [
+        'package.json',
+        'product-identity.json',
+        'scripts/windows/rejected-releases.json',
+      ]) {
+        writeFileSync(join(root, file), readFileSync(file));
+      }
+      writeFileSync(
+        join(root, 'scripts', 'windows', 'published-releases.json'),
+        JSON.stringify(PUBLISHED_BEFORE_THIS_RELEASE),
+      );
+      expect(() => loadReleaseIdentity(root, REJECTED_ID, '2026.09.30')).toThrow(
+        /rejected before publication/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('dates in UTC+8, not in the workstation zone', () => {
