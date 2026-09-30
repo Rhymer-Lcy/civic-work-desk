@@ -1,5 +1,5 @@
 {
-  "description": "Windows release candidates that have been published as GitHub prereleases. Their release ids, tags and installer digests are spent: scripts/windows/release-identity.mjs refuses to build any of them again, so an old id can never become the identity of a new artifact. Add an entry in the release-record commit that follows a publication; never edit or remove one.",
+  "description": "Windows release candidates that have been published as GitHub prereleases. Their release ids, tags and installer digests are spent: scripts/windows/release-identity.mjs refuses to build any of them again, so an old id can never become the identity of a new artifact. Add an entry in a publication's release-record commit; never edit or remove one.",
   "releases": [
     {
       "releaseId": "2026.09.24-win-rc1",
@@ -21,6 +21,21 @@
       "installer": "CivicWorkDesk-Windows-x64-2026.09.24-rc3-Setup.exe",
       "sha256": "4b8bc1d2d80446f3866d88dc6293446c79a1ef1908c28aa9b710b076bdf71e96",
       "databaseSchemaVersion": 1
+    },
+    {
+      "releaseId": "2026.09.30-win-0.2.0-rc.1",
+      "displayVersion": "0.2.0-rc.1",
+      "tag": "windows-v0.2.0-rc.1",
+      "installer": "CivicWorkDesk-Windows-x64-0.2.0-rc.1-Setup.exe",
+      "size": 6973273,
+      "sha256": "ebb594005f8765959bf91d3ef63624c885f249a3a095a4825ced9acf81e72c1d",
+      "deploymentSourceCommit": "5ccf809da96fa7ee72dc1fbc1b82debfef7d4514",
+      "productBaselineCommit": "a0e0a4ce73e205823e3f6c0fa1d8931c7df6c69b",
+      "appGeneration": "ui-CNP0PG2u",
+      "databaseSchemaVersion": 2,
+      "backupFormatVersion": 3,
+      "status": "published",
+      "publishedOn": "2026-09-30"
     }
   ]
 }

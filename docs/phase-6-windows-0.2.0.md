@@ -1,9 +1,9 @@
 # Phase 6 — Windows 0.2.0-rc.1 release engineering
 
 **Dates** in this document are business dates in UTC+8; timestamps carry their offset.
-**Status:** a new candidate is built from a pushed, publicly resolvable commit and frozen for independent
-pre-publication review. **Nothing is published:** no tag, no GitHub Release, no uploaded asset. RC3 is
-not marked superseded. `main` is unchanged.
+**Status:** published on 2026-09-30 as the GitHub prerelease `windows-v0.2.0-rc.1`, for field
+validation; **not certified** (section 14). The published installer is the frozen candidate of section
+12, unchanged. `main` is unchanged.
 
 | item               | value                                                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
@@ -14,6 +14,7 @@ not marked superseded. `main` is unchanged.
 | data formats       | databaseSchemaVersion 2, backupFormatVersion 3                                                                      |
 | rejected candidate | SHA-256 `4fe9296dbbaf20a85a19d742cfd9a7ae86a2e99c16518ec125718a66fd10eae5`: **remains REJECTED BEFORE PUBLICATION** |
 | frozen candidate   | `ebb59400…`, section 12                                                                                             |
+| published          | tag `windows-v0.2.0-rc.1`, prerelease, section 14                                                                   |
 
 ## 1. Branches and the port of the first Phase-6 work
 
@@ -372,7 +373,8 @@ Each time the gate run was stopped, and every gate was run again from the start 
   installed Edge. Windows compatibility is not certified; Windows 10 22H2 has not been tested on real
   hardware.
 - The tester notice already says “本版本取代 RC3 用于新的现场验证”, which describes the intended use once
-  published; nothing on GitHub marks RC3 superseded.
+  published; after publication, RC3's release description carries the matching supersession note
+  (section 14).
 
 ## 12. Frozen candidate and acceptance
 
@@ -564,3 +566,28 @@ and the candidate's provenance records:
 The installer-level suites (deploy, UX, RC3 upgrade, installed browser, identity, provenance, privacy
 scan) were not re-run: they test the installer's bytes, and those did not change. What changed is
 checked by the gates above, which include the full update-check suite in Chromium and in Edge.
+
+## 14. Publication
+
+The frozen candidate was published on 2026-09-30 (UTC+8) as a GitHub prerelease, for field
+validation. Nothing was rebuilt, and publication changes no byte of the artifact.
+
+| item          | value                                                                                                                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| tag           | `windows-v0.2.0-rc.1`, annotated, on the release-record commit that adds this section                                                                                                     |
+| release       | [windows-v0.2.0-rc.1](https://github.com/Rhymer-Lcy/civic-work-desk/releases/tag/windows-v0.2.0-rc.1): “Windows x64 0.2.0-rc.1 — field-validation candidate, NOT certified”, a prerelease |
+| assets        | `CivicWorkDesk-Windows-x64-0.2.0-rc.1-Setup.exe`, `CivicWorkDesk-Windows-x64-0.2.0-rc.1-Setup.exe.sha256`, `README-testing-zh-CN.txt`                                                     |
+| release notes | `docs/release-notes/windows-0.2.0-rc.1.md`, published as the release description                                                                                                          |
+| installer     | 6,973,273 bytes, SHA-256 `ebb594005f8765959bf91d3ef63624c885f249a3a095a4825ced9acf81e72c1d`                                                                                               |
+| registry      | `scripts/windows/published-releases.json`                                                                                                                                                 |
+
+The registry entry spends the engineering id, the display version `0.2.0-rc.1` and the tag: the next
+Windows candidate needs a new version. The rejected `2026.09.29-win-0.2.0-rc.1` stays in
+`scripts/windows/rejected-releases.json`, unchanged.
+
+After publication, every asset is downloaded back from GitHub and compared with the frozen local file,
+the tracked sidecar and the digest GitHub reports. RC3's release description then gets a one-line note
+that 0.2.0-rc.1 supersedes it for new field validation; RC3, its assets and its digests stay unchanged.
+
+Field validation is next: the published asset installed and used on a real Windows 10 Pro 22H2 x64
+machine and, where one is available, a real Windows 11 x64 colleague machine. None has run it yet.

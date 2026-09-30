@@ -140,7 +140,8 @@ Every "must become" row above is implemented on the Phase-6 branch (checked agai
 **Spent release ids.** An engineering `releaseId` names one artifact. Two tracked registries record the
 ids that can never name another one:
 
-- `scripts/windows/published-releases.json`: candidates published as GitHub prereleases (RC1-RC3). Their
+- `scripts/windows/published-releases.json`: candidates published as GitHub prereleases (RC1-RC3, and
+  `0.2.0-rc.1`). Their
   ids, display versions and tags are refused for a build; an audit may name the one published entry that
   is the release under audit.
 - `scripts/windows/rejected-releases.json`: candidates built, frozen and rejected before publication,
@@ -152,4 +153,6 @@ ids that can never name another one:
 `scripts/windows/release-identity.mjs` enforces both, and `tests/unit/release-identity.test.ts` proves
 each class is refused. A rejected candidate spends its engineering id but not its display version, since
 no `0.2.0-rc.1` was ever published: the rebuilt candidate keeps displayVersion `0.2.0-rc.1` under the new
-engineering id `2026.09.30-win-0.2.0-rc.1`, and is not renamed `rc.2`.
+engineering id `2026.09.30-win-0.2.0-rc.1`, and is not renamed `rc.2`. That candidate was published on
+2026-09-30 as `windows-v0.2.0-rc.1`, so its display version is now spent as well: the next Windows
+candidate needs a new version, for example `0.2.0-rc.2`.

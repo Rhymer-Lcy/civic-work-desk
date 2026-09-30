@@ -152,7 +152,8 @@
 
 ## 8. GitHub Release 说明
 
-来源：发布时随 tag 提交；RC2 的内容见
+来源：发布时随 tag 提交；0.2.0-rc.1 的内容见
+[release-notes/windows-0.2.0-rc.1.md](release-notes/windows-0.2.0-rc.1.md)，RC2 的内容见
 [phase-4-windows-rc2.md](phase-4-windows-rc2.md) 与实际 Release 页面。
 要求：五步用户指引、SHA-256 核对、未签名说明（按试用说明“六、关于 Windows 安全提示”的措辞）、已知限制、不认证声明。状态：RC2。
 

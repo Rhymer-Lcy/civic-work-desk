@@ -252,7 +252,22 @@ versions, for other LoongArch systems, or for other browser versions. The deploy
 no root, no system service, no Node, no Python — BusyBox `httpd` serves the files and `xdg-open`
 opens the browser. Sign-off and evidence: `docs/phase-3-final-signoff.md`.
 
-### Windows 11 x64 — RC3, field-validation candidate, NOT certified
+### Windows x64 — 0.2.0-rc.1, field-validation candidate, NOT certified
+
+> `CivicWorkDesk-Windows-x64-0.2.0-rc.1-Setup.exe`
+> (SHA-256 `ebb594005f8765959bf91d3ef63624c885f249a3a095a4825ced9acf81e72c1d`)
+> was accepted end to end on **one** Windows 11 x64 development workstation (build 26200), from the
+> frozen installer bytes, as an ordinary non-elevated user, in installed Microsoft Edge.
+
+That sentence is the whole claim. Windows 11 x64 is the primary target and Windows 10 22H2 x64 a
+legacy-compatibility target that has not yet run this build; nothing is certified, and the installer is
+unsigned. It supersedes RC3 for new field validation: an upgrade from RC3 passes through an update check
+page that switches versions only when no other application page is open, and going back to RC3 is
+refused once the records have been upgraded. Published as the GitHub prerelease
+[`windows-v0.2.0-rc.1`](https://github.com/Rhymer-Lcy/civic-work-desk/releases/tag/windows-v0.2.0-rc.1);
+detail and evidence: [docs/phase-6-windows-0.2.0.md](docs/phase-6-windows-0.2.0.md).
+
+### Windows 11 x64 — RC3, superseded for new field validation by 0.2.0-rc.1
 
 > `CivicWorkDesk-Windows-x64-2026.09.24-rc3-Setup.exe` was rehearsed end to end on **one** Windows 11
 > x64 development workstation (build 26200), from the actual installer bytes, as an ordinary

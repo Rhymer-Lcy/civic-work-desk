@@ -10,8 +10,9 @@ the Windows release candidates (Phase 4) — are recorded in `docs/phase-3-final
 
 The Windows package of the signed-off Phase-5.1 product (main `a0e0a4c`). The application payload is
 byte-identical to a clean build of that commit; nothing under `src/` or `public/` changed, and only the
-`version` field of `package.json` differs (`0.2.0-rc.1`). A new candidate is frozen for independent
-pre-publication review; **nothing was published, tagged or released**. The earlier candidate
+`version` field of `package.json` differs (`0.2.0-rc.1`). It is published as the GitHub prerelease
+`windows-v0.2.0-rc.1` for field validation and is **not certified**; it supersedes RC3 for new field
+validation. The earlier candidate
 `4fe9296d…` stays rejected before publication. Record: `docs/phase-6-windows-0.2.0.md`.
 
 ### Added
