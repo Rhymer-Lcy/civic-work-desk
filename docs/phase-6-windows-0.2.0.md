@@ -357,16 +357,6 @@ Each time the gate run was stopped, and every gate was run again from the start 
   tab. What protects the upgrade is procedural: the Ready page asks to save and close the old pages
   before installing, the tester notice says the same, and the check page itself refuses while old tabs
   are open. From 0.2.0 on, the product's own guard (Phase 5.1) blocks this in the new generation.
-- **One fail-closed case is implemented but not tested.** When the waiting worker is replaced while the
-  check page waits for its answer, `askFresh` reports `unknown` (`waiting-worker-changed`) instead of
-  using the answer. The update-check suite exercises the other unknown cases (no protocol, no answer, a
-  late answer, a malformed answer, another protocol version) in Chromium and Edge, but none replaces the
-  worker mid-question; found while preparing the final report, after the freeze, and left for review
-  rather than changing the frozen source.
-- **The static scan does not read `deploy/`.** Its Phase-5.1 rules admit one caller of
-  `/api/civic/runtime` and one sender of `SKIP_WAITING`, both in the application; the update check page
-  is a second of each, by design. It is covered instead by the Go tests (the served bytes are the
-  reviewed files, with no forbidden construct) and by the update-check suites in Chromium and Edge.
 - **The check page needs the local server.** It is served by `civic-server` and not precached, so it
   cannot open while the program is stopped; offline use is `/` directly, served by the worker. The
   launcher always starts the server first.
@@ -404,10 +394,10 @@ installer file itself.
 | Authenticode                              | NotSigned (unsigned)                                                                                                                                                       |
 | payload                                   | 30 files in the release manifest                                                                                                                                           |
 
-The commits that follow `5ccf809` on the branch change only this record (section 12 and a known
-limitation in section 11) and add the candidate's provenance files
+The commits that follow `5ccf809` on the branch change only documentation, tests and the static
+scan, and add the candidate's provenance files
 (`release/windows/provenance/2026.09.30-win-0.2.0-rc.1-*` and the installer's `.sha256`); they change
-nothing the installer was built from.
+nothing the installer was built from (section 13).
 
 ### 12.2 Product payload parity (section 23 of the brief)
 
@@ -483,3 +473,94 @@ slot, in CSS px (classic scrollbar width measured: 15 px):
 The one skipped test is WebKit's offline reload in `tests/e2e/cross-browser.spec.ts`, skipped since
 before this phase for a Playwright WebKit harness fault documented in that file; the file is unchanged
 from `main`, and Chromium and Firefox run the same case.
+
+## 13. Pre-publication audit hardening
+
+A test, static-analysis and documentation pass on the frozen candidate (2026-09-30). **No shipped source
+changed**: the deploymentSourceCommit stays `5ccf809`, the installer was not rebuilt, and its SHA-256
+is still `ebb594005f8765959bf91d3ef63624c885f249a3a095a4825ced9acf81e72c1d`. Two items section 11
+listed until this pass are closed here and removed from it.
+
+### 13.1 The waiting worker replaced mid-question is tested
+
+`tests/e2e/bootstrap.spec.ts`, “unknown when the waiting worker is replaced while it answers; 重试 asks
+the new one”. Worker A is waiting and is asked `CIVIC_WINDOW_CLIENTS`; before its valid “no other
+window” answer is consumed, worker B takes its place; then A answers. The test requires `unknown`
+(`waiting-worker-changed` in the page's technical facts), 重试 visible and enabled, no message to A but
+the one question, nothing at all to B or to the controlling worker (so no `SKIP_WAITING` to either), no
+controller change, and no navigation away from `/api/civic/start`. 重试 must then ask B, and only B, and
+reach `ready`.
+
+A real browser cannot be driven through that order deterministically: the replaced worker becomes
+redundant and may be terminated before it answers, and silence reads `unknown` with or without the
+identity check, so such a test could not fail. The test therefore scripts the page's registration and
+its workers, installed before the page's own script, and nothing else: the page is the embedded
+`start.html`/`start.js` under their policy header, and the expected and served generations come over
+HTTP. **Mutation:** with `askFresh`'s identity check deleted from `start.js`, the test failed in both
+Chromium and installed Edge (expected `unknown`, received `ready`, the switch offered on A's answer);
+the file was restored byte-identically.
+
+### 13.2 The static scan reads the Windows browser code
+
+`scripts/static-security-scan.mjs` now reads exactly the browser code civic-server serves, and no other
+part of `deploy/`: every file in `deploy/windows/src/internal/httpserve/bootstrap/` (the only
+`go:embed` directory: `start.html`, `start.js`), and the `platformHTML` literal of `platform.go`,
+extracted and scanned as HTML. Go, shell and installer text is not read as browser code. The scan fails
+if a `go:embed` in the Windows Go source names anything outside that directory, if HTML or a script
+appears in any other non-test Go file, or if one of the three reviewed items is missing.
+
+The two rules now state the reviewed architecture, with exact paths only:
+
+| rule                      | reviewed, shipped                                                                                                                                                                   | not shipped, named one by one                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `runtime-endpoint-caller` | (A) `src/app/pwa/runtime-generation.ts` and its bundled entry chunk; (B) `deploy/windows/src/internal/httpserve/bootstrap/start.js`                                                 | four test files, the two Windows acceptance harnesses |
+| `skip-waiting-sender`     | (A) the product bridge, `src/app/pwa/service-worker-bridge.ts`, activates through the PWA plugin's `updateServiceWorker` and writes no sender, so it needs no entry; (B) `start.js` | four test files                                       |
+
+The broad exceptions these rules had (`tests/` and `docs/` for the first; everything outside `src/`
+and `public/` for the second) are gone. **Mutations**, all in memory by `--mutate` and all detected as
+declared: a third caller or sender in a new embedded script, in the browser check page, or `start.js`
+copied under another name; a `go:embed` outside the directory; an HTML page in another Go literal;
+`start.js` removed from the scanned directory. The unchanged code produces no finding, and `start.js`
+is shown to hold both patterns, admitted by its path and not by their absence. The same three
+injections were also made on disk (a real extra file, the real `platform.go`) and detected, and
+widening the two allowlists' `start.js` entries to all of `deploy/`, or disabling the `go:embed`
+guard, makes `--mutate` fail.
+Every mutated file was restored byte-identically and none was left behind.
+
+### 13.3 The scanned bootstrap is the served bootstrap
+
+`bootstrap.go` embeds `bootstrap/start.html` and `bootstrap/start.js` with `go:embed`; those are the
+files the scan reads, and no build or tooling script writes to that directory. The Go test serves both
+and compares the bytes with the same files. Both files are byte-identical at `5ccf809` and at the head
+of this pass, and each occurs verbatim, exactly once, in the frozen `server/civic-server.exe`
+(SHA-256 `2a2600f3a3c432663550b6c7f4157e181f19dda1e644023091248e21ea05ff2f`), which is the digest
+the tracked `release/windows/provenance/2026.09.30-win-0.2.0-rc.1-payload-SHA256SUMS.txt` records; a
+one-byte change to either file is no longer found in it.
+
+### 13.4 Documentation corrected
+
+Section 4 said that an old bookmark to `/__civic/platform` still arrives by redirect, and the CHANGELOG
+and the copy inventory described that address as kept only as a redirect. The redirect holds only when
+the request reaches civic-server; where a service worker controls the origin, the old address opens
+the application. All three now say so.
+
+### 13.5 Gates
+
+Run on `d4b63b0`, which differs from `5ccf809` only in tests, the static scan, documentation
+and the candidate's provenance records:
+
+| gate                                                                 | result                                                              |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `npm run verify` (format, lint, typecheck, unit, static scan, build) | pass; 570 unit tests                                                |
+| Chromium desktop and mobile (`test:e2e`)                             | 202 passed, 0 skipped, 0 flaky; update-check page 18 of them        |
+| installed Edge (`test:e2e:edge`)                                     | 48 passed, 0 skipped, 0 flaky; update-check page 18 of them         |
+| Firefox and WebKit (`test:e2e:cross`)                                | 23 passed, 1 skipped, 0 flaky                                       |
+| accessibility (`test:a11y`)                                          | 16 passed, 0 skipped, 0 flaky                                       |
+| copy audit                                                           | pass                                                                |
+| Go tests (`test:windows`)                                            | pass; 9 packages                                                    |
+| UOS regression (`verify:uos`)                                        | pass; 138 deployment tests (0 failed), 56 archive checks (0 failed) |
+| `static-security-scan.mjs --mutate`                                  | 10 checks, all as declared                                          |
+
+The installer-level suites (deploy, UX, RC3 upgrade, installed browser, identity, provenance, privacy
+scan) were not re-run: they test the installer's bytes, and those did not change. What changed is
+checked by the gates above, which include the full update-check suite in Chromium and in Edge.
